@@ -13,6 +13,7 @@ export interface AuthUser {
   email: string
   token?: string
   fullName?: string
+  isAdmin?: boolean
 }
 
 interface AuthContextType {
