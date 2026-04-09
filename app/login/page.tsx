@@ -133,7 +133,8 @@ function LoginForm() {
           username: authData.fullName,
           email: authData.email,
           token: authData.token,
-          fullName: authData.fullName
+          fullName: authData.fullName,
+          isAdmin: authData.isAdmin
         })
         setLoginSuccess(true)
         setTimeout(() => {

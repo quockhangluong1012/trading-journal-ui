@@ -37,7 +37,9 @@ const navigation = [
   { name: "Trade History", href: "/history", icon: History },
   { name: "Psychology", href: "/psychology", icon: Brain },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "Backtest", href: "/backtest", icon: Activity },
   { name: "Review", href: "/review", icon: ClipboardList },
+  { name: "Admin", href: "/admin", icon: Settings2 },
 ];
 
 function getInitials(name: string): string {
@@ -73,7 +75,12 @@ export function Header() {
           </div>
           <div className="flex items-center gap-2">
             <nav className="flex items-center gap-1">
-              {navigation.map((item) => {
+              {navigation.filter(item => {
+                if (user?.isAdmin) {
+                  return item.name === "Admin";
+                }
+                return item.name !== "Admin";
+              }).map((item) => {
                 const isActive = pathname === item.href;
                 return (
                   <Link

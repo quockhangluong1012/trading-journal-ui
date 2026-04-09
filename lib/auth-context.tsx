@@ -13,6 +13,7 @@ export interface AuthUser {
   email: string
   token?: string
   fullName?: string
+  isAdmin?: boolean
 }
 
 interface AuthContextType {
@@ -41,6 +42,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
       const stored = localStorage.getItem(AUTH_STORAGE_KEY)
       if (stored) {
         setUser(JSON.parse(stored))
+        attachToken()
       }
     } catch {
       // Ignore parse errors

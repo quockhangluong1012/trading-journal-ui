@@ -118,6 +118,10 @@ export async function loginUser(data: any) {
   return api.post<ApiResponse<AuthResponse>>("/v1/auth/login", data);
 }
 
+export async function loginStaff(data: any) {
+  return api.post<ApiResponse<AuthResponse & { isAdmin: boolean }>>("/v1/auth/staff-login", data);
+}
+
 export async function registerUser(data: any) {
   return api.post<ApiResponse<number>>("/v1/auth/register", data);
 }
