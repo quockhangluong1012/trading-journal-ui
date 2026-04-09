@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users, ShieldCheck, Activity, Users2 } from "lucide-react";
+import { Users, ShieldCheck, Activity, Users2, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { getSystemMetrics, SystemMetricsDto } from "@/lib/admin-api";
 import { attachToken } from "@/lib/api";
@@ -46,8 +46,8 @@ export default function AdminDashboardPage() {
 
   if (loading || !metrics) {
     return (
-      <div className="flex h-[400px] items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-[400px] items-center justify-center text-primary">
+        <Loader2 className="h-8 w-8 animate-spin" />
       </div>
     );
   }

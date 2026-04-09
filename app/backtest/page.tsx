@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useBacktestStore } from "@/lib/backtest-store";
 import { format } from "date-fns";
 import { Plus, Play, Info, Trash2, Activity } from "lucide-react";
@@ -17,13 +17,49 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Header } from "@/components/header";
+import * as signalR from "@microsoft/signalr";
+import { toast } from "sonner";
 
 export default function BacktestDashboard() {
   const { sessions, sessionsLoading, loadSessions, deleteSession } = useBacktestStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const toastIdRef = useRef<string | number>("");
 
   useEffect(() => {
     loadSessions();
+
+    const hubUrl = process.env.NEXT_PUBLIC_API_URL 
+      ? `${process.env.NEXT_PUBLIC_API_URL}/hubs/backtest`
+      : "https://localhost:7139/hubs/backtest"; // Fallback to common backend port if env is missing
+
+    const connection = new signalR.HubConnectionBuilder()
+      .withUrl(hubUrl)
+      .withAutomaticReconnect()
+      .build();
+
+    connection.on("DataProgress", (data: { asset: string, totalCandles: number, importedCandles: number, totalExpected: number }) => {
+      const formattedImported = new Intl.NumberFormat("en-US").format(data.importedCandles);
+      const formattedTotal = new Intl.NumberFormat("en-US").format(data.totalExpected);
+      const msg = `Importing ${data.asset}: ${formattedImported} / ${formattedTotal} candles`;
+      
+      if (!toastIdRef.current) {
+        toastIdRef.current = toast.loading(msg, { duration: 10000 });
+      } else {
+        toast.loading(msg, { id: toastIdRef.current, duration: 10000 });
+      }
+
+      if (data.importedCandles >= data.totalExpected) {
+        toast.success(`${data.asset} completed chunk import. Total: ${new Intl.NumberFormat("en-US").format(data.totalCandles)}`, { id: toastIdRef.current });
+        toastIdRef.current = "";
+      }
+    });
+
+    connection.start().catch(err => console.error("SignalR Connection Error:", err));
+
+    return () => {
+      connection.stop();
+    };
   }, [loadSessions]);
 
   const handleDelete = async (id: number) => {
@@ -36,8 +72,10 @@ export default function BacktestDashboard() {
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
   return (
-    <div className="container mx-auto max-w-6xl p-6">
-      <div className="flex items-center justify-between mb-8">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container mx-auto max-w-6xl p-6">
+        <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Backtesting</h1>
           <p className="text-muted-foreground mt-1">
@@ -144,6 +182,7 @@ export default function BacktestDashboard() {
         open={isCreateModalOpen}
         onOpenChange={setIsCreateModalOpen}
       />
+      </main>
     </div>
   );
 }

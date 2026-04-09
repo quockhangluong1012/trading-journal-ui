@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "link/next";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { 
@@ -10,9 +10,9 @@ import {
   Clock, 
   ClipboardCheck, 
   ListChecks, 
-  LayoutDashboard 
+  LayoutDashboard,
+  Database
 } from "lucide-react";
-import LinkComponent from "next/link"; // Workaround for strict import
 
 export function AdminSidebar() {
   const pathname = usePathname();
@@ -25,6 +25,7 @@ export function AdminSidebar() {
     { name: "Trading Zones", href: "/admin/trading-zones", icon: Clock },
     { name: "Checklist Models", href: "/admin/checklist-models", icon: ClipboardCheck },
     { name: "Pretrade Checklists", href: "/admin/pretrade-checklists", icon: ListChecks },
+    { name: "Backtest Assets", href: "/admin/assets", icon: Database },
   ];
 
   return (
@@ -33,7 +34,7 @@ export function AdminSidebar() {
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <LinkComponent
+            <Link
               key={item.name}
               href={item.href}
               className={cn(
@@ -45,7 +46,7 @@ export function AdminSidebar() {
             >
               <item.icon className="h-4 w-4" />
               {item.name}
-            </LinkComponent>
+            </Link>
           );
         })}
       </div>

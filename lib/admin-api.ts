@@ -156,28 +156,97 @@ export async function addCriteriaToModel(modelId: number, data: { name: string; 
   return api.post<ApiResponse<number>>(`/v1/checklist-models/${modelId}/criteria`, data);
 }
 
-// ─── Pretrade Checklists (standalone) ────────────────────
+// ─── Pretrade Checklists ──────────────────────────────────
 export interface PretradeChecklistDto {
   id: number;
   name: string;
-  checkListType: number; // 1=MarketStructure, 2=TradingSetup, 3=RiskManagement, 4=Psychology
+  checklistModelId: number;
+  checklistModelName: string;
+  createdDate: string;
 }
 
-export async function getPretradeChecklists(userId?: number) {
-  return api.get<ApiResponse<PretradeChecklistDto[]>>(`/v1/pretrade-checklists${userId ? `?userId=${userId}` : ""}`);
+export async function getPretradeChecklists() {
+  return api.get<ApiResponse<PretradeChecklistDto[]>>("/v1/trades/pretrade-checklists");
 }
 
-export async function createPretradeChecklist(data: { name: string; type: number }) {
-  return api.post<ApiResponse<number>>("/v1/pretrade-checklists", data);
+export async function createPretradeChecklist(data: { name: string; checklistModelId: number }) {
+  return api.post<ApiResponse<number>>("/v1/trades/pretrade-checklists", data);
 }
 
-export async function updatePretradeChecklist(data: { id: number; name: string; type: number }) {
-  return api.put<ApiResponse<boolean>>("/v1/pretrade-checklists", data);
+export async function updatePretradeChecklist(id: number, data: { name: string; checklistModelId: number }) {
+  return api.put<ApiResponse<boolean>>(`/v1/trades/pretrade-checklists/${id}`, data);
 }
 
 export async function deletePretradeChecklist(id: number) {
-  return api.delete<ApiResponse<boolean>>(`/v1/pretrade-checklists/${id}`);
+  return api.delete<ApiResponse<boolean>>(`/v1/trades/pretrade-checklists/${id}`);
 }
+
+// ─── Backtest Assets ──────────────────────────────────────
+export interface AssetDto {
+  id: number;
+  displayName: string;
+  symbol: string;
+  category: string;
+  dataProvider: string;
+  syncStatus: string;
+  dataStartDate: string;
+  dataEndDate: string | null;
+  lastSyncedDate: string | null;
+  totalCandles: number;
+  lastError: string | null;
+  createdDate: string;
+}
+
+export interface AdminCreateAssetRequest {
+  displayName: string;
+  symbol: string;
+  category: "Forex" | "Metals" | "Futures" | "Crypto" | "Indices" | string;
+  dataProvider: "TwelveData" | "AlphaVantage" | "CSV" | string;
+  dataStartDate: string;
+  dataEndDate: string | null;
+  defaultSpreadPips: number;
+  pipType: number;
+}
+
+export async function getBacktestAssets() {
+  return api.get<ApiResponse<AssetDto[]>>("/v1/admin/backtest");
+}
+
+export async function createBacktestAsset(data: AdminCreateAssetRequest) {
+  return api.post<ApiResponse<number>>("/v1/admin/backtest", data);
+}
+
+export async function deleteBacktestAsset(id: number) {
+  return api.delete<ApiResponse<boolean>>(`/v1/admin/backtest/${id}`);
+}
+
+export interface CsvImportJobDto {
+  id: number;
+  fileName: string;
+  status: "Pending" | "Processing" | "Completed" | "Failed";
+  importedCandles: number;
+  skippedDuplicates: number;
+  errorMessage: string | null;
+  processedDate: string | null;
+  createdDate: string;
+}
+
+export async function bulkUploadCsvFiles(assetId: number, files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  return api.post<ApiResponse<{ queuedFiles: number; jobIds: number[] }>>(
+    `/v1/admin/backtest/${assetId}/bulk-import`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+}
+
+export async function getImportJobs(assetId: number) {
+  return api.get<ApiResponse<CsvImportJobDto[]>>(
+    `/v1/admin/backtest/${assetId}/import-jobs`
+  );
+}
+
 
 // ─── Enum Labels ─────────────────────────────────────────
 export const EmotionTypeLabels: Record<number, string> = {
@@ -204,4 +273,24 @@ export const ChecklistTypeColors: Record<number, string> = {
   2: "text-amber-400 bg-amber-400/10 border-amber-400/20",
   3: "text-red-400 bg-red-400/10 border-red-400/20",
   4: "text-purple-400 bg-purple-400/10 border-purple-400/20",
+};
+
+// ─── Pip Type Enum ───────────────────────────────────────
+// Maps to backend AssetPipType enum
+export enum PipType {
+  Standard = 0,  // 0.0001 — Forex majors (EUR/USD, GBP/USD)
+  JpyPair = 1,   // 0.01   — JPY pairs (USD/JPY, EUR/JPY)
+  Metal = 2,     // 0.01   — Precious metals (XAU/USD)
+  Crypto = 3,    // 0.01   — Crypto (BTC/USDT)
+  Index = 4,     // 0.25   — Indices/Futures (NQ, ES)
+  WholePip = 5,  // 1.0    — Exotic/custom
+}
+
+export const PipTypeLabels: Record<number, string> = {
+  [PipType.Standard]: "Standard (0.0001)",
+  [PipType.JpyPair]: "JPY Pair (0.01)",
+  [PipType.Metal]: "Metal (0.01)",
+  [PipType.Crypto]: "Crypto (0.01)",
+  [PipType.Index]: "Index (0.25)",
+  [PipType.WholePip]: "Whole Pip (1.0)",
 };

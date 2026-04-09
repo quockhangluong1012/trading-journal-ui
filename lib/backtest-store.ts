@@ -157,9 +157,25 @@ export interface PlaceOrderRequest {
   takeProfit?: number | null;
 }
 
+export interface AvailableAsset {
+  id: number;
+  displayName: string;
+  symbol: string;
+  category: string;
+  dataStartDate: string;
+  dataEndDate: string | null;
+  totalCandles: number;
+}
+
 // ─── API Functions ──────────────────────────────────────────────────────
 
 const BASE = "/v1";
+
+export async function fetchAvailableAssetsApi(): Promise<AvailableAsset[]> {
+  attachToken();
+  const res = await api.get<ApiResponse<AvailableAsset[]>>(`${BASE}/backtest-assets`);
+  return res.data.value;
+}
 
 async function fetchSessions(): Promise<BacktestSessionSummary[]> {
   attachToken();

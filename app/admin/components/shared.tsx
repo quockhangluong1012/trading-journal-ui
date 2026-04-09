@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Plus, Sparkles } from "lucide-react";
+import { Search, Plus, Sparkles, Loader2 } from "lucide-react";
 
 export function SectionHeader({
   title,
@@ -30,31 +30,15 @@ export function SectionHeader({
         </h2>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      <div className="flex items-center gap-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search…"
-            className="h-9 w-48 pl-8 text-sm"
-            value={searchValue}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
-        </div>
-        <Button size="sm" className="gap-1.5" onClick={onAdd}>
-          <Plus className="h-3.5 w-3.5" />
-          Add New
-        </Button>
-      </div>
+      
     </div>
   );
 }
 
-export function TableSkeleton({ rows = 4 }: { rows?: number }) {
+export function TableSkeleton({ rows = 4, columns }: { rows?: number; columns?: number }) {
   return (
-    <div className="space-y-3 pt-2">
-      {Array.from({ length: rows }).map((_, i) => (
-        <Skeleton key={i} className="h-12 w-full rounded-md" />
-      ))}
+    <div className="flex h-[300px] w-full items-center justify-center text-primary">
+      <Loader2 className="h-8 w-8 animate-spin" />
     </div>
   );
 }

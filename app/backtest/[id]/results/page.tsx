@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Header } from "@/components/header";
 
 export default function BacktestResults({ params }: { params: { id: string } }) {
   const sessionId = parseInt(params.id, 10);
@@ -32,8 +33,10 @@ export default function BacktestResults({ params }: { params: { id: string } }) 
   }
 
   return (
-    <div className="container mx-auto max-w-7xl p-6">
-      <Button variant="ghost" asChild className="mb-6">
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container mx-auto max-w-7xl p-6">
+        <Button variant="ghost" asChild className="mb-6">
         <Link href="/backtest">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Sessions
@@ -181,6 +184,7 @@ export default function BacktestResults({ params }: { params: { id: string } }) 
           )}
         </CardContent>
       </Card>
+      </main>
     </div>
   );
 }

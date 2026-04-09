@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { OrderPanel } from "@/components/backtest/order-panel";
+import { Header } from "@/components/header";
 
 export default function BacktestWorkspace({ params }: { params: { id: string } }) {
   const sessionId = parseInt(params.id, 10);
@@ -119,7 +120,9 @@ export default function BacktestWorkspace({ params }: { params: { id: string } }
   if (!session) return <div className="p-8 text-center animate-pulse">Loading Workspace...</div>;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      <div className="flex flex-1 flex-col overflow-hidden">
       {/* Top Toolbar */}
       <div className="flex items-center justify-between border-b px-4 py-2 bg-card">
         <div className="flex items-center gap-4">
@@ -223,6 +226,7 @@ export default function BacktestWorkspace({ params }: { params: { id: string } }
         <div className="w-[300px] border-l bg-card overflow-y-auto hidden md:block">
            <OrderPanel sessionId={sessionId} currentPrice={candles.length > 0 ? candles[candles.length - 1].close : 0} />
         </div>
+      </div>
       </div>
     </div>
   );

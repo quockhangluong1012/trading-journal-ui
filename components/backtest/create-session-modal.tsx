@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useBacktestStore } from "@/lib/backtest-store";
+import { useBacktestStore, fetchAvailableAssetsApi, AvailableAsset } from "@/lib/backtest-store";
 import { format } from "date-fns";
 import { CalendarIcon, Loader2 } from "lucide-react";
 
@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-const ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "EUR/USD", "AAPL", "TSLA"];
+
 
 const formSchema = z.object({
   asset: z.string({ required_error: "Please select an asset." }),
@@ -65,6 +65,18 @@ export function CreateSessionModal({
   const router = useRouter();
   const { createSession } = useBacktestStore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableAssets, setAvailableAssets] = useState<AvailableAsset[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setLoadingAssets(true);
+      fetchAvailableAssetsApi()
+        .then(setAvailableAssets)
+        .catch(err => console.error("Failed to load assets", err))
+        .finally(() => setLoadingAssets(false));
+    }
+  }, [open]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -116,13 +128,13 @@ export function CreateSessionModal({
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select an asset to trade" />
+                        <SelectValue placeholder={loadingAssets ? "Loading assets..." : "Select an asset to trade"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {ASSETS.map((asset) => (
-                        <SelectItem key={asset} value={asset}>
-                          {asset}
+                      {availableAssets.map((asset) => (
+                        <SelectItem key={asset.symbol} value={asset.symbol}>
+                          {asset.symbol} <span className="text-muted-foreground ml-2 text-xs">({new Intl.NumberFormat().format(asset.totalCandles)} candles)</span>
                         </SelectItem>
                       ))}
                     </SelectContent>
