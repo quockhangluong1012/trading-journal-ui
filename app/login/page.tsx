@@ -126,7 +126,7 @@ function LoginForm() {
     setErrors({})
 
     try {
-      const response = await loginUser({ email: username, password })
+      const response = await loginUser({ email: username, password, rememberMe })
       if (response.data.isSuccess) {
         const authData = response.data.value
         login({

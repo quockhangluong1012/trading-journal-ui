@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Loader2, TrendingUp, TrendingDown, X } from "lucide-react";
 import { useBacktestStore } from "@/lib/backtest-store";
+import { toast } from "sonner";
 
 import {
   Form,
@@ -32,7 +33,7 @@ export function OrderPanel({ sessionId, currentPrice }: { sessionId: number, cur
   const [orderType, setOrderType] = useState<"Market" | "Limit">("Market");
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const { placeOrder, activePositions, pendingOrders, cancelOrder } = useBacktestStore();
+  const { placeOrder, activePositions, pendingOrders, cancelOrder, closeOrder, balance } = useBacktestStore();
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
@@ -42,6 +43,22 @@ export function OrderPanel({ sessionId, currentPrice }: { sessionId: number, cur
   });
 
   const onSubmit = async (values: z.infer<typeof orderSchema>, side: "Long" | "Short") => {
+    if (values.positionSize > balance) {
+      toast.error(`Insufficient balance. Available: ${balance.toFixed(2)} USD`);
+      return;
+    }
+
+    if (orderType === "Limit" && values.entryPrice) {
+      if (side === "Long" && Number(values.entryPrice) >= currentPrice) {
+        toast.error("Limit Buy price must be below current market price.");
+        return;
+      }
+      if (side === "Short" && Number(values.entryPrice) <= currentPrice) {
+        toast.error("Limit Sell price must be above current market price.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       await placeOrder({
@@ -62,14 +79,28 @@ export function OrderPanel({ sessionId, currentPrice }: { sessionId: number, cur
   };
 
   const handleCancel = async (id: number) => {
-    await cancelOrder(id);
+    try {
+      await cancelOrder(id);
+      toast.success("Order cancelled");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || err.message || "Failed to cancel order");
+    }
+  };
+
+  const handleClose = async (id: number, price: number) => {
+    try {
+      await closeOrder(id, price);
+      toast.success("Position closed");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || err.message || "Failed to close position");
+    }
   };
 
   return (
     <div className="flex flex-col h-full bg-card">
       <div className="p-4 border-b">
-        <h3 className="font-semibold text-lg">Order Placement</h3>
-        <p className="text-sm text-muted-foreground">Market Price: {currentPrice}</p>
+        <p className="text-2xl font-bold font-mono tracking-tight mb-1">{currentPrice.toFixed(4)}</p>
+        <h3 className="font-semibold text-sm text-muted-foreground uppercase">Order Placement</h3>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto">
@@ -184,7 +215,11 @@ export function OrderPanel({ sessionId, currentPrice }: { sessionId: number, cur
                       <div>Entry: {pos.entryPrice}</div>
                       <div>Size: {pos.positionSize}</div>
                     </div>
-                    {/* Optionally close manually if we have an endpoint */}
+                    <div className="flex items-center gap-2">
+                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleClose(pos.id, currentPrice)}>
+                         <X className="h-3 w-3 text-red-500" />
+                       </Button>
+                    </div>
                   </div>
                 ))}
               </div>

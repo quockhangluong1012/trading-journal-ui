@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { api, attachToken, ApiResponse } from "@/lib/api";
+import { toast } from "sonner";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -191,8 +192,15 @@ async function fetchSessionDetail(id: number): Promise<BacktestSession> {
 
 async function createSessionApi(req: CreateSessionRequest): Promise<number> {
   attachToken();
-  const res = await api.post<ApiResponse<number>>(`${BASE}/backtest-sessions`, req);
-  return res.data.value;
+  const res = await api.post<ApiResponse<any>>(`${BASE}/backtest-sessions`, req);
+  let val = res.data.value;
+  if (Array.isArray(val) && val.length > 0) {
+    return val[0].id;
+  }
+  if (val && typeof val === "object" && val.id) {
+    return val.id;
+  }
+  return val as number;
 }
 
 async function deleteSessionApi(id: number): Promise<void> {
@@ -202,12 +210,14 @@ async function deleteSessionApi(id: number): Promise<void> {
 
 async function fetchPlaybackState(sessionId: number): Promise<PlaybackState> {
   attachToken();
+  console.log(sessionId)
   const res = await api.get<ApiResponse<PlaybackState>>(`${BASE}/backtest-playback/${sessionId}/state`);
   return res.data.value;
 }
 
 async function advanceCandleApi(sessionId: number): Promise<AdvanceCandleResponse> {
   attachToken();
+  console.log(sessionId);
   const res = await api.post<ApiResponse<AdvanceCandleResponse>>(`${BASE}/backtest-playback/${sessionId}/advance`);
   return res.data.value;
 }
@@ -239,6 +249,11 @@ async function placeOrderApi(req: PlaceOrderRequest): Promise<BacktestOrder> {
 async function cancelOrderApi(orderId: number): Promise<void> {
   attachToken();
   await api.delete(`${BASE}/backtest-orders/${orderId}`);
+}
+
+async function closeOrderApi(orderId: number, exitPrice: number): Promise<void> {
+  attachToken();
+  await api.post(`${BASE}/backtest-orders/${orderId}/close?exitPrice=${exitPrice}`);
 }
 
 async function fetchSessionOrders(sessionId: number): Promise<BacktestOrder[]> {
@@ -297,10 +312,12 @@ interface BacktestStore {
   // ── Orders & Positions ──
   pendingOrders: BacktestOrder[];
   activePositions: BacktestOrder[];
+  closedPositions: BacktestOrder[];
   closedTrades: TradeResult[];
 
   placeOrder: (req: PlaceOrderRequest) => Promise<BacktestOrder | null>;
   cancelOrder: (orderId: number) => Promise<void>;
+  closeOrder: (orderId: number, exitPrice: number) => Promise<void>;
   loadOrders: (sessionId: number) => Promise<void>;
 
   // ── Account ──
@@ -344,6 +361,7 @@ const initialState = {
   playbackIntervalId: null,
   pendingOrders: [],
   activePositions: [],
+  closedPositions: [],
   closedTrades: [],
   balance: 0,
   equity: 0,
@@ -419,13 +437,20 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
         let pendingOrders = [...s.pendingOrders];
         let activePositions = [...s.activePositions];
 
+        let closedPositions = [...s.closedPositions];
+
         for (const filled of result.filledOrders) {
           pendingOrders = pendingOrders.filter((o) => o.id !== filled.id);
           activePositions.push(filled);
+          toast.success(`Pending ${filled.side} Limit triggered at ${filled.filledPrice}`);
         }
 
         for (const closed of result.closedPositions) {
           activePositions = activePositions.filter((o) => o.id !== closed.id);
+          closedPositions.push(closed);
+          const pnl = closed.pnl ?? 0;
+          const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
+          toast.info(`${closed.side} Position closed. PnL: ${pnlText}`);
         }
 
         return {
@@ -436,6 +461,7 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
           currentTimestamp: result.currentTimestamp,
           pendingOrders,
           activePositions,
+          closedPositions,
         };
       });
 
@@ -530,11 +556,25 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
     }));
   },
 
+  closeOrder: async (orderId, exitPrice) => {
+    await closeOrderApi(orderId, exitPrice);
+    
+    // Optimistically load orders again to sync up perfectly or move it locally
+    // For exact P&L, it's safer to fetch the orders again
+    const orders = await fetchSessionOrders(get().session!.id);
+    set({
+      pendingOrders: orders.filter((o) => o.status === "Pending"),
+      activePositions: orders.filter((o) => o.status === "Active"),
+      closedPositions: orders.filter((o) => o.status === "Closed"),
+    });
+  },
+
   loadOrders: async (sessionId) => {
     const orders = await fetchSessionOrders(sessionId);
     set({
       pendingOrders: orders.filter((o) => o.status === "Pending"),
       activePositions: orders.filter((o) => o.status === "Active"),
+      closedPositions: orders.filter((o) => o.status === "Closed"),
     });
   },
 

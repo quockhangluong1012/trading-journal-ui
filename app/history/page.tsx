@@ -394,7 +394,23 @@ function HistoryContent() {
                   ) : (
                     filteredAndSortedTrades.map((trade) => (
                       <TableRow key={trade.id} className="border-border">
-                        <TableCell className="font-medium text-foreground">{trade.asset}</TableCell>
+                        <TableCell className="font-medium text-foreground">
+                          <div className="flex items-center gap-2">
+                            {trade.asset}
+                            {trade.isRuleBroken && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="cursor-help text-destructive" title="Rule Broken">⚠️</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    <p>Rule Violation: {trade.ruleBreakReason}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant="secondary"

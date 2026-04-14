@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, use } from "react";
 import { useBacktestStore } from "@/lib/backtest-store";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
@@ -12,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Header } from "@/components/header";
 
-export default function BacktestResults({ params }: { params: { id: string } }) {
-  const sessionId = parseInt(params.id, 10);
+export default function BacktestResults({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const sessionId = parseInt(resolvedParams.id, 10);
   const { loadAnalytics, analytics, analyticsLoading, session, loadSession } = useBacktestStore();
 
   useEffect(() => {

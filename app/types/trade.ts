@@ -26,6 +26,8 @@ export interface TradeHistory {
   targetTier1: number;
   targetTier2: number;
   targetTier3: number;
+  isRuleBroken?: boolean;
+  ruleBreakReason?: string;
 };
 
 export interface Trade {
