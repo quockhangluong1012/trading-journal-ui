@@ -19,6 +19,8 @@ export interface BacktestSession {
   currentTimestamp: string;
   activeTimeframe: string;
   playbackSpeed: number;
+  leverage: number;
+  maintenanceMarginPercentage: number;
   isDataReady: boolean;
   totalOrders: number;
   openPositions: number;
@@ -38,6 +40,14 @@ export interface BacktestSessionSummary {
   currentTimestamp: string;
   isDataReady: boolean;
   createdDate: string;
+}
+
+export interface TradingZoneDto {
+  id: number;
+  name: string;
+  description?: string;
+  fromTime: string;
+  toTime: string;
 }
 
 export interface CandleData {
@@ -158,6 +168,14 @@ export interface PlaceOrderRequest {
   takeProfit?: number | null;
 }
 
+export interface UpdateOrderRequest {
+  orderId: number;
+  entryPrice?: number;
+  positionSize?: number;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+}
+
 export interface AvailableAsset {
   id: number;
   displayName: string;
@@ -176,6 +194,12 @@ export async function fetchAvailableAssetsApi(): Promise<AvailableAsset[]> {
   attachToken();
   const res = await api.get<ApiResponse<AvailableAsset[]>>(`${BASE}/backtest-assets`);
   return res.data.value;
+}
+
+export async function fetchTradingZonesApi(): Promise<TradingZoneDto[]> {
+  attachToken();
+  const res = await api.get<ApiResponse<TradingZoneDto[]>>(`${BASE}/trading-zones`);
+  return res.data.value || [];
 }
 
 async function fetchSessions(): Promise<BacktestSessionSummary[]> {
@@ -256,6 +280,11 @@ async function closeOrderApi(orderId: number, exitPrice: number): Promise<void> 
   await api.post(`${BASE}/backtest-orders/${orderId}/close?exitPrice=${exitPrice}`);
 }
 
+async function updateOrderApi(orderId: number, req: Omit<UpdateOrderRequest, 'orderId'>): Promise<void> {
+  attachToken();
+  await api.put(`${BASE}/backtest-orders/${orderId}`, req);
+}
+
 async function fetchSessionOrders(sessionId: number): Promise<BacktestOrder[]> {
   attachToken();
   const res = await api.get<ApiResponse<BacktestOrder[]>>(`${BASE}/backtest-orders/session/${sessionId}`);
@@ -289,6 +318,9 @@ interface BacktestStore {
   createSession: (req: CreateSessionRequest) => Promise<number>;
   deleteSession: (id: number) => Promise<void>;
 
+  tradingZones: TradingZoneDto[];
+  loadTradingZones: () => Promise<void>;
+
   // ── Active Session ──
   session: BacktestSession | null;
   sessionLoading: boolean;
@@ -316,6 +348,7 @@ interface BacktestStore {
   closedTrades: TradeResult[];
 
   placeOrder: (req: PlaceOrderRequest) => Promise<BacktestOrder | null>;
+  updateOrder: (req: UpdateOrderRequest) => Promise<void>;
   cancelOrder: (orderId: number) => Promise<void>;
   closeOrder: (orderId: number, exitPrice: number) => Promise<void>;
   loadOrders: (sessionId: number) => Promise<void>;
@@ -351,6 +384,7 @@ interface BacktestStore {
 const initialState = {
   sessions: [],
   sessionsLoading: false,
+  tradingZones: [],
   session: null,
   sessionLoading: false,
   candles: [],
@@ -385,6 +419,15 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       set({ sessions, sessionsLoading: false });
     } catch {
       set({ sessionsLoading: false });
+    }
+  },
+
+  loadTradingZones: async () => {
+    try {
+      const tradingZones = await fetchTradingZonesApi();
+      set({ tradingZones });
+    } catch {
+      console.error("Failed to fetch trading zones");
     }
   },
 
@@ -546,6 +589,21 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       return order;
     } catch {
       return null;
+    }
+  },
+
+  updateOrder: async (req) => {
+    try {
+      const { orderId, ...payload } = req;
+      await updateOrderApi(orderId, payload);
+      toast.success("Order updated successfully");
+
+      const session = get().session;
+      if (session) {
+        await get().loadOrders(session.id);
+      }
+    } catch {
+      toast.error("Failed to update order");
     }
   },
 

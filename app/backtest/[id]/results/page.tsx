@@ -4,7 +4,7 @@ import { useEffect, use } from "react";
 import { useBacktestStore } from "@/lib/backtest-store";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
-import { ArrowLeft, Loader2, Activity } from "lucide-react";
+import { ArrowLeft, Loader2, Activity, TrendingUp, Target, BarChart2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,44 +57,56 @@ export default function BacktestResults({ params }: { params: Promise<{ id: stri
       </div>
 
       <div className="grid gap-6 md:grid-cols-4 mb-8">
-        <Card>
+        <Card className="bg-card overflow-hidden relative border-border/50 shadow-sm hover:border-primary/20 transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <TrendingUp strokeWidth={3} className="w-12 h-12" />
+          </div>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Net PnL</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${analytics.netPnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+            <div className={`text-3xl font-bold tracking-tight ${analytics.netPnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
               {analytics.netPnl >= 0 ? "+" : ""}{formatCurrency(analytics.netPnl)}
             </div>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="bg-card overflow-hidden relative border-border/50 shadow-sm hover:border-primary/20 transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <Target strokeWidth={3} className="w-12 h-12" />
+          </div>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Win Rate</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(analytics.winRate * 100).toFixed(2)}%</div>
+            <div className="text-3xl font-bold tracking-tight">{(analytics.winRate * 100).toFixed(2)}%</div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-card overflow-hidden relative border-border/50 shadow-sm hover:border-primary/20 transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <BarChart2 strokeWidth={3} className="w-12 h-12" />
+          </div>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Trades</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{analytics.totalTrades}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {analytics.totalWins} W / {analytics.totalLosses} L
+          <CardContent className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold tracking-tight">{analytics.totalTrades}</div>
+            <p className="text-sm text-muted-foreground font-medium">
+              <span className="text-emerald-500">{analytics.totalWins}W</span> / <span className="text-rose-500">{analytics.totalLosses}L</span>
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-card overflow-hidden relative border-border/50 shadow-sm hover:border-primary/20 transition-colors">
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <AlertCircle strokeWidth={3} className="w-12 h-12" />
+          </div>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Max Drawdown</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">{(analytics.maxDrawdown * 100).toFixed(2)}%</div>
+            <div className="text-3xl font-bold tracking-tight text-rose-500">{(analytics.maxDrawdown * 100).toFixed(2)}%</div>
           </CardContent>
         </Card>
       </div>
@@ -143,10 +155,10 @@ export default function BacktestResults({ params }: { params: Promise<{ id: stri
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="border-border/50 shadow-sm overflow-hidden mb-8">
+        <CardHeader className="bg-secondary/20 border-b pb-4">
           <CardTitle>Trade Log</CardTitle>
-          <CardDescription>Ledger of all executed positions.</CardDescription>
+          <CardDescription>Ledger of all executed positions during this backtest session.</CardDescription>
         </CardHeader>
         <CardContent>
           {analytics.tradeLog.length === 0 ? (
@@ -166,15 +178,24 @@ export default function BacktestResults({ params }: { params: Promise<{ id: stri
                 </TableHeader>
                 <TableBody>
                   {analytics.tradeLog.map((trade) => (
-                    <TableRow key={trade.id}>
+                    <TableRow key={trade.id} className="hover:bg-secondary/40 transition-colors">
                       <TableCell>
-                        <Badge variant={trade.side === "Long" ? "default" : "destructive"}>{trade.side}</Badge>
+                        <Badge 
+                          variant="outline" 
+                          className={`font-semibold ${trade.side === "Long" ? "border-emerald-500/50 text-emerald-500 bg-emerald-500/10" : "border-rose-500/50 text-rose-500 bg-rose-500/10"}`}
+                        >
+                          {trade.side}
+                        </Badge>
                       </TableCell>
-                      <TableCell>{format(new Date(trade.entryTime), "MMM dd, yyyy HH:mm")}</TableCell>
-                      <TableCell className="text-right">{trade.entryPrice}</TableCell>
-                      <TableCell className="text-right">{trade.exitPrice}</TableCell>
-                      <TableCell className="text-center text-muted-foreground text-xs">{trade.exitReason}</TableCell>
-                      <TableCell className={`text-right font-medium ${trade.pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                      <TableCell className="font-medium">{format(new Date(trade.entryTime), "MMM dd, yyyy HH:mm")}</TableCell>
+                      <TableCell className="text-right tabular-nums">{trade.entryPrice}</TableCell>
+                      <TableCell className="text-right tabular-nums">{trade.exitPrice}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="secondary" className="text-[10px] uppercase font-bold tracking-wider">
+                          {trade.exitReason}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className={`text-right font-bold tabular-nums ${trade.pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
                         {trade.pnl >= 0 ? "+" : ""}{formatCurrency(trade.pnl)}
                       </TableCell>
                     </TableRow>

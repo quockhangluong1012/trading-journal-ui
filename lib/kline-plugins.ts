@@ -142,4 +142,175 @@ export function registerCustomOverlays() {
       return [textFigure];
     }
   });
+
+  registerOverlay({
+    name: "sessionBox",
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    totalStep: 3,
+    createPointFigures: ({ overlay, coordinates }) => {
+      if (coordinates.length < 2) return [];
+
+      const data = overlay.extendData as {
+        name: string;
+        color: string;
+        bgColor: string;
+      } | undefined;
+
+      if (!data) return [];
+
+      const { name, color, bgColor } = data;
+      const x1 = coordinates[0].x;
+      const y1 = coordinates[0].y;
+      const x2 = coordinates[1].x;
+      const y2 = coordinates[1].y;
+
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+
+      return [
+        {
+          type: "polygon",
+          attrs: {
+            coordinates: [
+              { x: minX, y: minY },
+              { x: maxX, y: minY },
+              { x: maxX, y: maxY },
+              { x: minX, y: maxY }
+            ]
+          },
+          styles: {
+            style: "stroke_fill",
+            color: color,
+            borderColor: color,
+            borderSize: 1,
+            borderStyle: "dashed",
+            backgroundColor: bgColor
+          }
+        },
+        {
+          type: "text",
+          attrs: {
+            x: minX + (maxX - minX) / 2,
+            y: minY - 4,
+            text: name,
+            align: "center",
+            baseline: "bottom"
+          },
+          styles: {
+            color: color,
+            size: 11
+          }
+        }
+      ];
+    }
+  });
+
+  registerOverlay({
+    name: "customRect",
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    totalStep: 3,
+    createPointFigures: ({ overlay, coordinates }) => {
+      if (coordinates.length < 2) return [];
+      const [start, end] = coordinates;
+      
+      const data = overlay.extendData as { text?: string } | undefined;
+      const text = data?.text ?? "FVG";
+
+      const minX = Math.min(start.x, end.x);
+      const maxX = Math.max(start.x, end.x);
+      const minY = Math.min(start.y, end.y);
+      const maxY = Math.max(start.y, end.y);
+      const midY = (minY + maxY) / 2;
+
+      const figures: any[] = [
+        {
+          type: "polygon",
+          attrs: {
+            coordinates: [
+              { x: minX, y: minY },
+              { x: maxX, y: minY },
+              { x: maxX, y: maxY },
+              { x: minX, y: maxY }
+            ]
+          },
+          styles: { 
+            style: "fill",
+            color: "rgba(76, 175, 80, 0.15)"
+          }
+        },
+        {
+          type: "line",
+          attrs: {
+            coordinates: [
+              { x: minX, y: midY },
+              { x: maxX, y: midY }
+            ]
+          },
+          styles: {
+            style: "solid",
+            color: "rgba(30, 30, 30, 0.7)",
+            size: 1
+          }
+        }
+      ];
+
+      if (text) {
+        figures.push({
+          type: "text",
+          attrs: {
+            x: maxX - 4,
+            y: midY,
+            text,
+            align: "right",
+            baseline: "middle"
+          },
+          styles: {
+            color: "rgba(30, 30, 30, 0.8)",
+            size: 12
+          }
+        });
+      }
+
+      return figures;
+    }
+  });
+
+  registerOverlay({
+    name: "customArrow",
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    totalStep: 3,
+    createPointFigures: ({ coordinates }) => {
+      if (coordinates.length < 2) return [];
+      const [start, end] = coordinates;
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+      const headLength = 12;
+      const angle1 = angle - Math.PI / 6;
+      const angle2 = angle + Math.PI / 6;
+      const p1 = { x: end.x - headLength * Math.cos(angle1), y: end.y - headLength * Math.sin(angle1) };
+      const p2 = { x: end.x - headLength * Math.cos(angle2), y: end.y - headLength * Math.sin(angle2) };
+      return [
+        { type: "line", attrs: { coordinates: [start, end] } },
+        { type: "line", attrs: { coordinates: [p1, end, p2] } }
+      ];
+    }
+  });
+
+  registerOverlay({
+    name: "customPath",
+    needDefaultPointFigure: true,
+    needDefaultXAxisFigure: true,
+    needDefaultYAxisFigure: true,
+    totalStep: 1000, // Large number to allow continuous drawing until right-click/double-click
+    createPointFigures: ({ coordinates }) => {
+      return [{ type: "line", attrs: { coordinates } }];
+    }
+  });
 }
