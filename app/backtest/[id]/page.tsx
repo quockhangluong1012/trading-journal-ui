@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, use } from "react";
+import { useEffect, useRef, use, useMemo, useState } from "react";
 import { useBacktestStore } from "@/lib/backtest-store";
-import { init, dispose, Chart, KLineData, CandleType } from "klinecharts";
-import { registerCustomOverlays } from "@/lib/kline-plugins";
+import { KLineChartPro, DatafeedSubscribeCallback, SymbolInfo, Period, ChartPro } from '@klinecharts/pro';
+import { init as klineInit, dispose as klineDispose, registerOverlay, LineType, type OverlayCreate } from 'klinecharts';
+import '@klinecharts/pro/dist/klinecharts-pro.css';
 import { useTheme } from "next-themes";
-import { toast } from "sonner";
-import { Play, Pause, FastForward, SkipForward, Maximize2, Settings2, Pencil, Trash2, ArrowRight, Minus, Square, Grid3x3, MousePointer2, MoveUpRight, ArrowUpRight, Crosshair, Target, Type } from "lucide-react";
+import { Play, Pause, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -14,20 +14,90 @@ import { OrderPanel } from "@/components/backtest/order-panel";
 import { PositionsPanel } from "@/components/backtest/positions-panel";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Header } from "@/components/header";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
+
+// Register custom order marker overlay (arrow + label)
+let _orderMarkerRegistered = false;
+function ensureOrderMarkerRegistered() {
+  if (_orderMarkerRegistered) return;
+  try {
+    registerOverlay({
+      name: 'orderMarker',
+      totalStep: 1,
+      needDefaultPointFigure: false,
+      needDefaultXAxisFigure: false,
+      needDefaultYAxisFigure: false,
+      createPointFigures: ({ overlay, coordinates }) => {
+        if (!coordinates?.length) return [];
+        const coord = coordinates[0];
+        const data = overlay.extendData as { isBuy: boolean; label: string } | null;
+        if (!data) return [];
+        const { isBuy, label } = data;
+        const color = isBuy ? '#2962FF' : '#F23645';
+        const s = 7;
+        // Upward triangle for Long, downward for Short
+        const tri = isBuy
+          ? [
+              { x: coord.x, y: coord.y - s },
+              { x: coord.x - s * 0.75, y: coord.y + s * 0.5 },
+              { x: coord.x + s * 0.75, y: coord.y + s * 0.5 }
+            ]
+          : [
+              { x: coord.x, y: coord.y + s },
+              { x: coord.x - s * 0.75, y: coord.y - s * 0.5 },
+              { x: coord.x + s * 0.75, y: coord.y - s * 0.5 }
+            ];
+        return [
+          {
+            type: 'polygon',
+            attrs: { coordinates: tri },
+            styles: { style: 'fill', color, borderColor: color },
+            ignoreEvent: true
+          },
+          {
+            type: 'text',
+            attrs: {
+              x: coord.x + s + 4,
+              y: coord.y + (isBuy ? s * 0.25 : -s * 0.25),
+              text: label,
+              align: 'left',
+              baseline: 'middle'
+            },
+            styles: { 
+              color, 
+              size: 11, 
+              weight: 'bold', 
+              family: 'Arial, sans-serif',
+              backgroundColor: 'transparent',
+              borderColor: 'transparent',
+              paddingLeft: 0,
+              paddingRight: 0,
+              paddingTop: 0,
+              paddingBottom: 0
+            },
+            ignoreEvent: true
+          }
+        ];
+      }
+    });
+  } catch { /* already registered */ }
+  _orderMarkerRegistered = true;
+}
 
 export default function BacktestWorkspace({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const sessionId = parseInt(resolvedParams.id, 10);
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<Chart | null>(null);
+  const chartInstanceRef = useRef<ChartPro | null>(null);
+  const klineChartRef = useRef<ReturnType<typeof klineInit>>(null);
+  const orderOverlayIdsRef = useRef<string[]>([]);
+  const [chartReadyVersion, setChartReadyVersion] = useState(0);
   const { theme } = useTheme();
+
+  // Datafeed state
+  const datafeedCallbackRef = useRef<DatafeedSubscribeCallback | null>(null);
+  const candlesRef = useRef<any[]>([]);
+  const previousCandlesLengthRef = useRef(0);
 
   if (isNaN(sessionId)) {
     return (
@@ -42,7 +112,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
 
   const {
     session,
-    loadSession,
     candles,
     resumeSession,
     isPlaying,
@@ -53,19 +122,115 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     activeTimeframe,
     switchTimeframe,
     advanceCandle,
+    currentTimestamp,
     balance,
     equity,
     unrealizedPnl,
     pendingOrders,
     activePositions,
     closedPositions,
-    cancelOrder,
-    closeOrder,
-    tradingZones,
     loadTradingZones
   } = useBacktestStore();
 
-  const [activeDrawingTool, setActiveDrawingTool] = useState<string | null>(null);
+  const hasCheckpointProgress = Boolean(
+    session && currentTimestamp && new Date(currentTimestamp).getTime() > new Date(session.startDate).getTime()
+  );
+
+  const mappedCandles = useMemo(() => {
+    return candles.map((c) => ({
+      timestamp: new Date(c.timestamp).getTime(),
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume || 0
+    }));
+  }, [candles]);
+
+  const lastCandleTimestamp = candles.length > 0 ? candles[candles.length - 1].timestamp : null;
+
+  // Keep a ref of candles for the datafeed
+  useEffect(() => {
+    const prevLen = previousCandlesLengthRef.current;
+    candlesRef.current = candles;
+
+    if (datafeedCallbackRef.current && prevLen > 0 && candles.length === prevLen + 1) {
+      const latest = candles[candles.length - 1];
+      datafeedCallbackRef.current({
+        timestamp: new Date(latest.timestamp).getTime(),
+        open: latest.open,
+        high: latest.high,
+        low: latest.low,
+        close: latest.close,
+        volume: latest.volume || 0
+      });
+    }
+
+    previousCandlesLengthRef.current = candles.length;
+  }, [candles]);
+
+  // Hydrate checkpoint candles after async resume/timeframe load completes.
+  useEffect(() => {
+    const chartApi = klineChartRef.current;
+    if (!chartApi) return;
+
+    if (!hasCheckpointProgress || mappedCandles.length === 0) {
+      chartApi.clearData();
+      return;
+    }
+
+    const currentChartData = chartApi.getDataList();
+    const lastTimestamp = mappedCandles[mappedCandles.length - 1].timestamp;
+    const chartLastTimestamp = currentChartData.length > 0 ? currentChartData[currentChartData.length - 1].timestamp : null;
+    const needsHydration = currentChartData.length !== mappedCandles.length || chartLastTimestamp !== lastTimestamp;
+    if (!needsHydration) return;
+
+    chartApi.applyNewData(mappedCandles);
+    chartApi.setOffsetRightDistance(60);
+    chartApi.scrollToTimestamp(lastTimestamp);
+  }, [activeTimeframe, chartReadyVersion, hasCheckpointProgress, mappedCandles]);
+
+  const datafeed = useMemo(() => {
+    return {
+      searchSymbols: async (search?: string) => {
+        if (!session) return [];
+        return [{
+          ticker: session.asset,
+          name: session.asset,
+          shortName: session.asset,
+          exchange: 'Backtest',
+          market: 'Backtest',
+          pricePrecision: 5,
+          volumePrecision: 2,
+          priceCurrency: 'USD',
+          type: 'forex'
+        }];
+      },
+      getHistoryKLineData: async (symbol: SymbolInfo, period: Period, from: number, to: number) => {
+        if (!session || !hasCheckpointProgress || !candlesRef.current.length) return [];
+
+        const rangeStart = Math.min(from, to);
+        const rangeEnd = Math.max(from, to);
+
+        return candlesRef.current
+          .map(c => ({
+            timestamp: new Date(c.timestamp).getTime(),
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume || 0
+          }))
+          .filter((c) => c.timestamp >= rangeStart && c.timestamp <= rangeEnd);
+      },
+      subscribe: (symbol: SymbolInfo, period: Period, callback: DatafeedSubscribeCallback) => {
+        datafeedCallbackRef.current = callback;
+      },
+      unsubscribe: (symbol: SymbolInfo, period: Period) => {
+        datafeedCallbackRef.current = null;
+      }
+    };
+  }, [hasCheckpointProgress, session]);
 
   // Initial load
   useEffect(() => {
@@ -77,498 +242,155 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  const getChartStyles = (): any => {
-    const isDark = theme === "dark";
-    const textColor = isDark ? '#9CA3AF' : '#76808F';
-    const gridColor = isDark ? '#374151' : '#F2F3F5';
-    const axisLineColor = isDark ? '#4B5563' : '#E0E3E7';
-    const crosshairColor = isDark ? '#9CA3AF' : '#8A8A8A';
-    const crosshairBgColor = isDark ? '#374151' : '#686D76';
-
-    return {
-      grid: {
-        show: true,
-        horizontal: {
-          show: true,
-          size: 1,
-          color: gridColor,
-          style: 'solid',
-        },
-        vertical: {
-          show: true,
-          size: 1,
-          color: gridColor,
-          style: 'solid',
-        },
-      },
-      candle: {
-        type: CandleType.CandleSolid,
-        bar: {
-          upColor: '#26A69A',
-          downColor: '#EF5350',
-          noChangeColor: '#888888',
-          upBorderColor: '#26A69A',
-          downBorderColor: '#EF5350',
-          noChangeBorderColor: '#888888',
-          upWickColor: '#26A69A',
-          downWickColor: '#EF5350',
-          noChangeWickColor: '#888888',
-        },
-        tooltip: {
-          showRule: 'always',
-          showType: 'standard',
-          labels: ['O: ', 'C: ', 'H: ', 'L: ', 'V: '],
-          text: {
-            size: 12,
-            family: 'Helvetica Neue, Helvetica, Arial, sans-serif',
-            weight: 'bold',
-            color: textColor,
-            marginLeft: 8,
-            marginTop: 6,
-            marginRight: 8,
-            marginBottom: 0
-          }
-        }
-      },
-      xAxis: {
-        show: true,
-        size: 'auto',
-        axisLine: {
-          show: true,
-          color: axisLineColor,
-          size: 1
-        },
-        tickText: {
-          show: true,
-          color: textColor,
-          family: 'Helvetica Neue, Helvetica, Arial, sans-serif',
-          weight: 'normal',
-          size: 12,
-          paddingTop: 3,
-          paddingBottom: 6
-        },
-        tickLine: {
-          show: true,
-          size: 1,
-          length: 3,
-          color: axisLineColor
-        }
-      },
-      yAxis: {
-        show: true,
-        size: 'auto',
-        position: 'right',
-        type: 'normal',
-        inside: false,
-        reverse: false,
-        axisLine: {
-          show: true,
-          color: axisLineColor,
-          size: 1
-        },
-        tickText: {
-          show: true,
-          color: textColor,
-          family: 'Helvetica Neue, Helvetica, Arial, sans-serif',
-          weight: 'normal',
-          size: 12,
-          paddingLeft: 3,
-          paddingRight: 6
-        },
-        tickLine: {
-          show: true,
-          size: 1,
-          length: 3,
-          color: axisLineColor
-        }
-      },
-      crosshair: {
-        show: true,
-        horizontal: {
-          show: true,
-          line: {
-            show: true,
-            style: 'dashed',
-            dashedValue: [4, 2],
-            size: 1,
-            color: crosshairColor
-          },
-          text: {
-            show: true,
-            color: '#FFFFFF',
-            size: 12,
-            family: 'Helvetica Neue, Helvetica, Arial, sans-serif',
-            weight: 'normal',
-            paddingLeft: 6,
-            paddingRight: 6,
-            paddingTop: 4,
-            paddingBottom: 4,
-            borderSize: 1,
-            borderColor: crosshairBgColor,
-            borderRadius: 4,
-            backgroundColor: crosshairBgColor
-          }
-        },
-        vertical: {
-          show: true,
-          line: {
-            show: true,
-            style: 'dashed',
-            dashedValue: [4, 2],
-            size: 1,
-            color: crosshairColor
-          },
-          text: {
-            show: true,
-            color: '#FFFFFF',
-            size: 12,
-            family: 'Helvetica Neue, Helvetica, Arial, sans-serif',
-            weight: 'normal',
-            paddingLeft: 6,
-            paddingRight: 6,
-            paddingTop: 4,
-            paddingBottom: 4,
-            borderSize: 1,
-            borderColor: crosshairBgColor,
-            borderRadius: 4,
-            backgroundColor: crosshairBgColor
-          }
-        }
-      }
-    };
-  };
-
   // Init chart
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    const container = chartContainerRef.current;
+    if (!container || !session) return;
     
-    registerCustomOverlays();
+    // Clear previous elements inside container if KLineChart doesn't clean itself up perfectly
+    container.innerHTML = '';
+    
+    const isDark = theme === "dark";
 
-    const chart = init(chartContainerRef.current, {
-      styles: getChartStyles()
+    const chart = new KLineChartPro({
+      container: container,
+      theme: isDark ? 'dark' : 'light',
+      locale: 'en-US',
+      drawingBarVisible: true,
+      symbol: {
+        ticker: session.asset,
+        name: session.asset,
+        shortName: session.asset
+      },
+      period: { multiplier: parseInt(activeTimeframe.replace(/[^\d]/g, '') || "1"), timespan: activeTimeframe.includes('M') ? 'minute' : activeTimeframe.includes('H') ? 'hour' : 'day', text: activeTimeframe },
+      datafeed: datafeed
     });
+
     chartInstanceRef.current = chart;
-    chart?.setPriceVolumePrecision(5, 2);
+
+    // Cache the underlying klinecharts chart for overlay management.
+    // @klinecharts/pro doesn't expose createOverlay/removeOverlay publicly,
+    // but it shares the same klinecharts module, so we can retrieve the instance
+    // by temporarily setting the element's HTML id to match the stored key.
+    const inner = container.querySelector<HTMLElement>('[k-line-chart-id]');
+    if (inner) {
+      const chartId = inner.getAttribute('k-line-chart-id');
+      if (chartId) {
+        inner.id = chartId;
+        klineChartRef.current = klineInit(inner);
+        setChartReadyVersion((version) => version + 1);
+        inner.id = '';
+      }
+    }
 
     return () => {
-      if (chartContainerRef.current) {
-        dispose(chartContainerRef.current);
+      if (klineChartRef.current) {
+        klineDispose(klineChartRef.current);
+      }
+      // Cleanup KLineChartPro if needed
+      if (container) {
+         container.innerHTML = '';
       }
       chartInstanceRef.current = null;
+      klineChartRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [theme, session?.asset, activeTimeframe, datafeed]);
 
-  // Update chart styles when theme changes
+  // Render order overlays on the chart
   useEffect(() => {
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.setStyles(getChartStyles());
-    }
-  }, [theme]);
+    const chartApi = klineChartRef.current;
+    if (!chartApi || !lastCandleTimestamp) return;
 
-  // Update chart data
-  const prevCandlesLenRef = useRef<number>(0);
-  useEffect(() => {
-    if (chartInstanceRef.current && candles) {
-      if (candles.length === 0) {
-        chartInstanceRef.current.applyNewData([]);
-        prevCandlesLenRef.current = 0;
-        return;
-      }
+    ensureOrderMarkerRegistered();
 
-      // If just one new candle is added (or updated), use updateData
-      if (candles.length === prevCandlesLenRef.current + 1 || candles.length === prevCandlesLenRef.current) {
-        const lastCandle = candles[candles.length - 1];
-        chartInstanceRef.current.updateData({
-          timestamp: new Date(lastCandle.timestamp).getTime(),
-          open: lastCandle.open,
-          high: lastCandle.high,
-          low: lastCandle.low,
-          close: lastCandle.close,
-          volume: lastCandle.volume,
-        });
-      } else {
-        // Full reload
-        const dataList: KLineData[] = candles.map(c => ({
-          timestamp: new Date(c.timestamp).getTime(),
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          volume: c.volume,
-        }));
-        chartInstanceRef.current.applyNewData(dataList);
+    // Remove previous overlays
+    orderOverlayIdsRef.current.forEach(id => chartApi.removeOverlay(id));
+    const newIds: string[] = [];
+    const lastTs = new Date(lastCandleTimestamp).getTime();
+
+    const add = (config: Omit<OverlayCreate, 'id' | 'lock'>, id: string) => {
+      chartApi.createOverlay({ ...config, id, lock: true });
+      newIds.push(id);
+    };
+
+    // Active positions: arrow marker at fill point + dashed SL/TP lines
+    activePositions.forEach((order) => {
+      if (order.filledAt && order.filledPrice) {
+        const isBuy = order.side === "Long";
+        add({
+          name: 'orderMarker',
+          points: [{ timestamp: new Date(order.filledAt).getTime(), value: order.filledPrice }],
+          extendData: { isBuy, label: `${order.positionSize} @ ${order.filledPrice.toFixed(2)}` }
+        }, `activeEntry_${order.id}`);
       }
-      prevCandlesLenRef.current = candles.length;
-    }
-  }, [candles]);
+      if (order.stopLoss && order.stopLoss > 0) {
+        add({
+          name: 'horizontalRayLine',
+          points: [{ timestamp: lastTs, value: order.stopLoss }],
+          styles: { line: { color: '#F23645', style: LineType.Dashed, size: 1 } }
+        }, `activeSl_${order.id}`);
+      }
+      if (order.takeProfit && order.takeProfit > 0) {
+        add({
+          name: 'horizontalRayLine',
+          points: [{ timestamp: lastTs, value: order.takeProfit }],
+          styles: { line: { color: '#089981', style: LineType.Dashed, size: 1 } }
+        }, `activeTp_${order.id}`);
+      }
+    });
+
+    // Pending orders: dashed entry line + optional SL/TP
+    pendingOrders.forEach((order) => {
+      const isBuy = order.side === "Long";
+      add({
+        name: 'horizontalRayLine',
+        points: [{ timestamp: lastTs, value: order.entryPrice }],
+        styles: { line: { color: isBuy ? '#2962FF' : '#F23645', style: LineType.Dashed, size: 1 } }
+      }, `pendingEntry_${order.id}`);
+      if (order.stopLoss && order.stopLoss > 0) {
+        add({
+          name: 'horizontalRayLine',
+          points: [{ timestamp: lastTs, value: order.stopLoss }],
+          styles: { line: { color: '#FF9800', style: LineType.Dashed, size: 1 } }
+        }, `pendingSl_${order.id}`);
+      }
+      if (order.takeProfit && order.takeProfit > 0) {
+        add({
+          name: 'horizontalRayLine',
+          points: [{ timestamp: lastTs, value: order.takeProfit }],
+          styles: { line: { color: '#089981', style: LineType.Dashed, size: 1 } }
+        }, `pendingTp_${order.id}`);
+      }
+    });
+
+    // Closed positions: arrow markers at entry and exit
+    closedPositions.forEach((order) => {
+      if (order.filledAt && order.filledPrice) {
+        const isBuy = order.side === "Long";
+        add({
+          name: 'orderMarker',
+          points: [{ timestamp: new Date(order.filledAt).getTime(), value: order.filledPrice }],
+          extendData: { isBuy, label: `${order.positionSize} @ ${order.filledPrice.toFixed(2)}` }
+        }, `closedEntry_${order.id}`);
+      }
+      if (order.closedAt && order.exitPrice) {
+        const isBuy = order.side === "Long";
+        add({
+          name: 'orderMarker',
+          points: [{ timestamp: new Date(order.closedAt).getTime(), value: order.exitPrice }],
+          extendData: { isBuy: !isBuy, label: `${order.positionSize} @ ${order.exitPrice.toFixed(2)}` }
+        }, `closedExit_${order.id}`);
+      }
+    });
+
+    orderOverlayIdsRef.current = newIds;
+  }, [activePositions, closedPositions, lastCandleTimestamp, pendingOrders]);
 
   const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
 
-  // Render order overlays
-  useEffect(() => {
-    if (!chartInstanceRef.current) return;
-    const chart = chartInstanceRef.current;
-
-    chart.removeOverlay({ groupId: "orders" });
-    chart.removeOverlay({ groupId: "markers" });
-
-    const allOrders = [...pendingOrders, ...activePositions];
-    
-    allOrders.forEach((order) => {
-      const isBuy = order.side === "Long";
-      const entryColor = isBuy ? "#2962FF" : "#F23645"; 
-      const orderTypeStr = order.orderType; 
-      
-      const price = order.status === "Pending" ? order.entryPrice : order.filledPrice || order.entryPrice;
-
-      let quantityText = order.positionSize.toString();
-      if (order.status === "Active" && currentPrice > 0) {
-        const pnlValue = isBuy 
-          ? ((currentPrice - price) * order.positionSize) 
-          : ((price - currentPrice) * order.positionSize);
-        quantityText = `${order.positionSize} | ${pnlValue >= 0 ? "+" : ""}${pnlValue.toFixed(2)} USD`;
-      }
-
-      chart.createOverlay({
-        groupId: "orders",
-        name: "tradingViewOrder",
-        lock: true,
-        extendData: {
-          color: entryColor,
-          isDashed: true,
-          segments: [
-            { text: quantityText, color: entryColor, bgColor: "transparent", borderColor: entryColor },
-          ]
-        },
-        points: [{ value: price }],
-        onClick: () => {
-          (async () => {
-             try {
-                if (order.status === "Pending") await cancelOrder(order.id);
-                else await closeOrder(order.id, currentPrice);
-                toast.success(order.status === "Pending" ? "Order cancelled" : "Position closed");
-             } catch (err: any) {
-                toast.error(err?.response?.data?.error?.message || err.message || "Action failed");
-             }
-          })();
-          return true;
-        }
-      });
-
-      if (order.stopLoss) {
-        const slDiff = isBuy ? (order.stopLoss - price) : (price - order.stopLoss);
-        const slPnl = slDiff * order.positionSize;
-        const slColor = "#FF9800"; 
-
-        chart.createOverlay({
-          groupId: "orders",
-          name: "tradingViewOrder",
-          lock: true,
-          extendData: {
-            color: slColor,
-            isDashed: true,
-            segments: [
-              { text: order.positionSize.toString(), color: slColor, bgColor: "transparent", borderColor: slColor },
-              { text: `${slPnl >= 0 ? "+" : ""}${slPnl.toFixed(2)} USD`, color: slColor, bgColor: "transparent", borderColor: "transparent" },
-              { text: "X", color: slColor, bgColor: "transparent", borderColor: slColor },
-            ]
-          },
-          points: [{ value: order.stopLoss }],
-          onClick: () => {
-            (async () => {
-               try {
-                  if (order.status === "Pending") await cancelOrder(order.id);
-                  else await closeOrder(order.id, currentPrice);
-                  toast.success(order.status === "Pending" ? "Order cancelled" : "Position closed");
-               } catch (err: any) {
-                  toast.error(err?.response?.data?.error?.message || err.message || "Action failed");
-               }
-            })();
-            return true;
-          }
-        });
-      }
-
-      if (order.takeProfit) {
-        const tpDiff = isBuy ? (order.takeProfit - price) : (price - order.takeProfit);
-        const tpPnl = tpDiff * order.positionSize;
-        const tpColor = "#089981"; 
-
-        chart.createOverlay({
-          groupId: "orders",
-          name: "tradingViewOrder",
-          lock: true,
-          extendData: {
-            color: tpColor,
-            isDashed: true,
-            segments: [
-              { text: order.positionSize.toString(), color: tpColor, bgColor: "transparent", borderColor: tpColor },
-              { text: `${tpPnl >= 0 ? "+" : ""}${tpPnl.toFixed(2)} USD`, color: tpColor, bgColor: "transparent", borderColor: "transparent" },
-              { text: "X", color: tpColor, bgColor: "transparent", borderColor: tpColor },
-            ]
-          },
-          points: [{ value: order.takeProfit }],
-          onClick: () => {
-            (async () => {
-               try {
-                  if (order.status === "Pending") await cancelOrder(order.id);
-                  else await closeOrder(order.id, currentPrice);
-                  toast.success(order.status === "Pending" ? "Order cancelled" : "Position closed");
-               } catch (err: any) {
-                  toast.error(err?.response?.data?.error?.message || err.message || "Action failed");
-               }
-            })();
-            return true;
-          }
-        });
-      }
-    });
-
-    // Render historical trade markers
-    closedPositions.forEach((order) => {
-      // Entry marker (Filled)
-      if (order.filledAt && order.filledPrice) {
-        chart.createOverlay({
-          groupId: "markers",
-          name: "tradeMarker",
-          lock: true,
-          extendData: {
-            type: order.side === "Long" ? "buy" : "sell",
-            text: `${order.positionSize} @ ${order.filledPrice}`
-          },
-          points: [{ timestamp: new Date(order.filledAt).getTime(), value: order.filledPrice }]
-        });
-      }
-
-      // Exit marker (Closed)
-      if (order.closedAt && order.exitPrice) {
-        chart.createOverlay({
-          groupId: "markers",
-          name: "tradeMarker",
-          lock: true,
-          extendData: {
-            type: order.side === "Long" ? "sell" : "buy", 
-            text: `${order.positionSize} @ ${order.exitPrice} (PnL: ${order.pnl?.toFixed(2)})`
-          },
-          points: [{ timestamp: new Date(order.closedAt).getTime(), value: order.exitPrice }]
-        });
-      }
-    });
-
-  }, [pendingOrders, activePositions, closedPositions, currentPrice]);
-
-  // Render Trading Zones
-  useEffect(() => {
-    if (!chartInstanceRef.current || !candles.length || !tradingZones.length) return;
-    const chart = chartInstanceRef.current;
-
-    chart.removeOverlay({ groupId: "tradingZones" });
-
-    const colors: Record<string, { color: string; bg: string }> = {
-      "New York Killzone": {
-        color: "rgba(255, 152, 0, 0.2)",
-        bg: "rgba(255, 152, 0, 0.03)",
-      },
-      "London Killzone": {
-        color: "rgba(33, 150, 243, 0.2)",
-        bg: "rgba(33, 150, 243, 0.03)",
-      },
-      "Asian Killzone": {
-        color: "rgba(233, 30, 99, 0.2)",
-        bg: "rgba(233, 30, 99, 0.03)",
-      },
-      "Overnight / Off-Hours": {
-        color: "rgba(76, 175, 80, 0.2)",
-        bg: "rgba(76, 175, 80, 0.03)",
-      }
-    };
-
-    const parseTimeToMinutes = (timeStr: string) => {
-      const [h, m] = timeStr.split(':').map(Number);
-      return (h || 0) * 60 + (m || 0);
-    };
-
-    tradingZones.forEach(zone => {
-      const startMins = parseTimeToMinutes(zone.fromTime);
-      const endMins = parseTimeToMinutes(zone.toTime);
-      
-      const zoneInstances = new Map<string, typeof candles>();
-
-      candles.forEach(c => {
-         const d = new Date(c.timestamp);
-         const m = d.getHours() * 60 + d.getMinutes();
-         
-         let inZone = false;
-         let isNextDayPortion = false;
-
-         if (startMins < endMins) {
-            inZone = m >= startMins && m <= endMins;
-         } else {
-            if (m >= startMins) {
-               inZone = true;
-            } else if (m <= endMins) {
-               inZone = true;
-               isNextDayPortion = true;
-            }
-         }
-
-         if (inZone) {
-            const logicalDate = new Date(d.getTime());
-            if (isNextDayPortion) {
-               logicalDate.setDate(logicalDate.getDate() - 1);
-            }
-            const dateStr = `${logicalDate.getFullYear()}-${String(logicalDate.getMonth() + 1).padStart(2, '0')}-${String(logicalDate.getDate()).padStart(2, '0')}`;
-            
-            if (!zoneInstances.has(dateStr)) {
-               zoneInstances.set(dateStr, []);
-            }
-            zoneInstances.get(dateStr)!.push(c);
-         }
-      });
-
-      zoneInstances.forEach((matchingCandles) => {
-         if (matchingCandles.length > 0) {
-            const firstCandle = matchingCandles[0];
-            const lastCandle = matchingCandles[matchingCandles.length - 1];
-            const maxPrice = Math.max(...matchingCandles.map(c => c.high));
-            const minPrice = Math.min(...matchingCandles.map(c => c.low));
-
-            let styling = colors[zone.name];
-            if (!styling) {
-              const found = Object.keys(colors).find(k => zone.name.toLowerCase().includes(k.toLowerCase()));
-              if (found) styling = colors[found];
-              else {
-                const fallbackInt = Array.from(zone.name).reduce((acc, char) => acc + char.charCodeAt(0), 0) % 360;
-                styling = { color: `hsla(${fallbackInt}, 80%, 50%, 0.2)`, bg: `hsla(${fallbackInt}, 80%, 50%, 0.03)` };
-              }
-            }
-
-            chart.createOverlay({
-              name: 'sessionBox',
-              groupId: 'tradingZones',
-              lock: true,
-              extendData: {
-                name: zone.name,
-                color: styling.color,
-                bgColor: styling.bg
-              },
-              points: [
-                { timestamp: new Date(firstCandle.timestamp).getTime(), value: maxPrice },
-                { timestamp: new Date(lastCandle.timestamp).getTime(), value: minPrice }
-              ]
-            });
-         }
-      });
-    });
-  }, [candles, tradingZones]);
-
   const togglePlayback = () => {
-    if (isPlaying) {
-      pausePlayback();
-    } else {
-      startPlayback(sessionId);
-    }
+    if (isPlaying) pausePlayback();
+    else startPlayback(sessionId);
   };
 
   const handleSkip = () => {
@@ -576,46 +398,11 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   };
 
   const handleTimeframeChange = (val: string) => {
-    // Requires mapping MTF logic over current timestamp
     switchTimeframe(sessionId, val as any);
   };
 
-  const setDrawingMode = (tool: string) => {
-    if (chartInstanceRef.current) {
-      if (tool === 'customRect') {
-        let lastClickTime = 0;
-        chartInstanceRef.current.createOverlay({
-          name: 'customRect',
-          lock: false,
-          onClick: ({ overlay }) => {
-            const now = Date.now();
-            if (now - lastClickTime < 300) {
-              const currentText = (overlay.extendData as any)?.text ?? "FVG";
-              const newText = window.prompt("Enter text for this rectangle:", currentText);
-              if (newText !== null) {
-                chartInstanceRef.current?.overrideOverlay({
-                  id: overlay.id,
-                  extendData: { ...overlay.extendData, text: newText }
-                });
-              }
-              lastClickTime = 0;
-            } else {
-              lastClickTime = now;
-            }
-            return true;
-          }
-        });
-      } else {
-        chartInstanceRef.current.createOverlay(tool);
-      }
-    }
-    setActiveDrawingTool(null);
-  };
-
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       
       if (e.code === 'Space') {
@@ -631,8 +418,11 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPlaying, sessionId, startPlayback, pausePlayback, advanceCandle]);
 
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+  const formatCurrency = (val: number) => {
+    const absVal = Math.abs(val);
+    const maxDigits = absVal > 0 && absVal < 0.01 ? 5 : 2;
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: maxDigits }).format(val);
+  };
 
   if (!session) return (
     <div className="flex min-h-screen items-center justify-center p-8 bg-background">
@@ -648,7 +438,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Top Toolbar */}
         <div className="flex items-center justify-between border-b px-6 py-3 bg-card shadow-sm z-10 transition-all">
         <div className="flex items-center gap-4">
           <div className="font-bold text-xl tracking-tight">{session.asset}</div>
@@ -667,7 +456,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
 
           <div className="h-8 w-px bg-border mx-3" />
 
-          {/* Playback Controls */}
           <div className="flex items-center gap-3">
             <div className="flex items-center bg-secondary/80 rounded-lg p-1.5 gap-1 shadow-inner border border-secondary">
               <Button
@@ -702,7 +490,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-          {/* Account Info */}
           <div className="flex items-center gap-6">
             <div className="flex bg-secondary/30 rounded-lg p-1.5 border border-border shadow-sm">
               <div className="flex flex-col items-start px-3 border-r border-border">
@@ -726,145 +513,21 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-      {/* Main Workspace */}
-      <div className="flex flex-1 overflow-hidden relative">
-        <ResizablePanelGroup direction="vertical" className="flex-1 w-full">
-          <ResizablePanel defaultSize={70} minSize={30} className="flex relative z-0">
-        {/* Drawing Tools Sidebar */}
-        <div className="w-14 border-r bg-card/95 backdrop-blur flex flex-col items-center py-4 gap-4 shadow-sm z-10 transition-all min-w-[56px]">
-          {/* Lines Dropdown */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="group rounded-xl hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                    <Pencil className="h-[18px] w-[18px] group-hover:scale-110 transition-transform duration-200" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs font-medium">Lines & Trends</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent side="right" align="start" className="w-48 shadow-lg border-border/40">
-              <DropdownMenuItem onClick={() => setDrawingMode('segment')}>
-                <Minus className="h-4 w-4 mr-2" /> Trend Line
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('rayLine')}>
-                <ArrowRight className="h-4 w-4 mr-2" /> Ray
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('horizontalStraightLine')}>
-                <Minus className="h-4 w-4 mr-2" /> Horizontal Line
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('horizontalRayLine')}>
-                <ArrowRight className="h-4 w-4 mr-2" /> Horizontal Ray
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('verticalStraightLine')}>
-                <Minus className="h-4 w-4 mr-2 rotate-90" /> Vertical Line
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('straightLine')}>
-                <Crosshair className="h-4 w-4 mr-2" /> Straight Line
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Fibonacci & Gann Dropdown */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="group rounded-xl hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                    <span className="font-bold font-serif text-[18px] group-hover:scale-110 transition-transform duration-200">F</span>
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs font-medium">Fibonacci & Projections</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent side="right" align="start" className="w-48 shadow-lg border-border/40">
-              <DropdownMenuItem onClick={() => setDrawingMode('fibonacciLine')}>
-                <span className="font-bold font-serif text-sm mr-2 w-4 text-center">F</span> Fib Retracement
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('priceChannelLine')}>
-                <Grid3x3 className="h-4 w-4 mr-2" /> Price Channel
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Shapes & Measurers Dropdown */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="group rounded-xl hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                    <Square className="h-[18px] w-[18px] group-hover:scale-110 transition-transform duration-200" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs font-medium">Shapes & Zones</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent side="right" align="start" className="w-48 shadow-lg border-border/40">
-              <DropdownMenuItem onClick={() => setDrawingMode('customRect')}>
-                <Square className="h-4 w-4 mr-2" /> Rectangle
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('customArrow')}>
-                <ArrowRight className="h-4 w-4 mr-2" /> Arrow
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('customPath')}>
-                <Pencil className="h-4 w-4 mr-2" /> Path
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Text & Notes Dropdown */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="group rounded-xl hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                    <Type className="h-[18px] w-[18px] group-hover:scale-110 transition-transform duration-200" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="text-xs font-medium">Text & Labels</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent side="right" align="start" className="w-48 shadow-lg border-border/40">
-              <DropdownMenuItem onClick={() => setDrawingMode('simpleTag')}>
-                <Type className="h-4 w-4 mr-2" /> Tag
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDrawingMode('simpleAnnotation')}>
-                <Type className="h-4 w-4 mr-2" /> Anchored Text
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="h-px bg-border/60 w-8 my-2 shadow-sm" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="group rounded-xl text-rose-500 hover:bg-rose-500/10 hover:text-rose-600 transition-all duration-200" onClick={() => chartInstanceRef.current?.removeOverlay({
-                name: [
-                  'segment', 'rayLine', 'horizontalStraightLine', 'horizontalRayLine', 
-                  'verticalStraightLine', 'straightLine', 'priceChannelLine', 'fibonacciLine', 
-                  'customRect', 'customArrow', 'customPath', 
-                  'simpleTag', 'simpleAnnotation'
-                ]
-              })}>
-                <Trash2 className="h-[18px] w-[18px] group-hover:scale-110 transition-transform duration-200" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs font-medium bg-rose-500/10 text-rose-600 dark:text-rose-400 border-none">Clear All Drawings</TooltipContent>
-          </Tooltip>
+      <div className="flex flex-1 overflow-hidden relative w-full" style={{ minHeight: 'calc(100vh - 140px)' }}>
+        <ResizablePanelGroup direction="vertical" className="w-full h-full">
+          <ResizablePanel defaultSize={70} minSize={30} className="flex relative z-0 w-full h-full"
+          style={{height: 'calc(100vh - 140px)'}}>
+        
+        <div className="flex-1 relative bg-background shadow-inner overflow-hidden w-full h-full">
+          <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
         </div>
 
-        {/* Chart Area */}
-        <div className="flex-1 relative bg-background border-l shadow-inner overflow-hidden">
-          <div ref={chartContainerRef} className="absolute inset-0" />
-        </div>
-
-        {/* Order Panel Sidebar */}
-        <div className="w-[300px] border-l bg-card overflow-y-auto hidden md:block z-10 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)]">
+        <div className="w-[300px] border-l bg-card hidden md:block z-10 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] h-full">
            <OrderPanel sessionId={sessionId} currentPrice={currentPrice} />
         </div>
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={30} minSize={15} className="flex flex-col bg-card z-10">
+          <ResizablePanel defaultSize={30} minSize={15} className="flex flex-col bg-card z-10 border-t h-full w-full">
             <PositionsPanel sessionId={sessionId} currentPrice={currentPrice} />
           </ResizablePanel>
         </ResizablePanelGroup>

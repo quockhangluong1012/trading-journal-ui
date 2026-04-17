@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useMemo, useState, useEffect } from "react"
+import Link from "next/link"
+import React, { useMemo, useState, useEffect, useRef } from "react"
 import { useTrades } from "@/lib/trade-context"
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -81,6 +82,7 @@ export function CreateTradeDialog({ children, onSuccess }: CreateTradeDialogProp
   const [checklistModels, setChecklistModels] = useState<ChecklistModelApi[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>("")
   const [selectedModelDetail, setSelectedModelDetail] = useState<ChecklistModelDetailApi | null>(null)
+  const checklistDetailRequestRef = useRef(0)
 
   useEffect(() => {
     api
@@ -174,20 +176,29 @@ export function CreateTradeDialog({ children, onSuccess }: CreateTradeDialogProp
 
   // Load model detail when selectedModelId changes
   useEffect(() => {
+    checklistDetailRequestRef.current += 1
+    const requestId = checklistDetailRequestRef.current
+
+    setSelectedModelDetail(null)
+    setApiChecklists([])
+
     if (!selectedModelId) {
-      setSelectedModelDetail(null)
-      setApiChecklists([])
       return
     }
+
     api.get<ApiResponse<ChecklistModelDetailApi>>(`/v1/checklist-models/${selectedModelId}`)
       .then((response: AxiosResponse<ApiResponse<ChecklistModelDetailApi>>) => {
         let data = response.data;
-        if (data.isSuccess) {
+        if (data.isSuccess && requestId === checklistDetailRequestRef.current) {
           setSelectedModelDetail(data.value)
           setApiChecklists(data.value.criteria)
         }
       })
-      .catch((err) => console.error("Failed to fetch model detail:", err))
+      .catch((err) => {
+        if (requestId === checklistDetailRequestRef.current) {
+          console.error("Failed to fetch model detail:", err)
+        }
+      })
   }, [selectedModelId])
 
   const checklistProgress = apiChecklists.length > 0
@@ -240,7 +251,7 @@ export function CreateTradeDialog({ children, onSuccess }: CreateTradeDialogProp
       newErrors.targetTier1 = "At least one target price is required"
     }
 
-    if (checkedItems.length === 0) {
+    if (apiChecklists.length > 0 && checkedItems.length === 0) {
       newErrors.checklist = "Please complete at least one checklist item"
     }
 
@@ -812,9 +823,17 @@ export function CreateTradeDialog({ children, onSuccess }: CreateTradeDialogProp
                 );
               })}
 
-              {!selectedModelId && (
+              {checklistModels.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  No pre-trade models yet. {" "}
+                  <Link href="/settings/pretrade-models" className="text-primary underline underline-offset-4">
+                    Create one in settings
+                  </Link>
+                  .
+                </p>
+              ) : !selectedModelId ? (
                 <p className="text-xs text-muted-foreground text-center py-4">Select a checklist model above to see criteria.</p>
-              )}
+              ) : null}
             </div>
 
             {/* Notes */}

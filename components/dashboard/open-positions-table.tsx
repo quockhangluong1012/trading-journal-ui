@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, ApiPaginatedResponse, type ApiResponse } from "@/lib/api"
+import { CreateTradeDialog } from "@/components/create-trade-dialog"
 import {
   Table,
   TableBody,
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpRight, ArrowDownRight, Eye } from "lucide-react"
 import { PositionType } from "@/lib/enum/PositionType"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
@@ -92,18 +94,8 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
       }
     }
   
-    const getTradeStatusLabel = (status: TradeStatus) => {
-      switch (status) {
-        case TradeStatus.Open:
-          return "Open"
-        case TradeStatus.Closed:
-          return "Closed"
-        default:
-          return "All"
-      }
-    }
   return (
-    <Card className="border-border bg-card">
+    <Card className="border-border bg-card min-w-0">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
@@ -118,18 +110,19 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
-            <p className="text-muted-foreground">Loading open positions...</p>
+          <div className="space-y-3 py-2">
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
           </div>
         ) : openPositions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <p className="text-muted-foreground">No open positions</p>
-            <Link href="/create">
-              <Button variant="link" className="mt-2">
+            <CreateTradeDialog onSuccess={fetchOpenPositions}>
+              <Button variant="outline" className="mt-3">
                 Create your first trade
               </Button>
-            </Link>
+            </CreateTradeDialog>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -184,7 +177,7 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
                             <div
                               key={level}
                               className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                                trade.confidenceLevel! >= level
+                                (trade.confidenceLevel ?? 0) >= level
                                   ? "bg-primary"
                                   : "bg-secondary"
                               }`}
@@ -194,7 +187,7 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {trade.emotionTags.map((emotionTag: EmotionTag) => {
+                          {trade.emotionTags.slice(0, 2).map((emotionTag: EmotionTag) => {
                             const label = emotionTag.name;
                             const category = emotionTag.emotionType;
                             const colorMap = {

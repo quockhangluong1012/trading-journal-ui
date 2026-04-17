@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { PieChart, Pie, Cell, Legend } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api, ApiResponse } from "@/lib/api"
 import { WinLossData } from "@/app/types/trade"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
@@ -57,7 +58,7 @@ export function WinLossChart({ filter }: { filter: DashboardFilter }) {
   }
 
   return (
-    <Card className="border-border bg-card">
+    <Card className="border-border bg-card min-w-0">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground">Win/Loss Ratio</CardTitle>
         <CardDescription className="text-muted-foreground">
@@ -66,8 +67,13 @@ export function WinLossChart({ filter }: { filter: DashboardFilter }) {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[300px] items-center justify-center">
-            <p className="text-sm text-muted-foreground">Loading chart...</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4 pb-4">
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+            </div>
+            <Skeleton className="h-[200px] w-full rounded-lg" />
           </div>
         ) : (
           <>

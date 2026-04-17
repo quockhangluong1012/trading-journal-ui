@@ -1,5 +1,26 @@
 import { api, ApiResponse } from "./api";
 
+export type {
+  ChecklistModelDetailDto,
+  ChecklistModelDto,
+  PretradeChecklistDto,
+} from "./pretrade-models-api";
+
+export {
+  CHECKLIST_TYPE_OPTIONS,
+  ChecklistTypeColors,
+  ChecklistTypeLabels,
+  addCriteriaToModel,
+  createChecklistModel,
+  createPretradeChecklist,
+  deletePretradeChecklist,
+  getChecklistModelDetail,
+  getChecklistModels,
+  getPretradeChecklists,
+  updateChecklistModel,
+  updatePretradeChecklist,
+} from "./pretrade-models-api";
+
 // ─── Dashboard Metrics ───────────────────────────────────
 export interface RegistrationData {
   date: string;
@@ -115,72 +136,6 @@ export async function deleteTradingZone(id: number) {
   return api.delete<ApiResponse<boolean>>(`/v1/trading-zones/${id}`);
 }
 
-// ─── Checklist Models ────────────────────────────────────
-export interface ChecklistModelDto {
-  id: number;
-  name: string;
-  description: string | null;
-  criteriaCount: number;
-}
-
-export interface ChecklistCriteriaDto {
-  id: number;
-  name: string;
-  checkListType: number; // 1=MarketStructure, 2=TradingSetup, 3=RiskManagement, 4=Psychology
-}
-
-export interface ChecklistModelDetailDto {
-  id: number;
-  name: string;
-  description: string | null;
-  criteria: ChecklistCriteriaDto[];
-}
-
-export async function getChecklistModels() {
-  return api.get<ApiResponse<ChecklistModelDto[]>>("/v1/checklist-models");
-}
-
-export async function getChecklistModelDetail(id: number) {
-  return api.get<ApiResponse<ChecklistModelDetailDto>>(`/v1/checklist-models/${id}`);
-}
-
-export async function createChecklistModel(data: { name: string; description?: string }) {
-  return api.post<ApiResponse<number>>("/v1/checklist-models", data);
-}
-
-export async function updateChecklistModel(data: { id: number; name: string; description?: string }) {
-  return api.put<ApiResponse<boolean>>("/v1/checklist-models", data);
-}
-
-export async function addCriteriaToModel(modelId: number, data: { name: string; type: number }) {
-  return api.post<ApiResponse<number>>(`/v1/checklist-models/${modelId}/criteria`, data);
-}
-
-// ─── Pretrade Checklists ──────────────────────────────────
-export interface PretradeChecklistDto {
-  id: number;
-  name: string;
-  checklistModelId: number;
-  checklistModelName: string;
-  createdDate: string;
-}
-
-export async function getPretradeChecklists() {
-  return api.get<ApiResponse<PretradeChecklistDto[]>>("/v1/trades/pretrade-checklists");
-}
-
-export async function createPretradeChecklist(data: { name: string; checklistModelId: number }) {
-  return api.post<ApiResponse<number>>("/v1/trades/pretrade-checklists", data);
-}
-
-export async function updatePretradeChecklist(id: number, data: { name: string; checklistModelId: number }) {
-  return api.put<ApiResponse<boolean>>(`/v1/trades/pretrade-checklists/${id}`, data);
-}
-
-export async function deletePretradeChecklist(id: number) {
-  return api.delete<ApiResponse<boolean>>(`/v1/trades/pretrade-checklists/${id}`);
-}
-
 // ─── Backtest Assets ──────────────────────────────────────
 export interface AssetDto {
   id: number;
@@ -259,20 +214,6 @@ export const EmotionTypeColors: Record<number, string> = {
   1: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
   2: "text-rose-400 bg-rose-400/10 border-rose-400/20",
   3: "text-slate-400 bg-slate-400/10 border-slate-400/20",
-};
-
-export const ChecklistTypeLabels: Record<number, string> = {
-  1: "Market Structure",
-  2: "Trading Setup",
-  3: "Risk Management",
-  4: "Psychology",
-};
-
-export const ChecklistTypeColors: Record<number, string> = {
-  1: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  2: "text-amber-400 bg-amber-400/10 border-amber-400/20",
-  3: "text-red-400 bg-red-400/10 border-red-400/20",
-  4: "text-purple-400 bg-purple-400/10 border-purple-400/20",
 };
 
 // ─── Pip Type Enum ───────────────────────────────────────

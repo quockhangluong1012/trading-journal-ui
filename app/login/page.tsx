@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { Suspense, useState, useCallback } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useTheme } from "next-themes"
 import { useEffect } from "react"
 import { TrendingUp, Eye, EyeOff, Sun, Moon, ArrowRight, AlertCircle, Loader2 } from "lucide-react"
@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { loginUser } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { getSafeNextPath } from "@/lib/auth-redirect"
 
 // ========================
 // Validation helpers
@@ -92,7 +93,8 @@ function PasswordStrength({ password }: { password: string }) {
 
 function LoginForm() {
   const router = useRouter()
-  const { login } = useAuth()
+  const searchParams = useSearchParams()
+  const { login, user, isLoading } = useAuth()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -101,6 +103,13 @@ function LoginForm() {
   const [touched, setTouched] = useState<{ username?: boolean; password?: boolean }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [loginSuccess, setLoginSuccess] = useState(false)
+  const nextPath = getSafeNextPath(searchParams.get("next"), "/")
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      router.replace(nextPath)
+    }
+  }, [isLoading, nextPath, router, user])
 
   const handleBlur = useCallback((field: "username" | "password") => {
     setTouched((prev) => ({ ...prev, [field]: true }))
@@ -134,11 +143,11 @@ function LoginForm() {
           email: authData.email,
           token: authData.token,
           fullName: authData.fullName,
-          isAdmin: authData.isAdmin
+          isAdmin: Boolean(authData.isAdmin)
         })
         setLoginSuccess(true)
         setTimeout(() => {
-          router.push("/")
+          router.replace(nextPath)
         }, 600)
       } else {
         setErrors({ general: "Invalid credentials" })
@@ -274,6 +283,15 @@ function LoginForm() {
   )
 }
 
+function LoginFormFallback() {
+  return (
+    <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-border bg-card/40 px-4 text-sm text-muted-foreground">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      Preparing secure sign in...
+    </div>
+  )
+}
+
 // ========================
 // Page Component
 // ========================
@@ -379,7 +397,9 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <LoginForm />
+            <Suspense fallback={<LoginFormFallback />}>
+              <LoginForm />
+            </Suspense>
 
             {/* Divider */}
             <div className="relative my-6">

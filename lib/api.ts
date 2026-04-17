@@ -1,15 +1,56 @@
 import axios from "axios";
 
+import { buildRedirectWithNext, getLoginRouteForPath } from "@/lib/auth-redirect";
+
 const api = axios.create({
   baseURL: `${process.env.NEXT_PUBLIC_API_URL}/api`,
 });
 
 const AUTH_STORAGE_KEY = "trading-journey-auth-user"
-const LOGOUT_ROUTE = "/login"
+const AUTH_TOKEN_COOKIE = "trading-journey-token"
+const AUTH_ROLE_COOKIE = "trading-journey-role"
+
+function getCookieAttributes(): string {
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  return `Path=/; SameSite=Lax${secure}`;
+}
+
+export function syncAuthCookies(token?: string, isAdmin?: boolean): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const attrs = getCookieAttributes();
+
+  if (token) {
+    document.cookie = `${AUTH_TOKEN_COOKIE}=${encodeURIComponent(token)}; ${attrs}`;
+  } else {
+    document.cookie = `${AUTH_TOKEN_COOKIE}=; Max-Age=0; ${attrs}`;
+  }
+
+  if (typeof isAdmin === "boolean") {
+    document.cookie = `${AUTH_ROLE_COOKIE}=${isAdmin ? "admin" : "user"}; ${attrs}`;
+  } else {
+    document.cookie = `${AUTH_ROLE_COOKIE}=; Max-Age=0; ${attrs}`;
+  }
+}
+
+export function clearAuthState(): void {
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+
+  syncAuthCookies(undefined, undefined);
+  delete api.defaults.headers.common["Authorization"];
+}
 
 export function clearAuthAndRedirectToLogin(): void {
-  localStorage.removeItem(AUTH_STORAGE_KEY);
-  window.location.assign(LOGOUT_ROUTE);
+  clearAuthState();
+
+  const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const loginRoute = getLoginRouteForPath(window.location.pathname);
+
+  window.location.assign(buildRedirectWithNext(loginRoute, nextPath));
 }
 
 export function attachToken(): void {
@@ -20,6 +61,7 @@ export function attachToken(): void {
 
       if (user?.token) {
         api.defaults.headers.common["Authorization"] = `Bearer ${user.token}`;
+        syncAuthCookies(user.token, Boolean(user.isAdmin));
       }
     }
   } catch {
@@ -38,7 +80,7 @@ api.interceptors.response.use(
     const status = error?.response?.status;
 
     if (status === 401 && typeof window !== "undefined") {
-      const onLoginPage = window.location.pathname === LOGOUT_ROUTE;
+      const onLoginPage = window.location.pathname === "/login" || window.location.pathname === "/admin/login";
 
       if (!onLoginPage) {
         if (!isRedirecting) {
@@ -112,6 +154,7 @@ export interface AuthResponse {
   email: string;
   fullName: string;
   expiry: string;
+  isAdmin?: boolean;
 }
 
 export async function loginUser(data: any) {

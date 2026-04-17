@@ -137,7 +137,7 @@ function TradeRow({ trade }: { trade: ReviewTrade }) {
           {trade.pnl != null ? fmt(trade.pnl) : "—"}
         </p>
         <p className="text-[10px] text-muted-foreground">
-          {trade.entryPrice.toFixed(2)} → {trade.exitPrice?.toFixed(2) ?? "—"}
+          {trade.entryPrice?.toFixed(2)} → {trade.exitPrice?.toFixed(2) ?? "—"}
         </p>
       </div>
     </div>

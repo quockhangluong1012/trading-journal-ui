@@ -43,7 +43,9 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
   };
 
   const formatPnL = (val: number) => {
-    const formatted = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+    const absVal = Math.abs(val);
+    const maxDigits = absVal > 0 && absVal < 0.01 ? 5 : 2;
+    const formatted = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: maxDigits }).format(val);
     return val > 0 ? `+${formatted}` : formatted;
   };
 
@@ -106,8 +108,10 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
                       ? (isBuy ? (currentPrice - price) * pos.positionSize : (price - currentPrice) * pos.positionSize)
                       : 0;
                       
-                    const pnlPercent = currentPrice > 0 
-                      ? (pnlValue / pos.positionSize) * 100
+                    const leverage = session?.leverage || 50;
+                    const margin = (pos.positionSize * price) / leverage;
+                    const pnlPercent = margin > 0 
+                      ? (pnlValue / margin) * 100
                       : 0;
 
                     const pnlColor = pnlValue > 0 ? "text-emerald-500" : pnlValue < 0 ? "text-rose-500" : "";
@@ -138,10 +142,10 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
                           {formatPnL(pnlValue)} <span className="text-xs font-normal text-muted-foreground ml-0.5">USD</span>
                         </td>
                         <td className={`px-4 py-3 text-right font-mono ${pnlColor}`}>
-                          {val => val > 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
+                          {pnlPercent > 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
                         </td>
                         <td className="px-4 py-3 text-right font-mono">
-                          {formatCurrency(pos.positionSize)} <span className="text-xs font-normal text-muted-foreground ml-0.5">USD</span>
+                          {formatCurrency(pos.positionSize * price)} <span className="text-xs font-normal text-muted-foreground ml-0.5">USD</span>
                         </td>
                         <td className="px-4 py-3 text-center">
                            {session?.leverage || 50}:1

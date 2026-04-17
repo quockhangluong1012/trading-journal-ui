@@ -186,6 +186,25 @@ export interface AvailableAsset {
   totalCandles: number;
 }
 
+function upsertOrderById(list: BacktestOrder[], order: BacktestOrder): BacktestOrder[] {
+  const index = list.findIndex((item) => item.id === order.id);
+  if (index === -1) {
+    return [...list, order];
+  }
+
+  const next = [...list];
+  next[index] = order;
+  return next;
+}
+
+function dedupeOrdersById(list: BacktestOrder[]): BacktestOrder[] {
+  const byId = new Map<number, BacktestOrder>();
+  list.forEach((order) => {
+    byId.set(order.id, order);
+  });
+  return Array.from(byId.values());
+}
+
 // ─── API Functions ──────────────────────────────────────────────────────
 
 const BASE = "/v1";
@@ -477,20 +496,25 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
           : s.candles;
 
         // Update pending/active orders from fill/close events
-        let pendingOrders = [...s.pendingOrders];
-        let activePositions = [...s.activePositions];
+        let pendingOrders = s.pendingOrders;
+        let activePositions = s.activePositions;
+        let closedPositions = s.closedPositions;
 
-        let closedPositions = [...s.closedPositions];
+        if (result.filledOrders.length > 0 || result.closedPositions.length > 0) {
+          pendingOrders = dedupeOrdersById(pendingOrders);
+          activePositions = dedupeOrdersById(activePositions);
+          closedPositions = dedupeOrdersById(closedPositions);
+        }
 
         for (const filled of result.filledOrders) {
           pendingOrders = pendingOrders.filter((o) => o.id !== filled.id);
-          activePositions.push(filled);
+          activePositions = upsertOrderById(activePositions, filled);
           toast.success(`Pending ${filled.side} Limit triggered at ${filled.filledPrice}`);
         }
 
         for (const closed of result.closedPositions) {
           activePositions = activePositions.filter((o) => o.id !== closed.id);
-          closedPositions.push(closed);
+          closedPositions = upsertOrderById(closedPositions, closed);
           const pnl = closed.pnl ?? 0;
           const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
           toast.info(`${closed.side} Position closed. PnL: ${pnlText}`);
@@ -579,9 +603,9 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
 
       set((s) => {
         if (order.status === "Pending") {
-          return { pendingOrders: [...s.pendingOrders, order] };
+          return { pendingOrders: upsertOrderById(s.pendingOrders, order) };
         } else if (order.status === "Active") {
-          return { activePositions: [...s.activePositions, order] };
+          return { activePositions: upsertOrderById(s.activePositions, order) };
         }
         return {};
       });
@@ -621,18 +645,18 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
     // For exact P&L, it's safer to fetch the orders again
     const orders = await fetchSessionOrders(get().session!.id);
     set({
-      pendingOrders: orders.filter((o) => o.status === "Pending"),
-      activePositions: orders.filter((o) => o.status === "Active"),
-      closedPositions: orders.filter((o) => o.status === "Closed"),
+      pendingOrders: dedupeOrdersById(orders.filter((o) => o.status === "Pending")),
+      activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
+      closedPositions: dedupeOrdersById(orders.filter((o) => o.status === "Closed")),
     });
   },
 
   loadOrders: async (sessionId) => {
     const orders = await fetchSessionOrders(sessionId);
     set({
-      pendingOrders: orders.filter((o) => o.status === "Pending"),
-      activePositions: orders.filter((o) => o.status === "Active"),
-      closedPositions: orders.filter((o) => o.status === "Closed"),
+      pendingOrders: dedupeOrdersById(orders.filter((o) => o.status === "Pending")),
+      activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
+      closedPositions: dedupeOrdersById(orders.filter((o) => o.status === "Closed")),
     });
   },
 
@@ -675,6 +699,21 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   // ── Resume ──
 
   resumeSession: async (sessionId) => {
+    // Clear previous session data to prevent chart bleeding
+    set({
+      session: null,
+      candles: [],
+      isPlaying: false,
+      playbackIntervalId: null,
+      pendingOrders: [],
+      activePositions: [],
+      closedPositions: [],
+      drawings: [],
+      selectedDrawingId: null,
+      activeDrawingTool: null,
+      analytics: null,
+    });
+
     const state = await fetchPlaybackState(sessionId);
 
     // Parse drawings
@@ -691,14 +730,16 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       balance: state.balance,
       equity: state.equity,
       unrealizedPnl: state.unrealizedPnl,
-      pendingOrders: state.pendingOrders,
-      activePositions: state.activePositions,
+      pendingOrders: dedupeOrdersById(state.pendingOrders),
+      activePositions: dedupeOrdersById(state.activePositions),
+      closedPositions: [],
       drawings,
     });
 
-    // Load session detail and candles
+    // Load session detail, candles, and full order state.
     await get().loadSession(sessionId);
     await get().loadCandles(sessionId, state.activeTimeframe as Timeframe);
+    await get().loadOrders(sessionId);
   },
 
   // ── Reset ──

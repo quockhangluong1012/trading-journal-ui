@@ -1,28 +1,20 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Shield, AlertCircle, ArrowRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { cn } from "@/lib/utils"
 import { loginStaff } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { getSafeAdminNextPath } from "@/lib/auth-redirect"
 
-function FieldError({ message }: { message?: string }) {
-  if (!message) return null
-  return (
-    <p className="flex items-center gap-1.5 text-xs text-destructive mt-1.5" role="alert">
-      <AlertCircle className="h-3 w-3 shrink-0" />
-      {message}
-    </p>
-  )
-}
-
-export default function AdminLoginPage() {
+function AdminLoginContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { login } = useAuth()
+  const nextPath = getSafeAdminNextPath(searchParams.get("next"), "/admin")
   
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
@@ -64,7 +56,7 @@ export default function AdminLoginPage() {
           isAdmin: authData.isAdmin
         })
         
-        router.push("/admin")
+        router.replace(nextPath)
       } else {
         setError("Invalid credentials")
         setIsSubmitting(false)
@@ -163,5 +155,24 @@ export default function AdminLoginPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function AdminLoginFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="flex w-full max-w-md items-center justify-center gap-2 rounded-2xl border border-border bg-card p-8 text-sm text-muted-foreground shadow-lg">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Preparing admin sign in...
+      </div>
+    </div>
+  )
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={<AdminLoginFallback />}>
+      <AdminLoginContent />
+    </Suspense>
   )
 }
