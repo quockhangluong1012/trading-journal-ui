@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-export type Timeframe = "M5" | "M15" | "H1" | "H4" | "D1";
+export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1";
 export type PlaybackSpeed = 1 | 2 | 5 | 10;
 
 export interface BacktestSession {
@@ -186,6 +186,70 @@ export interface AvailableAsset {
   totalCandles: number;
 }
 
+const TIMEFRAME_TO_MINUTES: Record<Timeframe, number> = {
+  M1: 1,
+  M5: 5,
+  M15: 15,
+  H1: 60,
+  H4: 240,
+  D1: 1440,
+};
+
+function floorTimestampToBucket(timestamp: string, timeframe: Timeframe): string {
+  const time = new Date(timestamp).getTime();
+  const bucketMs = TIMEFRAME_TO_MINUTES[timeframe] * 60 * 1000;
+  const floored = Math.floor(time / bucketMs) * bucketMs;
+  return new Date(floored).toISOString();
+}
+
+function aggregateCandlesToTimeframe(
+  candles: CandleData[],
+  sourceTimeframe: Timeframe,
+  targetTimeframe: Timeframe,
+): CandleData[] | null {
+  if (candles.length === 0) {
+    return [];
+  }
+
+  const sourceMinutes = TIMEFRAME_TO_MINUTES[sourceTimeframe];
+  const targetMinutes = TIMEFRAME_TO_MINUTES[targetTimeframe];
+
+  if (targetMinutes < sourceMinutes || targetMinutes % sourceMinutes !== 0) {
+    return null;
+  }
+
+  if (targetMinutes === sourceMinutes) {
+    return candles.map((candle) => ({ ...candle }));
+  }
+
+  const aggregated = new Map<string, CandleData>();
+
+  candles.forEach((candle) => {
+    const bucketTimestamp = floorTimestampToBucket(candle.timestamp, targetTimeframe);
+    const existing = aggregated.get(bucketTimestamp);
+
+    if (!existing) {
+      aggregated.set(bucketTimestamp, {
+        ...candle,
+        timestamp: bucketTimestamp,
+      });
+      return;
+    }
+
+    aggregated.set(bucketTimestamp, {
+      ...existing,
+      high: Math.max(existing.high, candle.high),
+      low: Math.min(existing.low, candle.low),
+      close: candle.close,
+      volume: existing.volume + candle.volume,
+    });
+  });
+
+  return Array.from(aggregated.values()).sort((left, right) =>
+    new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
+  );
+}
+
 function upsertOrderById(list: BacktestOrder[], order: BacktestOrder): BacktestOrder[] {
   const index = list.findIndex((item) => item.id === order.id);
   if (index === -1) {
@@ -253,16 +317,20 @@ async function deleteSessionApi(id: number): Promise<void> {
 
 async function fetchPlaybackState(sessionId: number): Promise<PlaybackState> {
   attachToken();
-  console.log(sessionId)
   const res = await api.get<ApiResponse<PlaybackState>>(`${BASE}/backtest-playback/${sessionId}/state`);
   return res.data.value;
 }
 
 async function advanceCandleApi(sessionId: number): Promise<AdvanceCandleResponse> {
   attachToken();
-  console.log(sessionId);
   const res = await api.post<ApiResponse<AdvanceCandleResponse>>(`${BASE}/backtest-playback/${sessionId}/advance`);
   return res.data.value;
+}
+
+async function setPlaybackTimeframeApi(sessionId: number, timeframe: Timeframe): Promise<Timeframe> {
+  attachToken();
+  const res = await api.put<ApiResponse<string>>(`${BASE}/backtest-playback/${sessionId}/timeframe`, { timeframe });
+  return res.data.value as Timeframe;
 }
 
 async function fetchHistoricalCandles(
@@ -351,6 +419,7 @@ interface BacktestStore {
   isPlaying: boolean;
   playbackSpeed: PlaybackSpeed;
   activeTimeframe: Timeframe;
+  isSwitchingTimeframe: boolean;
   playbackIntervalId: ReturnType<typeof setInterval> | null;
 
   loadCandles: (sessionId: number, timeframe?: Timeframe) => Promise<void>;
@@ -411,6 +480,7 @@ const initialState = {
   isPlaying: false,
   playbackSpeed: 1 as PlaybackSpeed,
   activeTimeframe: "M15" as Timeframe,
+  isSwitchingTimeframe: false,
   playbackIntervalId: null,
   pendingOrders: [],
   activePositions: [],
@@ -590,9 +660,58 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
    * Reloads candles for the new timeframe, filtered server-side to currentTimestamp only.
    */
   switchTimeframe: async (sessionId, timeframe) => {
+    if (get().isSwitchingTimeframe || timeframe === get().activeTimeframe) {
+      return;
+    }
+
+    const previousTimeframe = get().activeTimeframe;
+    const previousCandles = get().candles;
+    const previousSession = get().session;
+    const optimisticCandles = aggregateCandlesToTimeframe(previousCandles, previousTimeframe, timeframe) ?? previousCandles;
+    let serverTimeframeUpdated = false;
+
     get().pausePlayback();
-    set({ activeTimeframe: timeframe });
-    await get().loadCandles(sessionId, timeframe);
+
+    set((state) => ({
+      activeTimeframe: timeframe,
+      candles: optimisticCandles,
+      isSwitchingTimeframe: true,
+      session: state.session
+        ? { ...state.session, activeTimeframe: timeframe }
+        : state.session,
+    }));
+
+    try {
+      await setPlaybackTimeframeApi(sessionId, timeframe);
+      serverTimeframeUpdated = true;
+
+      const candles = await fetchHistoricalCandles(sessionId, timeframe);
+
+      set((state) => ({
+        activeTimeframe: timeframe,
+        candles,
+        isSwitchingTimeframe: false,
+        session: state.session
+          ? { ...state.session, activeTimeframe: timeframe }
+          : state.session,
+      }));
+    } catch {
+      if (serverTimeframeUpdated && previousTimeframe !== timeframe) {
+        try {
+          await setPlaybackTimeframeApi(sessionId, previousTimeframe);
+        } catch {
+          // Best-effort rollback only.
+        }
+      }
+
+      set({
+        activeTimeframe: previousTimeframe,
+        candles: previousCandles,
+        isSwitchingTimeframe: false,
+        session: previousSession ? { ...previousSession } : null,
+      });
+      toast.error("Failed to switch timeframe");
+    }
   },
 
   // ── Orders & Positions ──

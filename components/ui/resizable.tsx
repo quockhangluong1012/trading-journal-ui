@@ -18,7 +18,6 @@ function ResizablePanelGroup({
         className,
       )}
       {...props}
-      style={{height: "calc(100vh - 140px)"}}
     />
   )
 }

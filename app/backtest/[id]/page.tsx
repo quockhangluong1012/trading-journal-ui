@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, use, useMemo, useState } from "react";
-import { useBacktestStore } from "@/lib/backtest-store";
+import { useBacktestStore, type Timeframe } from "@/lib/backtest-store";
 import { KLineChartPro, DatafeedSubscribeCallback, SymbolInfo, Period, ChartPro } from '@klinecharts/pro';
 import { init as klineInit, dispose as klineDispose, registerOverlay, LineType, type OverlayCreate } from 'klinecharts';
 import '@klinecharts/pro/dist/klinecharts-pro.css';
@@ -10,6 +10,7 @@ import { Play, Pause, SkipForward } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { OrderPanel } from "@/components/backtest/order-panel";
 import { PositionsPanel } from "@/components/backtest/positions-panel";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -18,6 +19,76 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Register custom order marker overlay (arrow + label)
 let _orderMarkerRegistered = false;
+const CHART_TIMEZONE = "Etc/UTC";
+const TIMEFRAME_OPTIONS: Array<{ value: Timeframe; label: string }> = [
+  { value: "M1", label: "1m" },
+  { value: "M5", label: "5m" },
+  { value: "M15", label: "15m" },
+  { value: "H1", label: "1H" },
+  { value: "H4", label: "4H" },
+  { value: "D1", label: "1D" },
+];
+
+function getTimeframeMs(tf: Timeframe) {
+  if (tf === 'M1') return 60000;
+  if (tf === 'M5') return 5 * 60000;
+  if (tf === 'M15') return 15 * 60000;
+  if (tf === 'H1') return 60 * 60000;
+  if (tf === 'H4') return 240 * 60000;
+  if (tf === 'D1') return 1440 * 60000;
+  return 60000;
+}
+
+function floorTimestamp(timestamp: string | number, tf: Timeframe) {
+  const time = typeof timestamp === 'string' ? new Date(timestamp).getTime() : timestamp;
+  const ms = getTimeframeMs(tf);
+  return Math.floor(time / ms) * ms;
+}
+
+function toChartPeriod(timeframe: Timeframe): Period {
+  if (timeframe.startsWith("M")) {
+    return { multiplier: parseInt(timeframe.slice(1), 10), timespan: "minute", text: timeframe };
+  }
+
+  if (timeframe.startsWith("H")) {
+    return { multiplier: parseInt(timeframe.slice(1), 10), timespan: "hour", text: timeframe };
+  }
+
+  if (timeframe.startsWith("D")) {
+    return { multiplier: parseInt(timeframe.slice(1), 10), timespan: "day", text: timeframe };
+  }
+
+  throw new Error(`Unsupported timeframe: ${timeframe}`);
+}
+
+function formatSessionTimestamp(timestamp: string | null): string {
+  if (!timestamp) {
+    return "Waiting for candles";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "Waiting for candles";
+  }
+
+  const datePart = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
+  const timePart = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "UTC",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+
+  return `${datePart} ${timePart} UTC`;
+}
+
 function ensureOrderMarkerRegistered() {
   if (_orderMarkerRegistered) return;
   try {
@@ -92,6 +163,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const klineChartRef = useRef<ReturnType<typeof klineInit>>(null);
   const orderOverlayIdsRef = useRef<string[]>([]);
   const [chartReadyVersion, setChartReadyVersion] = useState(0);
+  const [isSwitchingTimeframe, setIsSwitchingTimeframe] = useState(false);
   const { theme } = useTheme();
 
   // Datafeed state
@@ -131,10 +203,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     closedPositions,
     loadTradingZones
   } = useBacktestStore();
-
-  const hasCheckpointProgress = Boolean(
-    session && currentTimestamp && new Date(currentTimestamp).getTime() > new Date(session.startDate).getTime()
-  );
+  const hasLoadedCandles = candles.length > 0;
 
   const mappedCandles = useMemo(() => {
     return candles.map((c) => ({
@@ -148,6 +217,8 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   }, [candles]);
 
   const lastCandleTimestamp = candles.length > 0 ? candles[candles.length - 1].timestamp : null;
+  const displayedTimestamp = lastCandleTimestamp;
+  const formattedTimestamp = formatSessionTimestamp(displayedTimestamp);
 
   // Keep a ref of candles for the datafeed
   useEffect(() => {
@@ -174,7 +245,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     const chartApi = klineChartRef.current;
     if (!chartApi) return;
 
-    if (!hasCheckpointProgress || mappedCandles.length === 0) {
+    if (mappedCandles.length === 0) {
       chartApi.clearData();
       return;
     }
@@ -188,12 +259,12 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     chartApi.applyNewData(mappedCandles);
     chartApi.setOffsetRightDistance(60);
     chartApi.scrollToTimestamp(lastTimestamp);
-  }, [activeTimeframe, chartReadyVersion, hasCheckpointProgress, mappedCandles]);
+  }, [activeTimeframe, chartReadyVersion, mappedCandles]);
 
   const datafeed = useMemo(() => {
     return {
       searchSymbols: async (search?: string) => {
-        if (!session) return [];
+        if (!session?.asset) return [];
         return [{
           ticker: session.asset,
           name: session.asset,
@@ -207,7 +278,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
         }];
       },
       getHistoryKLineData: async (symbol: SymbolInfo, period: Period, from: number, to: number) => {
-        if (!session || !hasCheckpointProgress || !candlesRef.current.length) return [];
+        if (!session?.asset || !candlesRef.current.length) return [];
 
         const rangeStart = Math.min(from, to);
         const rangeEnd = Math.max(from, to);
@@ -230,7 +301,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
         datafeedCallbackRef.current = null;
       }
     };
-  }, [hasCheckpointProgress, session]);
+  }, [session?.asset]);
 
   // Initial load
   useEffect(() => {
@@ -245,7 +316,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   // Init chart
   useEffect(() => {
     const container = chartContainerRef.current;
-    if (!container || !session) return;
+    if (!container || !session?.asset) return;
     
     // Clear previous elements inside container if KLineChart doesn't clean itself up perfectly
     container.innerHTML = '';
@@ -256,13 +327,17 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       container: container,
       theme: isDark ? 'dark' : 'light',
       locale: 'en-US',
+      timezone: CHART_TIMEZONE,
       drawingBarVisible: true,
+      periods: [],
+      mainIndicators: [],
+      subIndicators: [],
       symbol: {
         ticker: session.asset,
         name: session.asset,
         shortName: session.asset
       },
-      period: { multiplier: parseInt(activeTimeframe.replace(/[^\d]/g, '') || "1"), timespan: activeTimeframe.includes('M') ? 'minute' : activeTimeframe.includes('H') ? 'hour' : 'day', text: activeTimeframe },
+      period: toChartPeriod(activeTimeframe),
       datafeed: datafeed
     });
 
@@ -294,7 +369,15 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       chartInstanceRef.current = null;
       klineChartRef.current = null;
     };
-  }, [theme, session?.asset, activeTimeframe, datafeed]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme, session?.asset, datafeed]);
+
+  // Handle timeframe change gracefully without unmounting the whole chart
+  useEffect(() => {
+    if (chartInstanceRef.current && activeTimeframe) {
+      chartInstanceRef.current.setPeriod(toChartPeriod(activeTimeframe));
+    }
+  }, [activeTimeframe]);
 
   // Render order overlays on the chart
   useEffect(() => {
@@ -317,9 +400,10 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     activePositions.forEach((order) => {
       if (order.filledAt && order.filledPrice) {
         const isBuy = order.side === "Long";
+        const ts = floorTimestamp(order.filledAt, activeTimeframe);
         add({
           name: 'orderMarker',
-          points: [{ timestamp: new Date(order.filledAt).getTime(), value: order.filledPrice }],
+          points: [{ timestamp: ts, value: order.filledPrice }],
           extendData: { isBuy, label: `${order.positionSize} @ ${order.filledPrice.toFixed(2)}` }
         }, `activeEntry_${order.id}`);
       }
@@ -367,24 +451,26 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     closedPositions.forEach((order) => {
       if (order.filledAt && order.filledPrice) {
         const isBuy = order.side === "Long";
+        const ts = floorTimestamp(order.filledAt, activeTimeframe);
         add({
           name: 'orderMarker',
-          points: [{ timestamp: new Date(order.filledAt).getTime(), value: order.filledPrice }],
+          points: [{ timestamp: ts, value: order.filledPrice }],
           extendData: { isBuy, label: `${order.positionSize} @ ${order.filledPrice.toFixed(2)}` }
         }, `closedEntry_${order.id}`);
       }
       if (order.closedAt && order.exitPrice) {
         const isBuy = order.side === "Long";
+        const ts = floorTimestamp(order.closedAt, activeTimeframe);
         add({
           name: 'orderMarker',
-          points: [{ timestamp: new Date(order.closedAt).getTime(), value: order.exitPrice }],
+          points: [{ timestamp: ts, value: order.exitPrice }],
           extendData: { isBuy: !isBuy, label: `${order.positionSize} @ ${order.exitPrice.toFixed(2)}` }
         }, `closedExit_${order.id}`);
       }
     });
 
     orderOverlayIdsRef.current = newIds;
-  }, [activePositions, closedPositions, lastCandleTimestamp, pendingOrders]);
+  }, [activePositions, closedPositions, lastCandleTimestamp, pendingOrders, activeTimeframe]);
 
   const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
 
@@ -397,8 +483,17 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     advanceCandle(sessionId);
   };
 
-  const handleTimeframeChange = (val: string) => {
-    switchTimeframe(sessionId, val as any);
+  const handleTimeframeChange = async (nextTimeframe: Timeframe) => {
+    if (nextTimeframe === activeTimeframe || isSwitchingTimeframe) {
+      return;
+    }
+
+    setIsSwitchingTimeframe(true);
+    try {
+      await switchTimeframe(sessionId, nextTimeframe);
+    } finally {
+      setIsSwitchingTimeframe(false);
+    }
   };
 
   useEffect(() => {
@@ -441,18 +536,39 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
         <div className="flex items-center justify-between border-b px-6 py-3 bg-card shadow-sm z-10 transition-all">
         <div className="flex items-center gap-4">
           <div className="font-bold text-xl tracking-tight">{session.asset}</div>
-          <Select value={activeTimeframe} onValueChange={handleTimeframeChange}>
-            <SelectTrigger className="w-[80px] h-9 font-medium bg-secondary/50 border-secondary hover:bg-secondary transition-colors">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="M5">5m</SelectItem>
-              <SelectItem value="M15">15m</SelectItem>
-              <SelectItem value="H1">1H</SelectItem>
-              <SelectItem value="H4">4H</SelectItem>
-              <SelectItem value="D1">1D</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-3 rounded-lg border bg-secondary/35 px-2 py-1 shadow-sm">
+            <ToggleGroup
+              type="single"
+              value={activeTimeframe}
+              variant="outline"
+              size="sm"
+              className="flex-wrap"
+              onValueChange={(value) => {
+                if (value) {
+                  void handleTimeframeChange(value as Timeframe);
+                }
+              }}
+            >
+              {TIMEFRAME_OPTIONS.map((option) => (
+                <ToggleGroupItem
+                  key={option.value}
+                  value={option.value}
+                  disabled={isSwitchingTimeframe}
+                  aria-label={`Switch to ${option.label} timeframe`}
+                  className="min-w-12"
+                >
+                  {option.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+
+            <div className="h-6 w-px bg-border/70" />
+
+            <div className="flex flex-col leading-none">
+              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Candle Time</span>
+              <span className="text-sm font-semibold tabular-nums">{formattedTimestamp}</span>
+            </div>
+          </div>
 
           <div className="h-8 w-px bg-border mx-3" />
 
@@ -476,7 +592,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
                 value={playbackSpeed.toString()}
                 onValueChange={(v) => setPlaybackSpeed(parseInt(v) as any)}
               >
-                <SelectTrigger className="h-8 w-[65px] text-xs font-semibold border-none bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:ring-0 focus:ring-offset-0 transition-colors">
+                <SelectTrigger className="h-8 w-16.25 text-xs font-semibold border-none bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:ring-0 focus:ring-offset-0 transition-colors">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -513,27 +629,38 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-      <div className="flex flex-1 overflow-hidden relative w-full" style={{ minHeight: 'calc(100vh - 140px)' }}>
+      <div className="flex flex-1 overflow-hidden relative w-full" style={{ height: 'calc(100vh - 140px)' }}>
         <ResizablePanelGroup direction="vertical" className="w-full h-full">
-          <ResizablePanel defaultSize={70} minSize={30} className="flex relative z-0 w-full h-full"
-          style={{height: 'calc(100vh - 140px)'}}>
-        
-        <div className="flex-1 relative bg-background shadow-inner overflow-hidden w-full h-full">
-          <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
-        </div>
-
-        <div className="w-[300px] border-l bg-card hidden md:block z-10 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] h-full">
-           <OrderPanel sessionId={sessionId} currentPrice={currentPrice} />
-        </div>
+          <ResizablePanel defaultSize={70} minSize={30} className="flex relative z-0 w-full h-full">
+            <ResizablePanelGroup direction="horizontal" className="w-full h-full">
+              <ResizablePanel defaultSize={75} minSize={30} className="relative bg-background shadow-inner overflow-hidden w-full h-full">
+                <div className="backtest-chart-shell w-full h-full">
+                  <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={25} minSize={15} maxSize={40} collapsible={true} collapsedSize={0} className="border-l bg-card hidden md:block z-10 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] h-full">
+                <OrderPanel sessionId={sessionId} currentPrice={currentPrice} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </ResizablePanel>
-          <ResizableHandle />
-          <ResizablePanel defaultSize={30} minSize={15} className="flex flex-col bg-card z-10 border-t h-full w-full">
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={30} minSize={10} maxSize={60} collapsible={true} collapsedSize={0} className="flex flex-col bg-card z-10 border-t h-full w-full">
             <PositionsPanel sessionId={sessionId} currentPrice={currentPrice} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
       </div>
     </div>
+    <style jsx global>{`
+      .backtest-chart-shell .klinecharts-pro-period-bar {
+        display: none !important;
+      }
+
+      .backtest-chart-shell .klinecharts-pro-content {
+        height: 100% !important;
+      }
+    `}</style>
     </TooltipProvider>
   );
 }
