@@ -4,15 +4,36 @@ import { useEffect, useState } from "react"
 import { PieChart, Pie, Cell, Legend } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { Skeleton } from "@/components/ui/skeleton"
 import { api, ApiResponse } from "@/lib/api"
 import { WinLossData } from "@/app/types/trade"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 
-export function WinLossChart({ filter }: { filter: DashboardFilter }) {
-  const [data, setData] = useState<WinLossData[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+interface WinLossChartProps {
+  filter: DashboardFilter
+  data?: WinLossData[]
+  isLoading?: boolean
+}
+
+export function WinLossChart({ filter, data: providedData, isLoading: providedLoading }: WinLossChartProps) {
+  const [data, setData] = useState<WinLossData[]>(providedData ?? [])
+  const [isLoading, setIsLoading] = useState(Boolean(providedLoading ?? !providedData))
 
   useEffect(() => {
+    if (providedData) {
+      setData(providedData)
+    }
+
+    if (typeof providedLoading === "boolean") {
+      setIsLoading(providedLoading)
+      return
+    }
+
+    if (providedData) {
+      setIsLoading(false)
+      return
+    }
+
     async function fetchWinLossRatio() {
       try {
         setIsLoading(true)
@@ -32,8 +53,8 @@ export function WinLossChart({ filter }: { filter: DashboardFilter }) {
       }
     }
 
-    fetchWinLossRatio()
-  }, [filter])
+    void fetchWinLossRatio()
+  }, [filter, providedData, providedLoading])
 
   const wins = data.find((d) => d.name === "Wins")?.value || 0
   const losses = data.find((d) => d.name === "Losses")?.value || 0
@@ -57,7 +78,7 @@ export function WinLossChart({ filter }: { filter: DashboardFilter }) {
   }
 
   return (
-    <Card className="border-border bg-card">
+    <Card className="border-border bg-card min-w-0">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground">Win/Loss Ratio</CardTitle>
         <CardDescription className="text-muted-foreground">
@@ -66,8 +87,13 @@ export function WinLossChart({ filter }: { filter: DashboardFilter }) {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[300px] items-center justify-center">
-            <p className="text-sm text-muted-foreground">Loading chart...</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4 pb-4">
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+              <Skeleton className="h-16 w-full rounded-lg" />
+            </div>
+            <Skeleton className="h-[200px] w-full rounded-lg" />
           </div>
         ) : (
           <>

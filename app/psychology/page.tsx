@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { type ElementType, useEffect, useMemo, useState } from "react"
 import {
   BarChart,
   Bar,
@@ -12,29 +12,22 @@ import {
   Cell,
   AreaChart,
   Area,
-  Tooltip,
 } from "recharts"
 import { Header } from "@/components/header"
+import { PsychologyCommandCenter } from "@/components/psychology/psychology-command-center"
 import { useTrades } from "@/lib/trade-context"
 import {
   type EmotionTagApi,
   getTagCategory,
 } from "@/lib/trade-store"
-
-export interface ApiJournalEntry {
-  id: number;
-  date: string;
-  todayTradingReview: string;
-  overallMood: number;
-  confidentLevel: number;
-  emotionTags: { id: number; name: string }[];
-}
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -44,6 +37,8 @@ import {
 } from "@/components/ui/dialog"
 import {
   Brain,
+  Calendar,
+  Lightbulb,
   TrendingUp,
   TrendingDown,
   FileText,
@@ -56,26 +51,136 @@ import {
   Flame,
   Loader2,
 } from "lucide-react"
-import { api } from "@/lib/api";
+import { type ApiPaginatedResponse, api } from "@/lib/api"
+import {
+  buildPsychologyNarrative,
+  buildPsychologyPulse,
+  filterJournalEntries,
+  type PsychologyJournalFilter,
+  type PsychologyStatsSnapshot,
+} from "@/lib/psychology-overview"
+import {
+  getPlainTextFromRichText,
+  getRichTextPreview,
+  normalizeRichTextValue,
+} from "@/lib/rich-text"
+import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
 
+const SURFACE_CARD_CLASS = "border-border/70 bg-card/95 shadow-sm"
+const JOURNAL_ARCHIVE_PAGE_SIZE = 10
+const JOURNAL_FETCH_PAGE_SIZE = 100
+const PSYCHOLOGY_TABS = ["overview", "journal", "patterns"] as const
+const PSYCHOLOGY_TAB_STORAGE_KEY = "trading-journal-psychology-tab"
+const JOURNAL_FILTERS: ReadonlyArray<{
+  value: PsychologyJournalFilter
+  label: string
+}> = [
+  { value: "all", label: "All entries" },
+  { value: "recent", label: "Recent" },
+  { value: "high-confidence", label: "High confidence" },
+  { value: "needs-reset", label: "Needs reset" },
+]
+const moodLabels = ["", "Very Low", "Low", "Neutral", "Good", "Excellent"]
+const confidenceLabels = ["", "Fragile", "Tentative", "Balanced", "Strong", "Locked in"]
+
+type PsychologyTabValue = (typeof PSYCHOLOGY_TABS)[number]
+
+export interface ApiJournalEntry {
+  id: number
+  date: string
+  todayTradingReview: string
+  overallMood: number
+  confidentLevel: number
+  emotionTags: { id: number; name: string }[]
+}
+
+function isPsychologyTabValue(value: string | null): value is PsychologyTabValue {
+  return PSYCHOLOGY_TABS.some((tab) => tab === value)
+}
+
+function PsychologyMetricCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  color = "text-foreground",
+  accentClassName = "border border-border/60 bg-secondary/30",
+}: {
+  label: string
+  value: string | number
+  sub: string
+  icon: ElementType
+  color?: string
+  accentClassName?: string
+}) {
+  return (
+    <Card className="overflow-hidden border-border/70 bg-linear-to-b from-card to-card/80 shadow-sm">
+      <CardContent className="pt-5 pb-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              {label}
+            </p>
+            <p className={`text-2xl font-semibold tracking-tight ${color}`}>{value}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{sub}</p>
+          </div>
+          <div className={cn("rounded-2xl p-2.5 shadow-sm", accentClassName)}>
+            <Icon className={`h-4 w-4 ${color}`} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PsychologyChartState({
+  icon: Icon,
+  message,
+  isLoading = false,
+  className = "h-62.5",
+}: {
+  icon: ElementType
+  message: string
+  isLoading?: boolean
+  className?: string
+}) {
+  return (
+    <div className={cn("flex flex-col items-center justify-center gap-3 text-center", className)}>
+      {isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      ) : (
+        <Icon className="h-5 w-5 text-muted-foreground/60" />
+      )}
+      <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+        {isLoading ? "Loading chart..." : message}
+      </p>
+    </div>
+  )
+}
+
 // --- Stats Cards ---
-function PsychologyStats({ statsData }: { statsData: { avgConfidence: number; topEmotion: string | null; psychologyScore: number; journalEntries: number; } | null }) {
+function PsychologyStats({ statsData }: { statsData: PsychologyStatsSnapshot | null }) {
   const topEmotionCategory = statsData?.topEmotion ? getTagCategory(statsData.topEmotion) : null
-  const psychScorePercent = statsData?.psychologyScore != null ? Math.round(statsData.psychologyScore * 100) : null;
+  const psychScorePercent =
+    statsData?.psychologyScore != null ? Math.round(statsData.psychologyScore * 100) : null
 
   const cards = [
     {
       title: "Avg Confidence",
-      value: statsData?.avgConfidence && statsData.avgConfidence > 0 ? statsData.avgConfidence.toFixed(1) : "-",
-      subtitle: "out of 5",
+      value:
+        statsData?.avgConfidence && statsData.avgConfidence > 0
+          ? `${statsData.avgConfidence.toFixed(1)}/5`
+          : "--",
+      subtitle: "Average self-trust across journaled sessions",
       icon: Shield,
       color: "text-primary",
+      accentClassName: "border border-primary/20 bg-primary/10",
     },
     {
-      title: "Top Emotion",
+      title: "Dominant State",
       value: statsData?.topEmotion || "-",
-      subtitle: statsData?.topEmotion ? `most frequent` : "no data",
+      subtitle: statsData?.topEmotion ? "Most repeated journal emotion" : "No tagged pattern yet",
       icon: Brain,
       color: statsData?.topEmotion
         ? topEmotionCategory === "positive"
@@ -84,11 +189,18 @@ function PsychologyStats({ statsData }: { statsData: { avgConfidence: number; to
             ? "text-red-400"
             : "text-blue-400"
         : "text-muted-foreground",
+      accentClassName: statsData?.topEmotion
+        ? topEmotionCategory === "positive"
+          ? "border border-emerald-500/20 bg-emerald-500/10"
+          : topEmotionCategory === "negative"
+            ? "border border-red-500/20 bg-red-500/10"
+            : "border border-blue-500/20 bg-blue-500/10"
+        : "border border-border/60 bg-secondary/30",
     },
     {
-      title: "Psychology Score",
-      value: psychScorePercent != null && psychScorePercent > 0 ? `${psychScorePercent}%` : "-",
-      subtitle: "positive ratio",
+      title: "Mindset Score",
+      value: psychScorePercent != null && psychScorePercent > 0 ? `${psychScorePercent}%` : "--",
+      subtitle: "Positive-to-negative psychology ratio",
       icon: TrendingUp,
       color:
         psychScorePercent != null && psychScorePercent >= 60
@@ -96,31 +208,35 @@ function PsychologyStats({ statsData }: { statsData: { avgConfidence: number; to
           : psychScorePercent != null && psychScorePercent >= 40
             ? "text-yellow-400"
             : "text-red-400",
+      accentClassName:
+        psychScorePercent != null && psychScorePercent >= 60
+          ? "border border-emerald-500/20 bg-emerald-500/10"
+          : psychScorePercent != null && psychScorePercent >= 40
+            ? "border border-amber-500/20 bg-amber-500/10"
+            : "border border-red-500/20 bg-red-500/10",
     },
     {
-      title: "Journal Entries",
+      title: "Reflections Logged",
       value: statsData?.journalEntries || 0,
-      subtitle: "total logged",
+      subtitle: "Total psychology journal entries saved",
       icon: FileText,
       color: "text-accent",
+      accentClassName: "border border-accent/20 bg-accent/10",
     },
   ]
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
-        <Card key={card.title} className="border-border bg-card">
-          <CardContent className="p-4">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">{card.title}</p>
-                <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
-                <p className="text-xs text-muted-foreground">{card.subtitle}</p>
-              </div>
-              <card.icon className={`h-5 w-5 ${card.color} opacity-60`} />
-            </div>
-          </CardContent>
-        </Card>
+        <PsychologyMetricCard
+          key={card.title}
+          label={card.title}
+          value={card.value}
+          sub={card.subtitle}
+          icon={card.icon}
+          color={card.color}
+          accentClassName={card.accentClassName}
+        />
       ))}
     </div>
   )
@@ -161,7 +277,7 @@ function EmotionFrequencyChart() {
   }
 
   return (
-    <Card className="border-border bg-card">
+    <Card className={SURFACE_CARD_CLASS}>
       <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground">Emotion Frequency</CardTitle>
         <CardDescription className="text-muted-foreground">
@@ -170,15 +286,14 @@ function EmotionFrequencyChart() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <PsychologyChartState icon={Brain} message="Loading emotion frequency." isLoading />
         ) : data.length === 0 ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            No emotion data yet. Tag emotions when creating trades.
-          </div>
+          <PsychologyChartState
+            icon={Brain}
+            message="No emotion data yet. Tag emotions when creating trades to build this view."
+          />
         ) : (
-          <ChartContainer config={chartConfig} className="h-[250px]">
+          <ChartContainer config={chartConfig} className="h-62.5">
             <BarChart data={data} layout="vertical" margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" horizontal={false} />
               <XAxis
@@ -245,7 +360,7 @@ function EmotionWinRateChart() {
   }
 
   return (
-    <Card className="border-border bg-card">
+    <Card className={SURFACE_CARD_CLASS}>
       <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground">Emotion vs Win Rate</CardTitle>
         <CardDescription className="text-muted-foreground">
@@ -254,15 +369,14 @@ function EmotionWinRateChart() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <PsychologyChartState icon={TrendingUp} message="Loading emotion win rates." isLoading />
         ) : data.length === 0 ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            Need closed trades with emotion tags for this analysis.
-          </div>
+          <PsychologyChartState
+            icon={TrendingUp}
+            message="Need closed trades with emotion tags before this analysis can surface a signal."
+          />
         ) : (
-          <ChartContainer config={chartConfig} className="h-[250px]">
+          <ChartContainer config={chartConfig} className="h-62.5">
             <BarChart data={data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
               <XAxis
@@ -325,7 +439,7 @@ function MoodTrendChart() {
   }
 
   return (
-    <Card className="border-border bg-card">
+    <Card className={SURFACE_CARD_CLASS}>
       <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground">Mood & Confidence Trend</CardTitle>
         <CardDescription className="text-muted-foreground">
@@ -334,15 +448,14 @@ function MoodTrendChart() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <PsychologyChartState icon={Calendar} message="Loading mood trend." isLoading />
         ) : data.length === 0 ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            Add journal entries to track your mood over time.
-          </div>
+          <PsychologyChartState
+            icon={Calendar}
+            message="Add journal entries to track your mood and confidence over time."
+          />
         ) : (
-          <ChartContainer config={chartConfig} className="h-[250px]">
+          <ChartContainer config={chartConfig} className="h-62.5">
             <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="moodGradient" x1="0" y1="0" x2="0" y2="1">
@@ -438,7 +551,7 @@ function EmotionDistributionChart() {
   const total = data.reduce((sum, d) => sum + d.value, 0)
 
   return (
-    <Card className="border-border bg-card">
+    <Card className={SURFACE_CARD_CLASS}>
       <CardHeader className="pb-2">
         <CardTitle className="text-lg text-foreground">Emotion Distribution</CardTitle>
         <CardDescription className="text-muted-foreground">
@@ -447,16 +560,15 @@ function EmotionDistributionChart() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            Loading...
-          </div>
+          <PsychologyChartState icon={Brain} message="Loading emotion mix." isLoading />
         ) : data.length === 0 ? (
-          <div className="flex h-[250px] items-center justify-center text-sm text-muted-foreground">
-            No emotion data yet.
-          </div>
+          <PsychologyChartState
+            icon={Brain}
+            message="No emotion distribution yet. Save tagged reflections to reveal your mix."
+          />
         ) : (
           <div className="flex flex-col items-center">
-            <ChartContainer config={chartConfig} className="h-[200px] w-full">
+            <ChartContainer config={chartConfig} className="h-50 w-full">
               <PieChart>
                 <Pie
                   data={data}
@@ -513,7 +625,7 @@ function PsychologyHeatmap() {
 
   if (isLoading || data.length === 0) {
     return (
-      <Card className="border-border bg-card lg:col-span-2">
+      <Card className={`${SURFACE_CARD_CLASS} lg:col-span-2`}>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg text-foreground">
             <Flame className="h-5 w-5 text-amber-400" />
@@ -524,9 +636,12 @@ function PsychologyHeatmap() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-            {isLoading ? "Loading..." : "Need closed trades with emotion tags for this analysis."}
-          </div>
+          <PsychologyChartState
+            icon={Flame}
+            message="Need closed trades with emotion tags before this map can show profitable and costly states."
+            isLoading={isLoading}
+            className="h-50"
+          />
         </CardContent>
       </Card>
     )
@@ -546,7 +661,7 @@ function PsychologyHeatmap() {
   }
 
   return (
-    <Card className="border-border bg-card lg:col-span-2">
+    <Card className={`${SURFACE_CARD_CLASS} lg:col-span-2`}>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
           <Flame className="h-5 w-5 text-amber-400" />
@@ -665,6 +780,216 @@ function PsychologyHeatmap() {
   )
 }
 
+function PsychologyCoachPanel({
+  statsData,
+  journalEntries,
+  onOpenJournal,
+  onOpenPatterns,
+}: {
+  statsData: PsychologyStatsSnapshot | null
+  journalEntries: ApiJournalEntry[]
+  onOpenJournal: () => void
+  onOpenPatterns: () => void
+}) {
+  const allEntries = useMemo(() => filterJournalEntries(journalEntries, "all"), [journalEntries])
+  const recentEntries = useMemo(
+    () => filterJournalEntries(journalEntries, "recent"),
+    [journalEntries],
+  )
+  const resetEntries = useMemo(
+    () => filterJournalEntries(journalEntries, "needs-reset"),
+    [journalEntries],
+  )
+  const latestEntry = allEntries[0] ?? null
+
+  const signals = [
+    {
+      label: "Dominant state",
+      value: statsData?.topEmotion ?? "No clear pattern yet",
+      detail: statsData?.topEmotion
+        ? "Review the sessions where this state appears before and after execution."
+        : "Keep tagging emotions so the dashboard can isolate repeatable states.",
+      icon: Brain,
+      accentClassName: "border border-accent/20 bg-accent/10 text-accent",
+    },
+    {
+      label: "Reset watch",
+      value:
+        resetEntries.length > 0
+          ? `${resetEntries.length} entry${resetEntries.length === 1 ? "" : "ies"} flagged`
+          : "No low-state reflections",
+      detail:
+        resetEntries.length > 0
+          ? "Low mood or low confidence sessions deserve smaller size and tighter rules."
+          : "Your recent notes are not showing urgent emotional risk signals.",
+      icon: TrendingDown,
+      accentClassName:
+        resetEntries.length > 0
+          ? "border border-amber-500/20 bg-amber-500/10 text-amber-400"
+          : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+    },
+    {
+      label: "Reflection cadence",
+      value: `${recentEntries.length} in last 14 days`,
+      detail:
+        recentEntries.length >= 2
+          ? "Cadence is strong enough to compare mindset shifts across sessions."
+          : "More recent check-ins will make pattern shifts easier to trust.",
+      icon: FileText,
+      accentClassName:
+        recentEntries.length >= 2
+          ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+          : "border border-border/70 bg-background/80 text-foreground",
+    },
+  ]
+
+  return (
+    <Card className={SURFACE_CARD_CLASS}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+          <Lightbulb className="h-4 w-4 text-amber-400" />
+          Coach readout
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          Read the pattern, then decide whether the next session needs more freedom or more guardrails.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {signals.map((signal) => (
+          <div key={signal.label} className="rounded-2xl border border-border/70 bg-background/70 p-3">
+            <div className="flex items-start gap-3">
+              <div className={cn("rounded-xl p-2 shadow-sm", signal.accentClassName)}>
+                <signal.icon className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  {signal.label}
+                </p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{signal.value}</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{signal.detail}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {latestEntry ? (
+          <div className="rounded-2xl border border-border/70 bg-secondary/20 p-3">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Latest note
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-foreground">
+              {getRichTextPreview(latestEntry.todayTradingReview, 120)}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button variant="outline" size="sm" className="gap-2" onClick={onOpenJournal}>
+            <FileText className="h-4 w-4" />
+            Open journal
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={onOpenPatterns}>
+            <Brain className="h-4 w-4" />
+            Review patterns
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function PatternGuideCard({ onOpenJournal }: { onOpenJournal: () => void }) {
+  const items = [
+    "Use the heatmap to find the emotional states that consistently add or subtract expectancy.",
+    "Compare win rate and frequency together so rare emotions do not overpower the story.",
+    "When a negative state repeats, add a pre-trade checkpoint or cut size before the next session.",
+  ]
+
+  return (
+    <Card className={SURFACE_CARD_CLASS}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+          <Lightbulb className="h-4 w-4 text-amber-400" />
+          How to read the pattern maps
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          Turn chart observations into a process change instead of a vague feeling.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.map((item, index) => (
+          <div key={item} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-accent/25 bg-accent/10 text-xs font-semibold text-accent">
+              {index + 1}
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/85">{item}</p>
+          </div>
+        ))}
+
+        <Button variant="outline" size="sm" className="gap-2" onClick={onOpenJournal}>
+          <FileText className="h-4 w-4" />
+          Capture the next review
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ReflectionRoutineCard({ onOpenNewEntry }: { onOpenNewEntry: () => void }) {
+  const prompts = [
+    "Score mood and confidence before you look at the PnL.",
+    "Tag the two or three emotions that shaped your decisions the most.",
+    "Write one sentence on discipline and one on what needs to change tomorrow.",
+  ]
+
+  return (
+    <Card className={SURFACE_CARD_CLASS}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+          <Brain className="h-4 w-4 text-accent" />
+          Reflection routine
+        </CardTitle>
+        <CardDescription className="text-muted-foreground">
+          Keep the journaling habit short enough to repeat and structured enough to compare.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {prompts.map((prompt, index) => (
+          <div key={prompt} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-xs font-semibold text-primary">
+              {index + 1}
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/85">{prompt}</p>
+          </div>
+        ))}
+
+        <Button size="sm" className="gap-2" onClick={onOpenNewEntry}>
+          <Plus className="h-4 w-4" />
+          Start new reflection
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function JournalEntriesSkeleton() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="rounded-2xl border border-border/70 bg-card/70 p-4 shadow-sm">
+          <Skeleton className="h-4 w-36 rounded-md" />
+          <Skeleton className="mt-3 h-3 w-28 rounded-md" />
+          <div className="mt-4 space-y-2">
+            <Skeleton className="h-3 w-full rounded-md" />
+            <Skeleton className="h-3 w-full rounded-md" />
+            <Skeleton className="h-3 w-3/4 rounded-md" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // --- Journal Entry Card ---
 function JournalEntryCard({
   entry,
@@ -674,36 +999,75 @@ function JournalEntryCard({
   onDelete: (id: number) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-
-  const moodLabels = ["", "Very Low", "Low", "Neutral", "Good", "Excellent"]
-  const moodColors = ["", "text-red-400", "text-orange-400", "text-yellow-400", "text-emerald-400", "text-emerald-300"]
+  const moodColors = [
+    "",
+    "text-red-400",
+    "text-orange-400",
+    "text-yellow-400",
+    "text-emerald-400",
+    "text-emerald-300",
+  ]
+  const confidenceColors = [
+    "",
+    "text-red-400",
+    "text-orange-400",
+    "text-yellow-400",
+    "text-emerald-400",
+    "text-emerald-300",
+  ]
+  const moodBadgeClasses = [
+    "",
+    "border-red-500/25 bg-red-500/10 text-red-400",
+    "border-orange-500/25 bg-orange-500/10 text-orange-400",
+    "border-yellow-500/25 bg-yellow-500/10 text-yellow-400",
+    "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
+    "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
+  ]
 
   return (
-    <div className="rounded-lg border border-border bg-card/50 p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15">
-            <span className="text-sm font-bold text-accent">{entry.overallMood}</span>
+    <div className="rounded-2xl border border-border/70 bg-linear-to-br from-card/95 to-card/75 p-4 shadow-sm">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 shadow-sm">
+            <span className="text-base font-semibold text-accent">{entry.overallMood}</span>
           </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">
-              {new Date(entry.date).toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-            <p className={`text-xs font-medium ${moodColors[entry.overallMood] || "text-muted-foreground"}`}>
-              {moodLabels[entry.overallMood] || "Unknown"} Mood
-            </p>
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {new Date(entry.date).toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Logged reflection for the trading session and mindset review.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium",
+                  moodBadgeClasses[entry.overallMood] ||
+                    "border-border/70 bg-background/70 text-muted-foreground",
+                )}
+              >
+                Mood {moodLabels[entry.overallMood] || "Unknown"}
+              </span>
+              <span className="inline-flex rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                Confidence {entry.confidentLevel}/5 · {confidenceLabels[entry.confidentLevel] || "Unknown"}
+              </span>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+
+        <div className="flex items-center gap-1 self-start">
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+            className="h-8 rounded-xl px-2 text-muted-foreground hover:text-foreground"
             onClick={() => setExpanded(!expanded)}
             aria-label={expanded ? "Collapse entry" : "Expand entry"}
           >
@@ -712,7 +1076,7 @@ function JournalEntryCard({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            className="h-8 rounded-xl px-2 text-muted-foreground hover:text-destructive"
             onClick={() => onDelete(entry.id)}
             aria-label="Delete entry"
           >
@@ -721,65 +1085,72 @@ function JournalEntryCard({
         </div>
       </div>
 
-      {/* Tags */}
-      {entry.emotionTags.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
+      {entry.emotionTags.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-1.5">
           {entry.emotionTags.map((tag) => {
-            const label = tag.name ? tag.name : "Unknown Tag"
-            
+            const label = tag.name || "Unknown Tag"
             const colorMap = {
               positive: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
               negative: "bg-red-500/15 text-red-400 border-red-500/25",
               neutral: "bg-blue-500/15 text-blue-400 border-blue-500/25",
             }
-            
             const category = getTagCategory(label)
-            const colorClass = colorMap[category]
 
             return (
               <span
                 key={tag.id}
-                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${colorClass}`}
+                className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${colorMap[category]}`}
               >
                 {label}
               </span>
             )
           })}
         </div>
-      )}
+      ) : null}
 
-      {/* Journal excerpt or full text */}
-      <div className="mt-3">
-        <p className="text-sm leading-relaxed text-foreground/80">
-          {expanded ? entry.todayTradingReview : entry.todayTradingReview?.length > 150 ? `${entry.todayTradingReview.slice(0, 150)}...` : entry.todayTradingReview}
+      <div className="mt-4 rounded-2xl border border-border/70 bg-background/60 p-3">
+        <p className="text-sm leading-relaxed text-foreground/85">
+          {expanded
+            ? getPlainTextFromRichText(entry.todayTradingReview)
+            : getRichTextPreview(entry.todayTradingReview, 190)}
         </p>
-        {!expanded && entry.todayTradingReview?.length > 150 && (
+        {!expanded && getPlainTextFromRichText(entry.todayTradingReview).length > 190 ? (
           <button
             onClick={() => setExpanded(true)}
-            className="mt-1 text-xs font-medium text-accent hover:underline"
+            className="mt-2 text-xs font-medium text-accent hover:underline"
           >
             Read more
           </button>
-        )}
+        ) : null}
       </div>
 
-      {/* Confidence */}
-      <div className="mt-3 flex items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground">Confidence:</span>
-        {[1, 2, 3, 4, 5].map((level) => (
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+          <span>Confidence bar</span>
+          <span className={confidenceColors[entry.confidentLevel] || "text-muted-foreground"}>
+            {confidenceLabels[entry.confidentLevel] || "Unknown"}
+          </span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-secondary/60">
           <div
-            key={level}
-            className={`h-1.5 w-1.5 rounded-full ${
-              entry.confidentLevel >= level ? "bg-primary" : "bg-secondary"
-            }`}
+            className="h-full rounded-full bg-linear-to-r from-primary/70 via-accent to-emerald-400"
+            style={{ width: `${(entry.confidentLevel / 5) * 100}%` }}
           />
-        ))}
+        </div>
       </div>
     </div>
   )
 }
 
-function NewEntryForm({ apiTags, onSave, onCancel }: { apiTags: EmotionTagApi[]; onSave: () => void; onCancel: () => void }) {
+function NewEntryForm({
+  apiTags,
+  onSave,
+  onCancel,
+}: {
+  apiTags: EmotionTagApi[]
+  onSave: () => void
+  onCancel: () => void
+}) {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0])
   const [overallMood, setOverallMood] = useState(3)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -788,26 +1159,45 @@ function NewEntryForm({ apiTags, onSave, onCancel }: { apiTags: EmotionTagApi[];
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
 
+  const selectedEmotionLabels = useMemo(
+    () =>
+      apiTags
+        .filter((tag) => selectedTags.includes(tag.id.toString()))
+        .map((tag) => tag.name),
+    [apiTags, selectedTags],
+  )
+
   const toggleTag = (id: string) => {
-    setSelectedTags((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]))
+    setSelectedTags((prev) =>
+      prev.includes(id) ? prev.filter((tagId) => tagId !== id) : [...prev, id],
+    )
   }
 
   const handleSave = async () => {
-    if (!journalEntry.trim()) return
+    const normalizedJournalEntry = normalizeRichTextValue(journalEntry)
+
+    if (!getPlainTextFromRichText(normalizedJournalEntry).trim()) {
+      toast({
+        title: "Reflection required",
+        description: "Add a short review so this entry becomes useful when you revisit it.",
+        variant: "destructive",
+      })
+      return
+    }
 
     setIsSubmitting(true)
     try {
       const payload = {
         date: new Date(date).toISOString(),
-        todayTradingReview: journalEntry.trim(),
+        todayTradingReview: normalizedJournalEntry,
         overallMood,
         confidentLevel: confidenceLevel,
-        emotionTags: selectedTags.map(Number)
+        emotionTags: selectedTags.map(Number),
       }
 
-      const res = await api.post("/v1/psychology-journals", payload);
+      const res = await api.post("/v1/psychology-journals", payload)
       const data = await res.data
-      
+
       if (data.isSuccess) {
         toast({
           title: "Entry saved",
@@ -835,120 +1225,186 @@ function NewEntryForm({ apiTags, onSave, onCancel }: { apiTags: EmotionTagApi[];
   }
 
   return (
-    <div className="space-y-5">
-      {/* Date */}
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Date</Label>
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+    <div className="space-y-6">
+      <div className="rounded-2xl border border-accent/20 bg-accent/6 p-4">
+        <p className="text-sm font-medium text-foreground">Log the state before the story.</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          Capture mood, confidence, and the dominant emotions first so the written review stays anchored to what you actually felt.
+        </p>
       </div>
 
-      {/* Overall Mood */}
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Overall Mood</Label>
-        <div className="flex items-center gap-3">
-          {[1, 2, 3, 4, 5].map((level) => (
-            <button
-              key={level}
-              type="button"
-              onClick={() => setOverallMood(level)}
-              className={`flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold transition-all ${
-                overallMood === level
-                  ? "border-accent bg-accent/20 text-accent ring-2 ring-accent/30"
-                  : overallMood >= level
-                    ? "border-accent/40 bg-accent/10 text-accent"
-                    : "border-border bg-secondary/50 text-muted-foreground hover:border-accent/30"
-              }`}
-            >
-              {level}
-            </button>
-          ))}
-          <span className="text-xs text-muted-foreground">
-            {overallMood === 1 && "Very Low"}
-            {overallMood === 2 && "Low"}
-            {overallMood === 3 && "Neutral"}
-            {overallMood === 4 && "Good"}
-            {overallMood === 5 && "Excellent"}
-          </span>
-        </div>
-      </div>
+      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Quick check-in
+            </p>
 
-      {/* Emotion Tags */}
-      <div className="space-y-3">
-        <Label className="text-xs text-muted-foreground">Emotions</Label>
-        {(["positive", "negative", "neutral"] as const).map((category) => (
-          <div key={category} className="space-y-1.5">
-            <span className="text-xs font-medium capitalize text-muted-foreground">{category}</span>
-            <div className="flex flex-wrap gap-2">
-              {apiTags.filter((t) => getTagCategory(t.name) === category).map((tag) => {
-                const isSelected = selectedTags.includes(tag.id.toString())
-                const colorMap = {
-                  positive: isSelected
-                    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 ring-1 ring-emerald-500/30"
-                    : "bg-secondary/50 text-muted-foreground border-border hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/30",
-                  negative: isSelected
-                    ? "bg-red-500/20 text-red-400 border-red-500/40 ring-1 ring-red-500/30"
-                    : "bg-secondary/50 text-muted-foreground border-border hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30",
-                  neutral: isSelected
-                    ? "bg-blue-500/20 text-blue-400 border-blue-500/40 ring-1 ring-blue-500/30"
-                    : "bg-secondary/50 text-muted-foreground border-border hover:bg-blue-500/10 hover:text-blue-400 hover:border-blue-500/30",
-                }
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    onClick={() => toggleTag(tag.id.toString())}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${colorMap[category]}`}
-                  >
-                    {tag.name}
-                  </button>
-                )
-              })}
+            <div className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Overall Mood</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setOverallMood(level)}
+                      className={`flex h-11 items-center justify-center rounded-2xl border text-sm font-semibold transition-all ${
+                        overallMood === level
+                          ? "border-accent bg-accent/20 text-accent ring-2 ring-accent/20"
+                          : overallMood >= level
+                            ? "border-accent/30 bg-accent/8 text-accent"
+                            : "border-border bg-secondary/40 text-muted-foreground hover:border-accent/20"
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">{moodLabels[overallMood] || "Unknown"}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Confidence Level</Label>
+                <div className="grid grid-cols-5 gap-2">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setConfidenceLevel(level)}
+                      className={`flex h-10 items-center justify-center rounded-2xl border text-sm font-medium transition-all ${
+                        confidenceLevel >= level
+                          ? "border-primary/40 bg-primary/12 text-primary"
+                          : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/25"
+                      }`}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {confidenceLabels[confidenceLevel] || "Unknown"}
+                </p>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Confidence */}
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Confidence Level</Label>
-        <div className="flex items-center gap-3">
-          {[1, 2, 3, 4, 5].map((level) => (
-            <button
-              key={level}
-              type="button"
-              onClick={() => setConfidenceLevel(level)}
-              className={`flex h-9 w-9 items-center justify-center rounded-full border text-sm font-medium transition-all ${
-                confidenceLevel >= level
-                  ? "border-primary bg-primary/20 text-primary"
-                  : "border-border bg-secondary/50 text-muted-foreground hover:border-primary/50"
-              }`}
-            >
-              {level}
-            </button>
-          ))}
+          <div className="rounded-2xl border border-border/70 bg-background/70 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Emotion tags
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                  Pick the emotions that dominated the session. Two or three tags is usually enough.
+                </p>
+              </div>
+
+              <span className="inline-flex rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                {selectedTags.length} selected
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {(["positive", "negative", "neutral"] as const).map((category) => (
+                <div key={category} className="rounded-2xl border border-border/60 bg-secondary/20 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium capitalize text-muted-foreground">
+                      {category}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {
+                        apiTags.filter((tag) => getTagCategory(tag.name) === category).length
+                      } tags
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2.5">
+                    {apiTags
+                      .filter((tag) => getTagCategory(tag.name) === category)
+                      .map((tag) => {
+                        const isSelected = selectedTags.includes(tag.id.toString())
+                        const colorMap = {
+                          positive: isSelected
+                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 ring-1 ring-emerald-500/30"
+                            : "bg-background/80 text-muted-foreground border-border hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/30",
+                          negative: isSelected
+                            ? "bg-red-500/20 text-red-400 border-red-500/40 ring-1 ring-red-500/30"
+                            : "bg-background/80 text-muted-foreground border-border hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30",
+                          neutral: isSelected
+                            ? "bg-blue-500/20 text-blue-400 border-blue-500/40 ring-1 ring-blue-500/30"
+                            : "bg-background/80 text-muted-foreground border-border hover:bg-blue-500/10 hover:text-blue-400 hover:border-blue-500/30",
+                        }
+
+                        return (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            onClick={() => toggleTag(tag.id.toString())}
+                            className={`min-h-10 rounded-2xl border px-3.5 py-2 text-sm font-medium transition-all ${colorMap[category]}`}
+                          >
+                            {tag.name}
+                          </button>
+                        )
+                      })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Reflection
+            </p>
+            <div className="mt-3 grid gap-2 rounded-2xl border border-border/70 bg-secondary/20 p-3 text-xs leading-relaxed text-muted-foreground sm:grid-cols-3">
+              <p>What did I feel before the first decision?</p>
+              <p>Where did discipline hold or slip?</p>
+              <p>What changes for the next session?</p>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <Label className="text-xs text-muted-foreground">Journal Entry</Label>
+              <Textarea
+                placeholder="How did you feel before, during, and after the session? What drove your best decisions, and where did emotion pull you off-plan?"
+                value={journalEntry}
+                onChange={(event) => setJournalEntry(event.target.value)}
+                rows={10}
+                className="min-h-52 resize-y"
+              />
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>
+                  {selectedEmotionLabels.length > 0
+                    ? selectedEmotionLabels.join(" • ")
+                    : "No emotions selected yet"}
+                </span>
+                <span>{getPlainTextFromRichText(journalEntry).trim().length} chars</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Journal */}
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Journal Entry</Label>
-        <Textarea
-          placeholder="How was your trading day? What went well? What could you improve?"
-          value={journalEntry}
-          onChange={(e) => setJournalEntry(e.target.value)}
-          rows={5}
-        />
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center justify-end gap-3 pt-2">
-        <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
-          Cancel
-        </Button>
-        <Button onClick={handleSave} disabled={!journalEntry.trim() || isSubmitting}>
-          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isSubmitting ? "Saving..." : "Save Entry"}
-        </Button>
+      <div className="flex flex-col-reverse gap-3 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">
+          Save concise entries consistently. The chart quality improves faster than the essay length.
+        </p>
+        <div className="flex items-center justify-end gap-3">
+          <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={!getPlainTextFromRichText(journalEntry).trim() || isSubmitting}>
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isSubmitting ? "Saving..." : "Save Entry"}
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -957,20 +1413,38 @@ function NewEntryForm({ apiTags, onSave, onCancel }: { apiTags: EmotionTagApi[];
 function PsychologyContent() {
   const { trades } = useTrades()
   const [newEntryOpen, setNewEntryOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<PsychologyTabValue>("overview")
+  const [journalFilter, setJournalFilter] = useState<PsychologyJournalFilter>("all")
+  const [archivePage, setArchivePage] = useState(1)
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([])
   const [journalEntries, setJournalEntries] = useState<ApiJournalEntry[]>([])
   const [isLoadingJournals, setIsLoadingJournals] = useState(true)
   const { toast } = useToast()
-  const [statsData, setStatsData] = useState<{
-    avgConfidence: number;
-    topEmotion: string | null;
-    psychologyScore: number;
-    journalEntries: number;
-  } | null>(null);
+  const [statsData, setStatsData] = useState<PsychologyStatsSnapshot | null>(null)
+
+  useEffect(() => {
+    try {
+      const storedTab = window.localStorage.getItem(PSYCHOLOGY_TAB_STORAGE_KEY)
+
+      if (isPsychologyTabValue(storedTab)) {
+        setActiveTab(storedTab)
+      }
+    } catch {
+      // Ignore storage access failures.
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PSYCHOLOGY_TAB_STORAGE_KEY, activeTab)
+    } catch {
+      // Ignore storage access failures.
+    }
+  }, [activeTab])
 
   const fetchStats = async () => {
     try {
-      const res = await api.get("/v1/dashboard/statistic");
+      const res = await api.get("/v1/dashboard/statistic")
       if (res.data.isSuccess) {
         setStatsData(res.data.value)
       }
@@ -982,17 +1456,34 @@ function PsychologyContent() {
   const fetchJournals = async () => {
     setIsLoadingJournals(true)
     try {
-      const res = await api.post("/v1/psychology-journals/search", {
-        page: 1,
-        pageSize: 10,
-        overallMood: null,
-        confidentLevel: null,
-        emotionTags: null
-      })
-      const data = res.data
-      if (data.isSuccess) {
-        setJournalEntries(data.value.values)
+      const allEntries: ApiJournalEntry[] = []
+      let nextPage = 1
+      let hasMore = true
+
+      while (hasMore) {
+        const res = await api.post<ApiPaginatedResponse<ApiJournalEntry>>(
+          "/v1/psychology-journals/search",
+          {
+            page: nextPage,
+            pageSize: JOURNAL_FETCH_PAGE_SIZE,
+            overallMood: null,
+            confidentLevel: null,
+            emotionTags: null,
+          },
+        )
+        const data = res.data
+
+        if (!data.isSuccess) {
+          break
+        }
+
+        allEntries.push(...(data.value.values ?? []))
+        hasMore = Boolean(data.value.hasMore)
+        nextPage += 1
       }
+
+      setJournalEntries(allEntries)
+      setArchivePage(1)
     } catch (err) {
       console.error("Failed to fetch journals:", err)
     } finally {
@@ -1005,17 +1496,70 @@ function PsychologyContent() {
       .get("/v1/emotions")
       .then((res) => res.data)
       .then((data) => {
-        if (data.isSuccess) setApiTags(data.value);
+        if (data.isSuccess) {
+          setApiTags(data.value)
+        }
       })
-      .catch((err) => console.error("Failed to fetch API tags:", err));
+      .catch((err) => console.error("Failed to fetch API tags:", err))
 
     fetchJournals()
     fetchStats()
   }, [])
 
+  const sortedEntries = useMemo(
+    () => filterJournalEntries(journalEntries, "all"),
+    [journalEntries],
+  )
+  const filteredEntries = useMemo(
+    () => filterJournalEntries(journalEntries, journalFilter),
+    [journalEntries, journalFilter],
+  )
+  const paginatedFilteredEntries = useMemo(() => {
+    const startIndex = (archivePage - 1) * JOURNAL_ARCHIVE_PAGE_SIZE
+
+    return filteredEntries.slice(startIndex, startIndex + JOURNAL_ARCHIVE_PAGE_SIZE)
+  }, [archivePage, filteredEntries])
+  const latestEntry = sortedEntries[0] ?? null
+  const narrative = useMemo(
+    () => buildPsychologyNarrative({ stats: statsData, entries: sortedEntries }),
+    [statsData, sortedEntries],
+  )
+  const pulseCards = useMemo(
+    () => buildPsychologyPulse(statsData, sortedEntries),
+    [statsData, sortedEntries],
+  )
+  const journalFilterCounts = useMemo(
+    () => ({
+      all: sortedEntries.length,
+      recent: filterJournalEntries(sortedEntries, "recent").length,
+      "high-confidence": filterJournalEntries(sortedEntries, "high-confidence").length,
+      "needs-reset": filterJournalEntries(sortedEntries, "needs-reset").length,
+    }),
+    [sortedEntries],
+  )
+  const totalArchivePages = Math.max(
+    1,
+    Math.ceil(filteredEntries.length / JOURNAL_ARCHIVE_PAGE_SIZE),
+  )
+  const archiveStart =
+    filteredEntries.length === 0 ? 0 : (archivePage - 1) * JOURNAL_ARCHIVE_PAGE_SIZE + 1
+  const archiveEnd = Math.min(archivePage * JOURNAL_ARCHIVE_PAGE_SIZE, filteredEntries.length)
+  const activeFilterLabel =
+    JOURNAL_FILTERS.find((filter) => filter.value === journalFilter)?.label ?? "All entries"
+
+  useEffect(() => {
+    setArchivePage(1)
+  }, [journalFilter])
+
+  useEffect(() => {
+    if (archivePage > totalArchivePages) {
+      setArchivePage(totalArchivePages)
+    }
+  }, [archivePage, totalArchivePages])
+
   const handleDeleteEntry = async (id: number) => {
     try {
-      await api.delete(`/v1/psychology-journals/${id}`);
+      await api.delete(`/v1/psychology-journals/${id}`)
       toast({
         title: "Entry deleted",
         description: "The journal entry was successfully removed.",
@@ -1031,31 +1575,35 @@ function PsychologyContent() {
       console.error("Failed to delete journal:", err)
     }
   }
-  
+
   const handleExport = () => {
     const exportData = {
       exportDate: new Date().toISOString(),
-      psychologyEntries: journalEntries,
+      psychologyEntries: sortedEntries,
       tradeEmotionData: trades
-        .filter((t) => t.emotionTags?.length || t.confidenceLevel || t.psychologyNotes)
-        .map((t) => ({
-          tradeId: t.id,
-          asset: t.asset,
-          date: t.date,
-          emotionTags: t.emotionTags,
-          confidenceLevel: t.confidenceLevel,
-          psychologyNotes: t.psychologyNotes,
-          pnl: t.pnl,
-          status: t.status,
+        .filter((trade) => trade.emotionTags?.length || trade.confidenceLevel || trade.psychologyNotes)
+        .map((trade) => ({
+          tradeId: trade.id,
+          asset: trade.asset,
+          date: trade.date,
+          emotionTags: trade.emotionTags,
+          confidenceLevel: trade.confidenceLevel,
+          psychologyNotes: trade.psychologyNotes,
+          pnl: trade.pnl,
+          status: trade.status,
         })),
     }
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" })
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+      type: "application/json",
+    })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `trading-psychology-${new Date().toISOString().split("T")[0]}.json`
-    a.click()
+    const anchor = document.createElement("a")
+
+    anchor.href = url
+    anchor.download = `trading-psychology-${new Date().toISOString().split("T")[0]}.json`
+    anchor.click()
+
     URL.revokeObjectURL(url)
   }
 
@@ -1068,104 +1616,184 @@ function PsychologyContent() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Page Header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Trading Psychology</h1>
-            <p className="text-muted-foreground">
-              Track your emotions, journal your mindset, and discover patterns
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" className="gap-2" onClick={handleExport}>
-              <Download className="h-4 w-4" />
-              Export Data
-            </Button>
-            <Button size="sm" className="gap-2" onClick={() => setNewEntryOpen(true)}>
-              <Plus className="h-4 w-4" />
-              New Entry
-            </Button>
-          </div>
-        </div>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          <PsychologyCommandCenter
+            narrative={narrative}
+            pulseCards={pulseCards}
+            journalEntriesCount={sortedEntries.length}
+            latestEntry={latestEntry}
+            exportAction={
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleExport}>
+                <Download className="h-4 w-4" />
+                Export data
+              </Button>
+            }
+            onOpenNewEntry={() => setNewEntryOpen(true)}
+            onOpenJournal={() => setActiveTab("journal")}
+            onOpenPatterns={() => setActiveTab("patterns")}
+          />
 
-        {/* Stats Cards */}
-        <PsychologyStats statsData={statsData} />
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              if (isPsychologyTabValue(value)) {
+                setActiveTab(value)
+              }
+            }}
+            className="space-y-6"
+          >
+            <TabsList className="grid h-auto grid-cols-3 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1">
+              <TabsTrigger value="overview" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <Brain className="h-3.5 w-3.5" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="journal" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <FileText className="h-3.5 w-3.5" />
+                Journal
+              </TabsTrigger>
+              <TabsTrigger value="patterns" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <Flame className="h-3.5 w-3.5" />
+                Patterns
+              </TabsTrigger>
+            </TabsList>
 
-        {/* Charts Grid */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <EmotionFrequencyChart />
-          <EmotionWinRateChart />
-          <MoodTrendChart />
-          <EmotionDistributionChart />
-          <PsychologyHeatmap />
-        </div>
+            <TabsContent value="overview" className="space-y-6">
+              <PsychologyStats statsData={statsData} />
 
-        {/* Journal Section */}
-        <div className="mt-6">
-          <Card className="border-border bg-card">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg text-foreground">Psychology Journal</CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    Your daily trading mindset entries
-                  </CardDescription>
-                </div>
-                <Button variant="outline" size="sm" className="gap-2" onClick={() => setNewEntryOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Add Entry
-                </Button>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <MoodTrendChart />
+                <PsychologyCoachPanel
+                  statsData={statsData}
+                  journalEntries={sortedEntries}
+                  onOpenJournal={() => setActiveTab("journal")}
+                  onOpenPatterns={() => setActiveTab("patterns")}
+                />
+                <PsychologyHeatmap />
               </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingJournals ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <p className="text-sm font-medium text-muted-foreground">Loading entries...</p>
-                </div>
-              ) : journalEntries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Brain className="mb-3 h-10 w-10 text-muted-foreground/40" />
-                  <p className="text-sm font-medium text-foreground">No journal entries yet</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Start journaling to track your mental state and improve your trading psychology.
-                  </p>
-                  <Button size="sm" className="mt-4 gap-2" onClick={() => setNewEntryOpen(true)}>
-                    <Plus className="h-4 w-4" />
-                    Create First Entry
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {journalEntries.map((entry) => (
-                    <JournalEntryCard
-                      key={entry.id}
-                      entry={entry}
-                      onDelete={handleDeleteEntry}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            </TabsContent>
 
-        {/* New Entry Dialog */}
-        <Dialog open={newEntryOpen} onOpenChange={setNewEntryOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>New Psychology Entry</DialogTitle>
-              <DialogDescription>
-                Log your emotional state and reflect on your trading mindset.
-              </DialogDescription>
-            </DialogHeader>
-            <NewEntryForm
-              apiTags={apiTags}
-              onSave={handleSaveEntry}
-              onCancel={() => setNewEntryOpen(false)}
-            />
-          </DialogContent>
-        </Dialog>
+            <TabsContent value="journal" className="space-y-6">
+              <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)] xl:items-start">
+                <ReflectionRoutineCard onOpenNewEntry={() => setNewEntryOpen(true)} />
+
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <CardTitle className="text-lg text-foreground">Journal archive</CardTitle>
+                        <CardDescription className="text-muted-foreground">
+                          {activeFilterLabel} · {filteredEntries.length} total reflection{filteredEntries.length === 1 ? "" : "s"}
+                        </CardDescription>
+                      </div>
+                      <Button size="sm" className="gap-2" onClick={() => setNewEntryOpen(true)}>
+                        <Plus className="h-4 w-4" />
+                        Add entry
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      {JOURNAL_FILTERS.map((filter) => (
+                        <Button
+                          key={filter.value}
+                          variant={journalFilter === filter.value ? "default" : "outline"}
+                          size="sm"
+                          className="gap-2 rounded-xl"
+                          onClick={() => setJournalFilter(filter.value)}
+                        >
+                          {filter.label}
+                          <span className="rounded-full bg-background/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {journalFilterCounts[filter.value]}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+
+                    {isLoadingJournals ? (
+                      <JournalEntriesSkeleton />
+                    ) : filteredEntries.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 bg-background/60 px-6 py-12 text-center">
+                        <Brain className="mb-3 h-10 w-10 text-muted-foreground/40" />
+                        <p className="text-sm font-medium text-foreground">
+                          {sortedEntries.length === 0 ? "No journal entries yet" : `No ${activeFilterLabel.toLowerCase()} reflections`}
+                        </p>
+                        <p className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
+                          {sortedEntries.length === 0
+                            ? "Start journaling to track your mental state and improve your trading psychology."
+                            : "Try another filter or log a fresh reflection after the next session to grow the dataset."}
+                        </p>
+                        <Button size="sm" className="mt-4 gap-2" onClick={() => setNewEntryOpen(true)}>
+                          <Plus className="h-4 w-4" />
+                          {sortedEntries.length === 0 ? "Create first entry" : "Add new entry"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {paginatedFilteredEntries.map((entry) => (
+                          <JournalEntryCard key={entry.id} entry={entry} onDelete={handleDeleteEntry} />
+                        ))}
+
+                        {filteredEntries.length > JOURNAL_ARCHIVE_PAGE_SIZE ? (
+                          <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-background/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              Showing {archiveStart} to {archiveEnd} of {filteredEntries.length} reflections
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setArchivePage((page) => Math.max(1, page - 1))}
+                                disabled={archivePage === 1 || isLoadingJournals}
+                              >
+                                Previous
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setArchivePage((page) => Math.min(totalArchivePages, page + 1))
+                                }
+                                disabled={archivePage >= totalArchivePages || isLoadingJournals}
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="patterns" className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <EmotionWinRateChart />
+                <EmotionFrequencyChart />
+                <EmotionDistributionChart />
+                <PatternGuideCard onOpenJournal={() => setActiveTab("journal")} />
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <Dialog open={newEntryOpen} onOpenChange={setNewEntryOpen}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+              <DialogHeader>
+                <DialogTitle>New Psychology Entry</DialogTitle>
+                <DialogDescription>
+                  Log your emotional state and reflect on your trading mindset while the session is still fresh.
+                </DialogDescription>
+              </DialogHeader>
+              <NewEntryForm
+                apiTags={apiTags}
+                onSave={handleSaveEntry}
+                onCancel={() => setNewEntryOpen(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
       </main>
     </div>
   )

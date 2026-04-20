@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, use } from "react";
+import type { ElementType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { useTrades } from "@/lib/trade-context";
@@ -13,13 +14,20 @@ import {
   ChecklistModelApi,
   ChecklistModelDetailApi,
 } from "@/lib/trade-store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -60,7 +68,6 @@ import {
   Brain,
   Tags,
   ClipboardCheck,
-  Check,
   Gauge,
   ImagePlus,
   Loader2,
@@ -70,8 +77,9 @@ import type { Trade } from "@/lib/trade-store";
 import { TradeStatus } from "@/lib/enum/TradeStatus";
 import { PositionType } from "@/lib/enum/PositionType";
 import { api, ApiResponse } from "@/lib/api";
+import { getPlainTextFromRichText } from "@/lib/rich-text";
 import { AxiosResponse } from "axios";
-import { getPositionTypeLabel, getTradeStatusLabel } from "@/lib/utils";
+import { cn, getPositionTypeLabel, getTradeStatusLabel } from "@/lib/utils";
 
 export interface TradingZoneApi {
   id: number;
@@ -88,6 +96,217 @@ export interface TechnicalAnalysisTagApi {
   description: string;
 }
 
+type MetricTone = "default" | "positive" | "negative" | "accent" | "warning";
+
+interface OverviewMetricCardProps {
+  label: string;
+  value: string;
+  helper?: string;
+  icon: ElementType;
+  tone?: MetricTone;
+  className?: string;
+}
+
+interface SnapshotPillProps {
+  icon: ElementType;
+  label: string;
+  value: string;
+  className?: string;
+}
+
+function formatDisplayDate(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "-";
+  }
+
+  return parsedDate.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getConfidenceLabel(confidenceLevel?: number | null): string {
+  switch (confidenceLevel) {
+    case 1:
+      return "Very Low";
+    case 2:
+      return "Low";
+    case 3:
+      return "Neutral";
+    case 4:
+      return "High";
+    case 5:
+      return "Very High";
+    default:
+      return "Not set";
+  }
+}
+
+function OverviewMetricCard({
+  label,
+  value,
+  helper,
+  icon: Icon,
+  tone = "default",
+  className,
+}: OverviewMetricCardProps) {
+  const toneStyles: Record<MetricTone, { container: string; iconWrap: string; icon: string }> = {
+    default: {
+      container: "border-border/70 bg-background/80",
+      iconWrap: "border-border/60 bg-secondary/70",
+      icon: "text-foreground",
+    },
+    positive: {
+      container: "border-success/20 bg-success/5",
+      iconWrap: "border-success/20 bg-success/10",
+      icon: "text-success",
+    },
+    negative: {
+      container: "border-destructive/20 bg-destructive/5",
+      iconWrap: "border-destructive/20 bg-destructive/10",
+      icon: "text-destructive",
+    },
+    accent: {
+      container: "border-accent/20 bg-accent/5",
+      iconWrap: "border-accent/20 bg-accent/10",
+      icon: "text-accent",
+    },
+    warning: {
+      container: "border-warning/20 bg-warning/5",
+      iconWrap: "border-warning/20 bg-warning/10",
+      icon: "text-warning",
+    },
+  };
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-4 shadow-sm backdrop-blur-sm",
+        toneStyles[tone].container,
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+            {value}
+          </p>
+          {helper ? (
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              {helper}
+            </p>
+          ) : null}
+        </div>
+        <div
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
+            toneStyles[tone].iconWrap,
+          )}
+        >
+          <Icon className={cn("h-4 w-4", toneStyles[tone].icon)} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SnapshotPill({
+  icon: Icon,
+  label,
+  value,
+  className,
+}: SnapshotPillProps) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-2 text-xs shadow-sm",
+        className,
+      )}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate font-medium text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function TradeDetailSkeleton() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <Skeleton className="mb-5 h-5 w-32 rounded-full" />
+
+        <div className="mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-card/80 p-5 shadow-sm">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-48 max-w-full rounded-xl" />
+                  <Skeleton className="h-4 w-80 max-w-full rounded-full" />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-9 w-32 rounded-full" />
+                  <Skeleton className="h-9 w-36 rounded-full" />
+                  <Skeleton className="h-9 w-40 rounded-full" />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Skeleton className="h-10 w-24 rounded-xl" />
+                <Skeleton className="h-10 w-28 rounded-xl" />
+                <Skeleton className="h-10 w-24 rounded-xl" />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+              <Skeleton className="h-32 rounded-2xl" />
+            </div>
+          </div>
+        </div>
+
+        <Skeleton className="mb-5 h-20 rounded-2xl" />
+        <Skeleton className="mb-5 h-12 w-full max-w-md rounded-2xl" />
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mb-5">
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+          <div className="space-y-5">
+            <Skeleton className="h-56 rounded-2xl" />
+            <Skeleton className="h-80 rounded-2xl" />
+            <Skeleton className="h-72 rounded-2xl" />
+          </div>
+          <div className="space-y-5">
+            <Skeleton className="h-56 rounded-2xl" />
+            <Skeleton className="h-112 rounded-2xl" />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 // Price Level Progress Visualization Component
 function PriceLevelBar({
   trade,
@@ -97,6 +316,9 @@ function PriceLevelBar({
   currentPrice: number;
 }) {
   const isLong = trade.position === PositionType.Long;
+  const hasTargetTier1 = trade.targetTier1 > 0;
+  const hasTargetTier2 = (trade.targetTier2 ?? 0) > 0;
+  const hasTargetTier3 = (trade.targetTier3 ?? 0) > 0;
 
   // Calculate positions relative to a range
   const prices = [
@@ -117,20 +339,23 @@ function PriceLevelBar({
   const entryPos = getPosition(trade.entryPrice);
   const currentPos = getPosition(currentPrice);
   const stopPos = getPosition(trade.stopLoss);
-  const t1Pos = trade.targetTier1 ? getPosition(trade.targetTier1) : null;
-  const t2Pos = trade.targetTier2 ? getPosition(trade.targetTier2) : null;
-  const t3Pos = trade.targetTier3 ? getPosition(trade.targetTier3) : null;
+  const t1Pos = hasTargetTier1 ? getPosition(trade.targetTier1) : null;
+  const t2Pos = hasTargetTier2 ? getPosition(trade.targetTier2!) : null;
+  const t3Pos = hasTargetTier3 ? getPosition(trade.targetTier3!) : null;
 
   // Determine if targets are hit
-  const t1Hit = isLong
-    ? currentPrice >= trade.targetTier1
-    : currentPrice <= trade.targetTier1;
-  const t2Hit = isLong
-    ? currentPrice >= trade.targetTier2
-    : currentPrice <= trade.targetTier2;
-  const t3Hit = isLong
-    ? currentPrice >= trade.targetTier3
-    : currentPrice <= trade.targetTier3;
+  const t1Hit = hasTargetTier1 &&
+    (isLong
+      ? currentPrice >= trade.targetTier1
+      : currentPrice <= trade.targetTier1);
+  const t2Hit = hasTargetTier2 &&
+    (isLong
+      ? currentPrice >= trade.targetTier2!
+      : currentPrice <= trade.targetTier2!);
+  const t3Hit = hasTargetTier3 &&
+    (isLong
+      ? currentPrice >= trade.targetTier3!
+      : currentPrice <= trade.targetTier3!);
   const stopHit = isLong
     ? currentPrice <= trade.stopLoss
     : currentPrice >= trade.stopLoss;
@@ -307,13 +532,14 @@ function PriceLevelBar({
 function TradeStatusAlert({
   trade,
   currentPrice,
-  unrealizedPnL,
 }: {
   trade: Trade;
   currentPrice: number;
-  unrealizedPnL: number;
 }) {
   const isLong = trade.position === PositionType.Long;
+  const hasTargetTier1 = trade.targetTier1 > 0;
+  const hasTargetTier2 = (trade.targetTier2 ?? 0) > 0;
+  const hasTargetTier3 = (trade.targetTier3 ?? 0) > 0;
   const priceChangePercent =
     ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100;
   const adjustedPercent = isLong ? priceChangePercent : -priceChangePercent;
@@ -325,15 +551,18 @@ function TradeStatusAlert({
   const hitStopLoss = isLong
     ? currentPrice <= trade.stopLoss
     : currentPrice >= trade.stopLoss;
-  const hitT1 = isLong
-    ? currentPrice >= trade.targetTier1
-    : currentPrice <= trade.targetTier1;
-  const hitT2 = isLong
-    ? currentPrice >= trade.targetTier2
-    : currentPrice <= trade.targetTier2;
-  const hitT3 = isLong
-    ? currentPrice >= trade.targetTier3
-    : currentPrice <= trade.targetTier3;
+  const hitT1 = hasTargetTier1 &&
+    (isLong
+      ? currentPrice >= trade.targetTier1
+      : currentPrice <= trade.targetTier1);
+  const hitT2 = hasTargetTier2 &&
+    (isLong
+      ? currentPrice >= trade.targetTier2!
+      : currentPrice <= trade.targetTier2!);
+  const hitT3 = hasTargetTier3 &&
+    (isLong
+      ? currentPrice >= trade.targetTier3!
+      : currentPrice <= trade.targetTier3!);
 
   if (trade.status === TradeStatus.Closed) {
     return (
@@ -477,6 +706,8 @@ function TradeDetailContent({ id }: { id: string }) {
   const router = useRouter();
   const { trades, updateTrade, deleteTrade, closeTrade } = useTrades();
   const [trade, setTrade] = useState<Trade | null>(null);
+  const [isTradeLoading, setIsTradeLoading] = useState(true);
+  const [tradeLoadError, setTradeLoadError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -508,11 +739,14 @@ function TradeDetailContent({ id }: { id: string }) {
   );
   const [apiTechTags, setApiTechTags] = useState<TechnicalAnalysisTagApi[]>([]);
   const [apiTradingZones, setApiTradingZones] = useState<TradingZoneApi[]>([]);
-  const [tradeContext, setTradeContext] = useState<Trade | null>(null);
   const [checklistModels, setChecklistModels] = useState<ChecklistModelApi[]>([]);
   const [selectedModelDetail, setSelectedModelDetail] = useState<ChecklistModelDetailApi | null>(null);
 
   useEffect(() => {
+    setTrade(null);
+    setIsTradeLoading(true);
+    setTradeLoadError(null);
+
     // Fetch generic resource lists
     api
       .get<ApiResponse<EmotionTagApi[]>>("/v1/emotions")
@@ -641,17 +875,16 @@ function TradeDetailContent({ id }: { id: string }) {
             screenshots: mappedTrade.screenshots || [],
             pretradeChecklist: mappedTrade.pretradeChecklist || [],
           });
+        } else {
+          setTrade(null);
         }
       })
-      .catch((err) => console.error("Failed to fetch trade detail:", err));
+      .catch((err) => {
+        console.error("Failed to fetch trade detail:", err);
+        setTradeLoadError("We couldn't load this trade right now.");
+      })
+      .finally(() => setIsTradeLoading(false));
   }, [id]);
-
-  useEffect(() => {
-    const foundTrade = trades.find((t) => t.id === id);
-    if (foundTrade) {
-      setTradeContext(foundTrade);
-    }
-  }, [id, trades]);
 
   const currentPrice = trade
     ? mockCurrentPrices[trade.asset] || trade.entryPrice
@@ -667,54 +900,129 @@ function TradeDetailContent({ id }: { id: string }) {
 
     const isLong = trade.position === PositionType.Long;
     const riskPerUnit = Math.abs(trade.entryPrice - trade.stopLoss);
-    const rewardT1 = Math.abs(trade.targetTier1 - trade.entryPrice);
-    const rewardT2 = Math.abs(trade.targetTier2 - trade.entryPrice);
-    const rewardT3 = Math.abs(trade.targetTier3 - trade.entryPrice);
+    const rewardT1 = trade.targetTier1 > 0
+      ? Math.abs(trade.targetTier1 - trade.entryPrice)
+      : null;
+    const rewardT2 = (trade.targetTier2 ?? 0) > 0
+      ? Math.abs(trade.targetTier2! - trade.entryPrice)
+      : null;
+    const rewardT3 = (trade.targetTier3 ?? 0) > 0
+      ? Math.abs(trade.targetTier3! - trade.entryPrice)
+      : null;
 
-    const rrT1 = riskPerUnit > 0 ? rewardT1 / riskPerUnit : 0;
-    const rrT2 = riskPerUnit > 0 ? rewardT2 / riskPerUnit : 0;
-    const rrT3 = riskPerUnit > 0 ? rewardT3 / riskPerUnit : 0;
+    const rrT1 = riskPerUnit > 0 && rewardT1 != null ? rewardT1 / riskPerUnit : 0;
+    const rrT2 = riskPerUnit > 0 && rewardT2 != null ? rewardT2 / riskPerUnit : 0;
+    const rrT3 = riskPerUnit > 0 && rewardT3 != null ? rewardT3 / riskPerUnit : 0;
+    const validRiskRewards = [rrT1, rrT2, rrT3].filter(
+      (value) => Number.isFinite(value) && value > 0,
+    );
+    const averageRiskReward = validRiskRewards.length
+      ? validRiskRewards.reduce((total, value) => total + value, 0) /
+        validRiskRewards.length
+      : 0;
 
     const priceChange = currentPrice - trade.entryPrice;
     const priceChangePercent = (priceChange / trade.entryPrice) * 100;
     const adjustedPercent = isLong ? priceChangePercent : -priceChangePercent;
 
-    const daysOpen = Math.ceil(
-      (new Date().getTime() - new Date(trade.date).getTime()) /
-        (1000 * 60 * 60 * 24),
+    const lifecycleEndTime =
+      trade.status === TradeStatus.Closed && trade.closedDate
+        ? new Date(trade.closedDate).getTime()
+        : new Date().getTime();
+    const daysInTrade = Math.max(
+      1,
+      Math.ceil(
+        (lifecycleEndTime - new Date(trade.date).getTime()) /
+          (1000 * 60 * 60 * 24),
+      ),
     );
+
+    const riskPercent =
+      trade.entryPrice > 0 ? (riskPerUnit / trade.entryPrice) * 100 : 0;
 
     return {
       riskPerUnit,
+      riskPercent,
       rrT1,
       rrT2,
       rrT3,
+      averageRiskReward,
       priceChangePercent: adjustedPercent,
-      daysOpen,
+      daysInTrade,
     };
   }, [trade, currentPrice]);
+
+  const selectedTradingZone = useMemo(() => {
+    if (!trade?.tradingSession) {
+      return null;
+    }
+
+    return (
+      apiTradingZones.find(
+        (zone) => zone.id.toString() === trade.tradingSession,
+      ) ?? null
+    );
+  }, [apiTradingZones, trade?.tradingSession]);
+
+  if (isTradeLoading) {
+    return <TradeDetailSkeleton />;
+  }
 
   if (!trade) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="rounded-full bg-secondary p-4 mb-4">
-              <BarChart3 className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <p className="text-lg font-medium text-foreground mb-1">
-              Trade not found
-            </p>
-            <p className="text-sm text-muted-foreground mb-4">
-              This trade may have been deleted or doesn't exist
-            </p>
-            <Link href="/history">
-              <Button variant="outline" className="gap-2 bg-transparent">
-                <ArrowLeft className="h-4 w-4" />
-                Back to History
-              </Button>
+          <div className="mb-5">
+            <Link
+              href="/history"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Trade History
             </Link>
+          </div>
+
+          <div className="flex justify-center py-10 sm:py-16">
+            <Card className="w-full max-w-xl border-border/70 bg-card/90 shadow-sm">
+              <CardContent className="flex flex-col items-center px-6 py-10 text-center sm:px-10">
+                <div
+                  className={cn(
+                    "mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border",
+                    tradeLoadError
+                      ? "border-destructive/20 bg-destructive/10 text-destructive"
+                      : "border-border/70 bg-secondary/60 text-muted-foreground",
+                  )}
+                >
+                  {tradeLoadError ? (
+                    <AlertTriangle className="h-7 w-7" />
+                  ) : (
+                    <BarChart3 className="h-7 w-7" />
+                  )}
+                </div>
+                <p className="text-xl font-semibold text-foreground">
+                  {tradeLoadError ? "Unable to load trade" : "Trade not found"}
+                </p>
+                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                  {tradeLoadError
+                    ? tradeLoadError
+                    : "This trade may have been deleted, archived, or the link is no longer valid."}
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-2">
+                  {tradeLoadError ? (
+                    <Button variant="outline" onClick={() => router.refresh()}>
+                      Try Again
+                    </Button>
+                  ) : null}
+                  <Link href="/history">
+                    <Button className="gap-2">
+                      <ArrowLeft className="h-4 w-4" />
+                      Back to History
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </main>
       </div>
@@ -728,6 +1036,118 @@ function TradeDetailContent({ id }: { id: string }) {
       minimumFractionDigits: 2,
     }).format(value);
   };
+
+  const isOpenTrade = trade.status === TradeStatus.Open;
+  const displayedPnL = isOpenTrade ? unrealizedPnL : trade.pnl || 0;
+  const displayedPrice = isOpenTrade ? currentPrice : trade.exitPrice;
+  const timeInTradeLabel = isOpenTrade ? "Time Open" : "Time Held";
+  const timeInTradeValue = metrics
+    ? `${metrics.daysInTrade} day${metrics.daysInTrade === 1 ? "" : "s"}`
+    : "-";
+  const quickStats = [
+    {
+      label: "Stop Loss",
+      value: formatCurrency(trade.stopLoss),
+      helper: metrics
+        ? `${metrics.riskPercent.toFixed(1)}% risk from entry`
+        : "Planned downside protection.",
+      icon: Shield,
+      tone: "negative" as const,
+    },
+    {
+      label: "Risk / Unit",
+      value: metrics ? formatCurrency(metrics.riskPerUnit) : "-",
+      helper: "Distance between entry and stop.",
+      icon: Percent,
+      tone: "warning" as const,
+    },
+    {
+      label: timeInTradeLabel,
+      value: timeInTradeValue,
+      helper: isOpenTrade
+        ? "Position is still active."
+        : `Closed ${formatDisplayDate(trade.closedDate)}`,
+      icon: Clock,
+      tone: "accent" as const,
+    },
+    {
+      label: "Confidence",
+      value: trade.confidenceLevel ? `${trade.confidenceLevel}/5` : "Not set",
+      helper: getConfidenceLabel(trade.confidenceLevel),
+      icon: Brain,
+      tone:
+        trade.confidenceLevel && trade.confidenceLevel >= 4
+          ? "positive"
+          : trade.confidenceLevel && trade.confidenceLevel >= 2
+            ? "accent"
+            : trade.confidenceLevel
+              ? "warning"
+              : "default",
+    },
+  ];
+  const headlineMetrics = [
+    {
+      label: "Entry Price",
+      value: formatCurrency(trade.entryPrice),
+      helper: metrics
+        ? `${metrics.riskPercent.toFixed(1)}% planned risk to stop`
+        : "Original execution price.",
+      icon: DollarSign,
+      tone: "default" as const,
+    },
+    {
+      label: isOpenTrade ? "Current Price" : "Exit Price",
+      value:
+        displayedPrice != null
+          ? formatCurrency(displayedPrice)
+          : isOpenTrade
+            ? "Awaiting close"
+            : "Exit price not recorded",
+      helper:
+        isOpenTrade && metrics
+          ? `${metrics.priceChangePercent >= 0 ? "+" : ""}${metrics.priceChangePercent.toFixed(2)}% from entry`
+          : trade.closedDate
+            ? `Closed ${formatDisplayDate(trade.closedDate)}`
+            : "Recorded once the trade is closed.",
+      icon: isOpenTrade ? BarChart3 : CheckCircle2,
+      tone:
+        isOpenTrade && metrics && metrics.priceChangePercent >= 0
+          ? "positive"
+          : isOpenTrade
+            ? "negative"
+            : trade.pnl != null
+              ? trade.pnl >= 0
+                ? "positive"
+                : "negative"
+              : "accent",
+    },
+    {
+      label: isOpenTrade ? "Live P&L" : "Realized P&L",
+      value: `${displayedPnL >= 0 ? "+" : ""}${formatCurrency(displayedPnL)}`,
+      helper: isOpenTrade
+        ? "Tracking against the latest available price."
+        : "Final result recorded when the trade was closed.",
+      icon: displayedPnL >= 0 ? TrendingUp : TrendingDown,
+      tone: displayedPnL >= 0 ? "positive" : "negative",
+    },
+    {
+      label: "Average R:R",
+      value: metrics ? `${metrics.averageRiskReward.toFixed(2)}R` : "-",
+      helper: metrics
+        ? `T1 ${metrics.rrT1.toFixed(1)}R · T2 ${metrics.rrT2.toFixed(1)}R · T3 ${metrics.rrT3.toFixed(1)}R`
+        : "Add targets and a stop to evaluate reward potential.",
+      icon: Target,
+      tone:
+        metrics && metrics.averageRiskReward >= 2
+          ? "positive"
+          : metrics && metrics.averageRiskReward >= 1
+            ? "warning"
+            : "negative",
+    },
+  ];
+  const averageRiskRewardProgress = metrics
+    ? Math.min(metrics.averageRiskReward, 3) * (100 / 3)
+    : 0;
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -799,7 +1219,7 @@ function TradeDetailContent({ id }: { id: string }) {
       });
 
       // Update local state to reflect changes instantly or we could refetch. Local state update for immediate feedback:
-      setTrade((prev: any) =>
+      setTrade((prev) =>
         prev
           ? {
               ...prev,
@@ -939,7 +1359,7 @@ function TradeDetailContent({ id }: { id: string }) {
       <Header />
       <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
         {/* Back Navigation */}
-        <div className="mb-4">
+        <div className="mb-5">
           <Link
             href="/history"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -949,283 +1369,227 @@ function TradeDetailContent({ id }: { id: string }) {
           </Link>
         </div>
 
-        {/* Header Section */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                {trade.asset}
-              </h1>
-              <Badge
-                variant="secondary"
-                className={`text-sm ${
-                  trade.position === PositionType.Long
-                    ? "bg-success/15 text-success border border-success/20"
-                    : "bg-destructive/15 text-destructive border border-destructive/20"
-                }`}
-              >
-                {trade.position === PositionType.Long ? (
-                  <TrendingUp className="mr-1.5 h-3.5 w-3.5" />
-                ) : (
-                  <TrendingDown className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                {getPositionTypeLabel(trade.position)}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={
-                  trade.status === TradeStatus.Open
-                    ? "border-accent text-accent"
-                    : "border-muted-foreground text-muted-foreground"
-                }
-              >
-                {trade.status === TradeStatus.Open ? (
-                  <Clock className="mr-1.5 h-3 w-3" />
-                ) : (
-                  <CheckCircle2 className="mr-1.5 h-3 w-3" />
-                )}
-                {getTradeStatusLabel(trade.status)}
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Calendar className="h-4 w-4" />
-                Opened{" "}
-                {new Date(trade.date).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-              {trade.hitStopLoss && (
-                <Badge variant="destructive" className="h-6">
-                  Hit Stop Loss
-                </Badge>
-              )}
-              {metrics && trade.status === TradeStatus.Open && (
-                <span className="flex items-center gap-1.5">
-                  <Clock className="h-4 w-4" />
-                  {metrics.daysOpen} day{metrics.daysOpen !== 1 ? "s" : ""} open
-                </span>
-              )}
-              {trade.closedDate && (
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Closed{" "}
-                  {new Date(trade.closedDate).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </span>
-              )}
-            </div>
-          </div>
+        <section className="relative mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-linear-to-br from-card via-card to-primary/5 px-5 py-5 shadow-sm sm:px-6">
+          <div aria-hidden="true" className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+          <div aria-hidden="true" className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-accent/10 blur-3xl" />
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2">
-            {/* Edit Actions */}
-            {isEditing && (
-              <div className="flex gap-3">
+          <div className="relative flex flex-col gap-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "h-7 border px-3 text-xs font-medium",
+                      trade.position === PositionType.Long
+                        ? "border-success/20 bg-success/15 text-success"
+                        : "border-destructive/20 bg-destructive/15 text-destructive",
+                    )}
+                  >
+                    {trade.position === PositionType.Long ? (
+                      <TrendingUp className="mr-1.5 h-3.5 w-3.5" />
+                    ) : (
+                      <TrendingDown className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    {getPositionTypeLabel(trade.position)}
+                  </Badge>
+
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "h-7 bg-background/70 px-3 text-xs font-medium",
+                      trade.status === TradeStatus.Open
+                        ? "border-accent/30 text-accent"
+                        : "border-border text-muted-foreground",
+                    )}
+                  >
+                    {trade.status === TradeStatus.Open ? (
+                      <Clock className="mr-1.5 h-3.5 w-3.5" />
+                    ) : (
+                      <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    {getTradeStatusLabel(trade.status)}
+                  </Badge>
+
+                  {trade.hitStopLoss ? (
+                    <Badge variant="destructive" className="h-7 px-3 text-xs">
+                      Hit Stop Loss
+                    </Badge>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                      {trade.asset}
+                    </h1>
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium shadow-sm",
+                        displayedPnL >= 0
+                          ? "border-success/20 bg-success/10 text-success"
+                          : "border-destructive/20 bg-destructive/10 text-destructive",
+                      )}
+                    >
+                      {displayedPnL >= 0 ? <TrendingUp className="mr-1.5 h-4 w-4" /> : <TrendingDown className="mr-1.5 h-4 w-4" />}
+                      {isOpenTrade ? "Live" : "Final"} {displayedPnL >= 0 ? "+" : ""}
+                      {formatCurrency(displayedPnL)}
+                    </span>
+                  </div>
+                  <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+                    Review execution quality, risk structure, and post-trade context without hunting across separate sections.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5">
+                  <SnapshotPill
+                    icon={Calendar}
+                    label="Opened"
+                    value={formatDisplayDate(trade.date)}
+                  />
+                  <SnapshotPill
+                    icon={Clock}
+                    label={timeInTradeLabel}
+                    value={timeInTradeValue}
+                  />
+                  {selectedTradingZone ? (
+                    <SnapshotPill
+                      icon={Clock}
+                      label="Zone"
+                      value={`${selectedTradingZone.name} · ${selectedTradingZone.fromTime} - ${selectedTradingZone.toTime}`}
+                      className="border-amber-500/20 bg-amber-500/10"
+                    />
+                  ) : null}
+                  {trade.closedDate ? (
+                    <SnapshotPill
+                      icon={CheckCircle2}
+                      label="Closed"
+                      value={formatDisplayDate(trade.closedDate)}
+                    />
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 xl:max-w-sm xl:justify-end">
+                {isEditing ? (
+                  <>
+                    <Button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="min-w-33 gap-2"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                      {isSaving ? "Saving..." : "Save Changes"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(false)}
+                      disabled={isSaving}
+                      className="min-w-27.5 bg-background/70"
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditing(true)}
+                    className="gap-1.5 bg-background/70"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Edit Trade
+                  </Button>
+                )}
+
+                {trade.status === TradeStatus.Open ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setCloseDialogOpen(true)}
+                    className="gap-1.5 bg-background/70"
+                  >
+                    <X className="h-4 w-4" />
+                    Close Trade
+                  </Button>
+                ) : null}
+
                 <Button
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="flex-1 gap-2"
+                  variant="ghost"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  {isSaving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
-                  {isSaving ? "Saving..." : "Save Changes"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsEditing(false)}
-                  disabled={isSaving}
-                  className="flex-1"
-                >
-                  Cancel
+                  <Trash2 className="h-4 w-4" />
+                  Delete
                 </Button>
               </div>
-            )}
-            {!isEditing && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditing(true)}
-                  className="gap-1.5"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  Edit
-                </Button>
-              </>
-            )}
-            {trade.status === TradeStatus.Open && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCloseDialogOpen(true)}
-                  className="gap-1.5"
-                >
-                  <X className="h-4 w-4" />
-                  Close Trade
-                </Button>
-              </>
-            )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDeleteDialogOpen(true)}
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </Button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {headlineMetrics.map((metric) => (
+                <OverviewMetricCard key={metric.label} {...metric} />
+              ))}
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* Status Alert */}
-        <div className="mb-4">
-          <TradeStatusAlert
-            trade={trade}
-            currentPrice={currentPrice}
-            unrealizedPnL={unrealizedPnL}
-          />
+        <div className="mb-5">
+          <TradeStatusAlert trade={trade} currentPrice={currentPrice} />
         </div>
 
-        <Tabs defaultValue="detail" className="space-y-4">
-          <TabsList className="grid w-fit grid-cols-2">
-            <TabsTrigger value="detail">Trade Detail</TabsTrigger>
-            <TabsTrigger value="summary">Trade Summary</TabsTrigger>
+        <Tabs defaultValue="detail" className="space-y-5">
+          <TabsList className="grid w-full max-w-md grid-cols-2 rounded-2xl border border-border/70 bg-card/80 p-1 shadow-sm">
+            <TabsTrigger
+              value="detail"
+              className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Trade Detail
+            </TabsTrigger>
+            <TabsTrigger
+              value="summary"
+              className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <FileText className="h-4 w-4" />
+              Trade Summary
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="detail" className="space-y-4 outline-none">
+          <TabsContent value="detail" className="space-y-5 outline-none">
             {/* Key Metrics Cards */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
-              <Card className="border-border bg-card">
-                <CardContent className="p-3">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Entry Price
-                  </p>
-                  <p className="mt-1 text-xl font-bold text-foreground">
-                    {formatCurrency(trade.entryPrice)}
-                  </p>
-                </CardContent>
-              </Card>
-
-              {trade.status === TradeStatus.Open ? (
-                <>
-                  <Card className="border-border bg-card">
-                    <CardContent className="p-3">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Current Price
-                      </p>
-                      <p className="mt-1 text-xl font-bold text-foreground">
-                        {formatCurrency(currentPrice)}
-                      </p>
-                      {metrics && (
-                        <p
-                          className={`text-xs mt-1 ${metrics.priceChangePercent >= 0 ? "text-success" : "text-destructive"}`}
-                        >
-                          {metrics.priceChangePercent >= 0 ? "+" : ""}
-                          {metrics.priceChangePercent.toFixed(2)}%
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                  <Card className="border-border bg-card">
-                    <CardContent className="p-3">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Unrealized P&L
-                      </p>
-                      <p
-                        className={`mt-1 text-xl font-bold ${unrealizedPnL >= 0 ? "text-success" : "text-destructive"}`}
-                      >
-                        {unrealizedPnL >= 0 ? "+" : ""}
-                        {formatCurrency(unrealizedPnL)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </>
-              ) : (
-                <>
-                  <Card className="border-border bg-card">
-                    <CardContent className="p-3">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Exit Price
-                      </p>
-                      <p className="mt-1 text-xl font-bold text-foreground">
-                        {trade.exitPrice
-                          ? formatCurrency(trade.exitPrice)
-                          : "-"}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-border bg-card">
-                    <CardContent className="p-3">
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        Realized P&L
-                      </p>
-                      <p
-                        className={`mt-1 text-xl font-bold ${(trade.pnl || 0) >= 0 ? "text-success" : "text-destructive"}`}
-                      >
-                        {(trade.pnl || 0) >= 0 ? "+" : ""}
-                        {formatCurrency(trade.pnl || 0)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </>
-              )}
-
-              <Card className="border-border bg-card">
-                <CardContent className="p-3">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Stop Loss
-                  </p>
-                  <p className="mt-1 text-xl font-bold text-destructive">
-                    {formatCurrency(trade.stopLoss)}
-                  </p>
-                  <p className="text-xs mt-1 text-muted-foreground">
-                    {(
-                      (Math.abs(trade.entryPrice - trade.stopLoss) /
-                        trade.entryPrice) *
-                      100
-                    ).toFixed(1)}
-                    % risk
-                  </p>
-                </CardContent>
-              </Card>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {quickStats.map((metric) => (
+                <OverviewMetricCard key={metric.label} {...metric} />
+              ))}
             </div>
 
             {/* Main Content Grid */}
-            <div className="grid gap-4 lg:grid-cols-2">
-              {/* Left Column - Price Info & Chart */}
-              <div className="space-y-4">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              {/* Left Column - Price, analysis, and notes */}
+              <div className="space-y-5">
                 {/* Price Level Visualization */}
                 {trade.status === TradeStatus.Open && (
-                  <Card className="border-border bg-card">
-                    <CardHeader className="pb-1">
+                  <Card className="border-border/70 bg-card/90 shadow-sm">
+                    <CardHeader className="pb-2">
                       <CardTitle className="text-base font-medium flex items-center gap-2">
                         <BarChart3 className="h-4 w-4 text-accent" />
                         Price Level Progress
                       </CardTitle>
+                      <CardDescription>
+                        See where the live price sits relative to your stop and profit targets.
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-8 pb-4">
-                      <PriceLevelBar
-                        trade={trade}
-                        currentPrice={
-                          trade.exitPrice ? trade.exitPrice : trade.entryPrice
-                        }
-                      />
+                      <PriceLevelBar trade={trade} currentPrice={currentPrice} />
                     </CardContent>
                   </Card>
                 )}
 
                 {/* Target Prices Section */}
-                <Card className="border-border bg-card">
+                <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base font-medium flex items-center gap-2">
@@ -1233,6 +1597,9 @@ function TradeDetailContent({ id }: { id: string }) {
                         Target Prices
                       </CardTitle>
                     </div>
+                    <CardDescription>
+                      Review planned exits and adjust them without losing sight of the reward profile.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="grid gap-4 sm:grid-cols-3">
@@ -1368,17 +1735,20 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardContent>
                 </Card>
 
-                <div className="grid grid-cols-2 md:grid-cols-2 gap-4 items-start mb-6">
+                <div className="grid gap-4 md:grid-cols-2">
                   {/* Trading Psychology */}
                   {(isEditing ||
                     trade.emotionTags?.length ||
                     trade.confidenceLevel) && (
-                    <Card className="border-border bg-card">
+                    <Card className="border-border/70 bg-card/90 shadow-sm">
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base font-medium flex items-center gap-2">
                           <Brain className="h-4 w-4 text-accent" />
                           Trading Psychology
                         </CardTitle>
+                        <CardDescription>
+                          Capture the mental state and conviction behind the trade.
+                        </CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {/* Emotion Tags */}
@@ -1431,7 +1801,7 @@ function TradeDetailContent({ id }: { id: string }) {
                                       </button>
                                     );
                                   })
-                                : trade.emotionTags!.map((tagId) => {
+                                : trade.emotionTags?.map((tagId) => {
                                     const tag = apiTags.find(
                                       (t) =>
                                         t.id.toString() === tagId.toString(),
@@ -1537,12 +1907,15 @@ function TradeDetailContent({ id }: { id: string }) {
                       );
 
                       return (
-                        <Card className="border-border bg-card mb-6">
+                        <Card className="border-border/70 bg-card/90 shadow-sm">
                           <CardHeader className="pb-3">
                             <CardTitle className="text-base font-medium flex items-center gap-2">
                               <Clock className="h-4 w-4 text-amber-400" />
                               Trading Zone
                             </CardTitle>
+                            <CardDescription>
+                              Keep the session context visible while reviewing the trade.
+                            </CardDescription>
                           </CardHeader>
                           <CardContent>
                             {isEditing ? (
@@ -1599,17 +1972,208 @@ function TradeDetailContent({ id }: { id: string }) {
                       );
                     })()}
                 </div>
+
+                {/* Technical Analysis Tags */}
+                {(isEditing ||
+                  (trade.analysisTags && trade.analysisTags.length > 0)) && (
+                  <Card className="border-border/70 bg-card/90 shadow-sm">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base font-medium flex items-center gap-2">
+                        <Tags className="h-4 w-4 text-primary" />
+                        Technical Analysis
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          {isEditing
+                            ? formData.analysisTags.length
+                            : trade.analysisTags!.length}{" "}
+                          Selected
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        Keep the structural and setup tags visible during review and editing.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col gap-4">
+                        {isEditing && (
+                          <div>
+                            <div className="flex flex-wrap gap-2">
+                              {apiTechTags.map((tag) => {
+                                const isSelected = formData.analysisTags.includes(
+                                  tag.id.toString(),
+                                );
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    type="button"
+                                    onClick={() =>
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        analysisTags: isSelected
+                                          ? prev.analysisTags.filter(
+                                              (t) => t !== tag.id.toString(),
+                                            )
+                                          : [
+                                              ...prev.analysisTags,
+                                              tag.id.toString(),
+                                            ],
+                                      }))
+                                    }
+                                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
+                                      isSelected
+                                        ? "bg-primary/20 text-primary border-primary/40 ring-1 ring-primary/30"
+                                        : "bg-secondary/50 text-muted-foreground border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                                    }`}
+                                    title={tag.description}
+                                  >
+                                    {tag.name} {tag.shortName && `(${tag.shortName})`}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-1.5">
+                          {!isEditing &&
+                            trade.analysisTags?.map((tagId) => {
+                              const matchedTag = apiTechTags.find(
+                                (t) => t.id.toString() === tagId,
+                              );
+                              const label = matchedTag
+                                ? matchedTag.name
+                                : `Tag #${tagId}`;
+                              return (
+                                <span
+                                  key={tagId}
+                                  title={getPlainTextFromRichText(matchedTag?.description || "") || label}
+                                  className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Trade Notes */}
+                <Card className="border-border/70 bg-card/90 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-accent" />
+                      Trade Notes
+                    </CardTitle>
+                    <CardDescription>
+                      Preserve rationale, market context, and any manual observations tied to this setup.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {isEditing ? (
+                      <Textarea
+                        value={formData.notes}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            notes: e.target.value,
+                          }))
+                        }
+                        rows={6}
+                        placeholder="Add your trade rationale, market conditions, or any other notes..."
+                        className="resize-none"
+                      />
+                    ) : (
+                      <div className="rounded-lg bg-secondary/30 p-3">
+                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                          {getPlainTextFromRichText(trade.notes || "") || (
+                            <span className="text-muted-foreground italic">
+                              No notes added for this trade
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
-              {/* Right Column - Notes & Risk Analysis */}
-              <div className="space-y-4">
+              {/* Right Column - Snapshot & risk analysis */}
+              <div className="space-y-5">
+                <Card className="border-border/70 bg-card/90 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-primary" />
+                      Trade Snapshot
+                    </CardTitle>
+                    <CardDescription>
+                      Core context that matters when reviewing execution quality.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Direction
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {getPositionTypeLabel(trade.position)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Status
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {getTradeStatusLabel(trade.status)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Confidence
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {getConfidenceLabel(trade.confidenceLevel)}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                          Screenshots
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-foreground">
+                          {(trade.screenshots?.length || 0).toString()} attached
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedTradingZone ? (
+                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-400/80">
+                          Trading Zone
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-amber-400">
+                          {selectedTradingZone.name}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {selectedTradingZone.fromTime} - {selectedTradingZone.toTime}
+                          {selectedTradingZone.description
+                            ? ` · ${getPlainTextFromRichText(selectedTradingZone.description)}`
+                            : ""}
+                        </p>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
                 {/* Risk/Reward Analysis */}
-                <Card className="border-border bg-card mb-6">
+                <Card className="border-border/70 bg-card/90 shadow-sm mb-6">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
                       <Percent className="h-4 w-4 text-accent" />
                       Risk Analysis
                     </CardTitle>
+                    <CardDescription>
+                      Evaluate whether the setup justified the risk you planned to take.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="space-y-3">
@@ -1653,42 +2217,32 @@ function TradeDetailContent({ id }: { id: string }) {
                       <p className="text-xs text-muted-foreground mb-2">
                         Average Risk/Reward
                       </p>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         {metrics && (
                           <>
-                            <div
-                              className={`h-2 flex-1 rounded-full ${
-                                (metrics.rrT1 + metrics.rrT2 + metrics.rrT3) /
-                                  3 >=
-                                2
-                                  ? "bg-success"
-                                  : (metrics.rrT1 +
-                                        metrics.rrT2 +
-                                        metrics.rrT3) /
-                                        3 >=
-                                      1
-                                    ? "bg-warning"
-                                    : "bg-destructive"
-                              }`}
-                            />
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary/70">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  metrics.averageRiskReward >= 2
+                                    ? "bg-success"
+                                    : metrics.averageRiskReward >= 1
+                                      ? "bg-warning"
+                                      : "bg-destructive"
+                                }`}
+                                style={{ width: `${averageRiskRewardProgress}%` }}
+                              />
+                            </div>
                             <span className="text-sm font-medium">
-                              {(
-                                (metrics.rrT1 + metrics.rrT2 + metrics.rrT3) /
-                                3
-                              ).toFixed(2)}
+                              {metrics.averageRiskReward.toFixed(2)}
                               R
                             </span>
                           </>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {metrics &&
-                        (metrics.rrT1 + metrics.rrT2 + metrics.rrT3) / 3 >= 2
+                        {metrics && metrics.averageRiskReward >= 2
                           ? "Excellent risk/reward ratio"
-                          : metrics &&
-                              (metrics.rrT1 + metrics.rrT2 + metrics.rrT3) /
-                                3 >=
-                                1
+                          : metrics && metrics.averageRiskReward >= 1
                             ? "Acceptable risk/reward ratio"
                             : "Consider improving targets"}
                       </p>
@@ -1769,92 +2323,11 @@ function TradeDetailContent({ id }: { id: string }) {
               </div>
             </div>
 
-            {/* Technical Analysis Tags */}
-            {(isEditing ||
-              (trade.analysisTags && trade.analysisTags.length > 0)) && (
-              <Card className="border-border bg-card mb-4">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-medium flex items-center gap-2">
-                    <Tags className="h-4 w-4 text-primary" />
-                    Technical Analysis
-                    <Badge variant="secondary" className="ml-2 text-xs">
-                      {isEditing
-                        ? formData.analysisTags.length
-                        : trade.analysisTags!.length}{" "}
-                      Selected
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col gap-4">
-                    {isEditing && (
-                      <div>
-                        <div className="flex flex-wrap gap-2">
-                          {apiTechTags.map((tag) => {
-                            const isSelected = formData.analysisTags.includes(
-                              tag.id.toString(),
-                            );
-                            return (
-                              <button
-                                key={tag.id}
-                                type="button"
-                                onClick={() =>
-                                  setFormData((prev) => ({
-                                    ...prev,
-                                    analysisTags: isSelected
-                                      ? prev.analysisTags.filter(
-                                          (t) => t !== tag.id.toString(),
-                                        )
-                                      : [
-                                          ...prev.analysisTags,
-                                          tag.id.toString(),
-                                        ],
-                                  }))
-                                }
-                                className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-                                  isSelected
-                                    ? "bg-primary/20 text-primary border-primary/40 ring-1 ring-primary/30"
-                                    : "bg-secondary/50 text-muted-foreground border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-                                }`}
-                                title={tag.description}
-                              >
-                                {tag.name}{" "}
-                                {tag.shortName && `(${tag.shortName})`}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-1.5">
-                      {!isEditing &&
-                        trade.analysisTags!.map((tagId) => {
-                          const matchedTag = apiTechTags.find(
-                            (t) => t.id.toString() === tagId,
-                          );
-                          const label = matchedTag
-                            ? matchedTag.name
-                            : `Tag #${tagId}`;
-                          return (
-                            <span
-                              key={tagId}
-                              className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-                            >
-                              {label}
-                            </span>
-                          );
-                        })}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Pre-trade Checklist (Model-based) */}
             {(isEditing ||
               (trade.pretradeChecklist &&
                 trade.pretradeChecklist.length > 0)) && (
-              <Card className="border-border bg-card mb-4">
+              <Card className="border-border/70 bg-card/90 shadow-sm mb-4">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-medium flex items-center gap-2">
                     <ClipboardCheck className="h-5 w-5 text-amber-400" />
@@ -1871,6 +2344,9 @@ function TradeDetailContent({ id }: { id: string }) {
                       /{apiChecklists.length} Completed
                     </Badge>
                   </CardTitle>
+                  <CardDescription>
+                    Review setup discipline against the currently selected checklist model.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1993,54 +2469,21 @@ function TradeDetailContent({ id }: { id: string }) {
               </Card>
             )}
 
-            {/* Trade Notes */}
-            <Card className="border-border bg-card mt-4 mb-4">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-accent" />
-                  Trade Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isEditing ? (
-                  <Textarea
-                    value={formData.notes}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        notes: e.target.value,
-                      }))
-                    }
-                    rows={6}
-                    placeholder="Add your trade rationale, market conditions, or any other notes..."
-                    className="resize-none"
-                  />
-                ) : (
-                  <div className="rounded-lg bg-secondary/30 p-3">
-                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                      {trade.notes || (
-                        <span className="text-muted-foreground italic">
-                          No notes added for this trade
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
             {trade.status === TradeStatus.Closed && trade.tradingResult && (
-              <Card className="border-border bg-card mt-4 mb-4">
+              <Card className="border-border/70 bg-card/90 shadow-sm mt-4 mb-4">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-medium flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-accent" />
                     Trading Result
                   </CardTitle>
+                  <CardDescription>
+                    Final outcome notes captured when the trade was closed.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-lg bg-secondary/30 p-3">
                     <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                      {trade.tradingResult}
+                      {getPlainTextFromRichText(trade.tradingResult)}
                     </p>
                   </div>
                 </CardContent>
@@ -2050,7 +2493,7 @@ function TradeDetailContent({ id }: { id: string }) {
             {/* Screenshots */}
             {(isEditing ||
               (trade.screenshots && trade.screenshots.length > 0)) && (
-              <Card className="border-border bg-card">
+              <Card className="border-border/70 bg-card/90 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-medium flex items-center gap-2">
                     <ImageIcon className="h-4 w-4 text-accent" />
@@ -2061,6 +2504,9 @@ function TradeDetailContent({ id }: { id: string }) {
                         : trade.screenshots?.length || 0}
                     </Badge>
                   </CardTitle>
+                  <CardDescription>
+                    Attach chart context and execution evidence for better post-trade review.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col gap-4">
@@ -2148,7 +2594,7 @@ function TradeDetailContent({ id }: { id: string }) {
           <TabsContent value="summary" className="space-y-4 outline-none">
             {trade.tradeSumamry ? (
               <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="border-border bg-card lg:col-span-2">
+                <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <FileText className="h-5 w-5 text-primary" />
@@ -2162,7 +2608,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardContent>
                 </Card>
 
-                <Card className="border-border bg-card">
+                <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <BarChart3 className="h-5 w-5 text-accent" />
@@ -2176,7 +2622,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardContent>
                 </Card>
 
-                <Card className="border-border bg-card">
+                <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Brain className="h-5 w-5 text-amber-400" />
@@ -2194,7 +2640,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   (trade.tradeSumamry.criticalMistakes.technical?.length > 0 ||
                     trade.tradeSumamry.criticalMistakes.psychological?.length >
                       0) && (
-                    <Card className="border-border bg-card lg:col-span-2">
+                    <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
                       <CardHeader>
                         <CardTitle className="text-lg flex items-center gap-2">
                           <AlertTriangle className="h-5 w-5 text-destructive" />
@@ -2256,7 +2702,7 @@ function TradeDetailContent({ id }: { id: string }) {
 
         {/* Close Trade Dialog */}
         <Dialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-106.25">
             <DialogHeader>
               <DialogTitle>Close Trade</DialogTitle>
               <DialogDescription>
@@ -2365,7 +2811,7 @@ function TradeDetailContent({ id }: { id: string }) {
 
         {/* Delete Trade Dialog */}
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-106.25">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-destructive" />

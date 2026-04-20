@@ -1,19 +1,22 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
+import { AppShellLoader } from "@/components/app-shell-loader"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
+import { DashboardCommandCenter } from "@/components/dashboard/dashboard-command-center"
 import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
 import { CalendarWidget } from "@/components/dashboard/calendar-widget"
 import { OpenPositionsTable } from "@/components/dashboard/open-positions-table"
-import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
-import { CreateTradeDialog } from "@/components/create-trade-dialog"
 import { ActiveSessionWidget } from "@/components/session/active-session-widget"
+import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
 
 const timeFilterOptions = [
   { label: "1D", value: DashboardFilter.OneDay },
@@ -23,68 +26,122 @@ const timeFilterOptions = [
   { label: "All", value: DashboardFilter.All },
 ]
 
+const DASHBOARD_FILTER_STORAGE_KEY = "trading-journey-dashboard-filter"
+
+const dashboardFilterLabels: Record<DashboardFilter, string> = {
+  [DashboardFilter.OneDay]: "Past day",
+  [DashboardFilter.OneWeek]: "Past week",
+  [DashboardFilter.OneMonth]: "Past month",
+  [DashboardFilter.ThreeMonth]: "Past 3 months",
+  [DashboardFilter.All]: "All time",
+}
+
 function DashboardContent() {
-  const [refreshKey, setRefreshKey] = useState(0)
   const [filter, setFilter] = useState<DashboardFilter>(DashboardFilter.All)
   const { user, isLoading } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
+  const isDashboardEnabled = Boolean(user) && !isLoading
+  const {
+    stats,
+    winLossData,
+    profitTrajectory,
+    openPositions,
+    isLoading: isDashboardLoading,
+    isRefreshing,
+    lastUpdatedAt,
+    syncWarning,
+    refresh,
+  } = useDashboardOverview(filter, { enabled: isDashboardEnabled })
+
+  useEffect(() => {
+    try {
+      const storedFilter = window.localStorage.getItem(DASHBOARD_FILTER_STORAGE_KEY)
+
+      if (!storedFilter) {
+        return
+      }
+
+      const parsedFilter = Number.parseInt(storedFilter, 10)
+      const isValidFilter = timeFilterOptions.some((option) => option.value === parsedFilter)
+
+      if (isValidFilter) {
+        setFilter(parsedFilter as DashboardFilter)
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_FILTER_STORAGE_KEY, String(filter))
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [filter])
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push("/login")
+      router.replace(buildRedirectWithNext("/login", pathname))
     }
-  }, [user, isLoading, router])
+  }, [user, isLoading, pathname, router])
 
-  if (isLoading || !user) {
-    return <div className="flex min-h-screen items-center justify-center">Loading...</div>
+  const overview = useMemo(
+    () =>
+      buildDashboardOverview({
+        filterLabel: dashboardFilterLabels[filter],
+        stats,
+        profitTrajectory,
+        openPositions,
+      }),
+    [filter, openPositions, profitTrajectory, stats],
+  )
+
+  const userName = user?.fullName || user?.username || user?.email
+
+  if (isLoading) {
+    return <AppShellLoader title="Loading your dashboard" description="Syncing your trades, analytics, and active session." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you back to your dashboard as soon as your session is ready." />
   }
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground">
-              Track your trading performance at a glance
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
-              {timeFilterOptions.map((option) => (
-                <Button
-                  key={option.label}
-                  variant={filter === option.value ? "default" : "ghost"}
-                  size="sm"
-                  onClick={() => setFilter(option.value)}
-                  className="h-7 px-3 text-xs font-medium"
-                >
-                  {option.label}
-                </Button>
-              ))}
-            </div>
-            <ActiveSessionWidget />
-            <CreateTradeDialog onSuccess={() => setRefreshKey(prev => prev + 1)}>
-              <Button size="lg" className="gap-1">
-                <Plus className="h-4 w-4" />
-                New Trade
-              </Button>
-            </CreateTradeDialog>
-          </div>
-        </div>
-
         <div className="space-y-6">
-          <StatsCards filter={filter} />
+          <DashboardCommandCenter
+            filter={filter}
+            filterLabel={dashboardFilterLabels[filter]}
+            filterOptions={timeFilterOptions}
+            onFilterChange={setFilter}
+            overview={overview}
+            stats={stats}
+            userName={userName}
+            pathname={pathname}
+            lastUpdatedAt={lastUpdatedAt}
+            isLoading={isDashboardLoading}
+            isRefreshing={isRefreshing}
+            syncWarning={syncWarning}
+            onRefresh={() => {
+              void refresh()
+            }}
+            sessionControl={<ActiveSessionWidget />}
+          />
 
-          <CalendarWidget filter={filter} />
+          <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <WinLossChart filter={filter} />
-            <ProfitChart filter={filter} />
+            <ProfitChart filter={filter} profitTrajectory={profitTrajectory} isLoading={isDashboardLoading} />
+            <WinLossChart filter={filter} data={winLossData} isLoading={isDashboardLoading} />
           </div>
 
-          <OpenPositionsTable refreshKey={refreshKey} filter={filter} />
+          <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
+
+          <CalendarWidget filter={filter} />
         </div>
       </main>
     </div>

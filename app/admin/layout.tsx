@@ -1,10 +1,12 @@
 "use client";
 
+import { AppShellLoader } from "@/components/app-shell-loader";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { Header } from "@/components/header";
 import { AdminSidebar } from "./components/admin-sidebar";
+import { buildRedirectWithNext } from "@/lib/auth-redirect";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -17,7 +19,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // Only protect non-login admin routes
     if (pathname !== "/admin/login") {
       if (!user || !user.isAdmin) {
-        router.replace("/admin/login");
+        router.replace(buildRedirectWithNext("/admin/login", pathname));
       }
     } else {
       // If they are on the login page but are ALREADY an admin, redirect them into the admin portal
@@ -28,12 +30,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [user, isLoading, router, pathname]);
 
   if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+    return <AppShellLoader title="Loading the admin workspace" description="Checking staff access and preparing management tools." />;
   }
 
   // To prevent flash of unauthorized content, we only render children if condition is met
   if (pathname !== "/admin/login" && (!user || !user.isAdmin)) {
-    return null;
+    return <AppShellLoader title="Checking admin access" description="Routing you to the correct portal." />;
   }
 
   if (pathname === "/admin/login") {

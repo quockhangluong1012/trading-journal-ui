@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { attachToken } from "./api"
+import { attachToken, clearAuthState, syncAuthCookies } from "./api"
 
 // ========================
 // Types
@@ -41,11 +41,14 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     try {
       const stored = localStorage.getItem(AUTH_STORAGE_KEY)
       if (stored) {
-        setUser(JSON.parse(stored))
+        const parsed = JSON.parse(stored)
+        setUser(parsed)
+        syncAuthCookies(parsed?.token, Boolean(parsed?.isAdmin))
         attachToken()
       }
     } catch {
       // Ignore parse errors
+      clearAuthState()
     } finally {
       setIsLoading(false)
     }
@@ -55,6 +58,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setUser(userData)
     try {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData))
+      syncAuthCookies(userData.token, Boolean(userData.isAdmin))
       attachToken() // Ensure token is attached for future API calls
     } catch {
       // Ignore storage errors
@@ -62,14 +66,16 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, [])
 
   const logout = useCallback(() => {
+    const loginRoute = user?.isAdmin ? "/admin/login" : "/login"
+
     setUser(null)
     try {
-      localStorage.removeItem(AUTH_STORAGE_KEY)
+      clearAuthState()
     } catch {
       // Ignore storage errors
     }
-    router.push("/login")
-  }, [router])
+    router.push(loginRoute)
+  }, [router, user?.isAdmin])
 
   const value = useMemo(() => ({ user, login, logout, isLoading }), [user, login, logout, isLoading])
 

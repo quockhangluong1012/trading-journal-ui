@@ -35,6 +35,20 @@ export interface ReviewData {
   totalTrades: number
   wins: number
   losses: number
+  averageWin: number
+  averageLoss: number
+  bestTradePnl: number
+  worstTradePnl: number
+  bestDayPnl: number
+  worstDayPnl: number
+  longTrades: number
+  shortTrades: number
+  ruleBreakTrades: number
+  highConfidenceTrades: number
+  topAsset?: string
+  primaryTradingZone?: string
+  dominantEmotion?: string
+  topTechnicalTheme?: string
 }
 
 export interface ReviewSummaryResult {
@@ -73,12 +87,81 @@ export interface ReviewTrade {
   closedDate: string | null
   entryPrice: number
   exitPrice: number | null
+  confidenceLevel: number
+  tradingZone?: string | null
+  isRuleBroken: boolean
+  ruleBreakReason?: string | null
 }
 
 export interface PaginatedReviewTrades {
   values: ReviewTrade[]
   totalItems: number
   hasMore: boolean
+}
+
+type ReviewPayload = Partial<ReviewData> & Record<string, unknown>
+
+function readReviewValue<T>(payload: ReviewPayload, camelKey: string): T | undefined {
+  const pascalKey = `${camelKey.charAt(0).toUpperCase()}${camelKey.slice(1)}`
+
+  return (payload[camelKey] ?? payload[pascalKey]) as T | undefined
+}
+
+function readReviewNumber(payload: ReviewPayload, key: string): number {
+  const value = readReviewValue<number>(payload, key)
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function readReviewString(payload: ReviewPayload, key: string): string | undefined {
+  const value = readReviewValue<string>(payload, key)
+  return typeof value === "string" ? value : undefined
+}
+
+function readReviewBoolean(payload: ReviewPayload, key: string): boolean {
+  const value = readReviewValue<boolean>(payload, key)
+  return typeof value === "boolean" ? value : false
+}
+
+function normalizeReviewData(
+  payload: ReviewPayload,
+  fallback: { periodStart: string; periodType: ReviewPeriodType },
+): ReviewData {
+  return {
+    id: readReviewValue<number>(payload, "id"),
+    periodType: readReviewValue<ReviewPeriodType>(payload, "periodType") ?? fallback.periodType,
+    periodStart: readReviewString(payload, "periodStart") ?? fallback.periodStart,
+    periodEnd: readReviewString(payload, "periodEnd") ?? fallback.periodStart,
+    userNotes: readReviewString(payload, "userNotes"),
+    aiSummary: readReviewString(payload, "aiSummary"),
+    aiStrengths: readReviewString(payload, "aiStrengths"),
+    aiWeaknesses: readReviewString(payload, "aiWeaknesses"),
+    aiActionItems: readReviewString(payload, "aiActionItems"),
+    aiTechnicalInsights: readReviewString(payload, "aiTechnicalInsights"),
+    aiPsychologyAnalysis: readReviewString(payload, "aiPsychologyAnalysis"),
+    aiCriticalMistakesTechnical: readReviewString(payload, "aiCriticalMistakesTechnical"),
+    aiCriticalMistakesPsychological: readReviewString(payload, "aiCriticalMistakesPsychological"),
+    aiWhatToImprove: readReviewString(payload, "aiWhatToImprove"),
+    aiSummaryGenerating: readReviewBoolean(payload, "aiSummaryGenerating"),
+    totalPnl: readReviewNumber(payload, "totalPnl"),
+    winRate: readReviewNumber(payload, "winRate"),
+    totalTrades: readReviewNumber(payload, "totalTrades"),
+    wins: readReviewNumber(payload, "wins"),
+    losses: readReviewNumber(payload, "losses"),
+    averageWin: readReviewNumber(payload, "averageWin"),
+    averageLoss: readReviewNumber(payload, "averageLoss"),
+    bestTradePnl: readReviewNumber(payload, "bestTradePnl"),
+    worstTradePnl: readReviewNumber(payload, "worstTradePnl"),
+    bestDayPnl: readReviewNumber(payload, "bestDayPnl"),
+    worstDayPnl: readReviewNumber(payload, "worstDayPnl"),
+    longTrades: readReviewNumber(payload, "longTrades"),
+    shortTrades: readReviewNumber(payload, "shortTrades"),
+    ruleBreakTrades: readReviewNumber(payload, "ruleBreakTrades"),
+    highConfidenceTrades: readReviewNumber(payload, "highConfidenceTrades"),
+    topAsset: readReviewString(payload, "topAsset"),
+    primaryTradingZone: readReviewString(payload, "primaryTradingZone"),
+    dominantEmotion: readReviewString(payload, "dominantEmotion"),
+    topTechnicalTheme: readReviewString(payload, "topTechnicalTheme"),
+  }
 }
 
 // --- API Functions ---
@@ -90,7 +173,11 @@ export async function fetchReview(
   const response = await api.get<ApiResponse<ReviewData>>(
     `/v1/reviews?periodType=${periodType}&periodStart=${periodStart}`
   )
-  return response.data.value
+
+  return normalizeReviewData(response.data.value as ReviewPayload, {
+    periodStart,
+    periodType,
+  })
 }
 
 export async function saveReview(data: {

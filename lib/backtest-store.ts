@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import { api, attachToken, ApiResponse } from "@/lib/api";
+import { toast } from "sonner";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-export type Timeframe = "M5" | "M15" | "H1" | "H4" | "D1";
+export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1";
 export type PlaybackSpeed = 1 | 2 | 5 | 10;
 
 export interface BacktestSession {
@@ -18,6 +19,8 @@ export interface BacktestSession {
   currentTimestamp: string;
   activeTimeframe: string;
   playbackSpeed: number;
+  leverage: number;
+  maintenanceMarginPercentage: number;
   isDataReady: boolean;
   totalOrders: number;
   openPositions: number;
@@ -37,6 +40,14 @@ export interface BacktestSessionSummary {
   currentTimestamp: string;
   isDataReady: boolean;
   createdDate: string;
+}
+
+export interface TradingZoneDto {
+  id: number;
+  name: string;
+  description?: string;
+  fromTime: string;
+  toTime: string;
 }
 
 export interface CandleData {
@@ -157,6 +168,14 @@ export interface PlaceOrderRequest {
   takeProfit?: number | null;
 }
 
+export interface UpdateOrderRequest {
+  orderId: number;
+  entryPrice?: number;
+  positionSize?: number;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+}
+
 export interface AvailableAsset {
   id: number;
   displayName: string;
@@ -167,6 +186,89 @@ export interface AvailableAsset {
   totalCandles: number;
 }
 
+const TIMEFRAME_TO_MINUTES: Record<Timeframe, number> = {
+  M1: 1,
+  M5: 5,
+  M15: 15,
+  H1: 60,
+  H4: 240,
+  D1: 1440,
+};
+
+function floorTimestampToBucket(timestamp: string, timeframe: Timeframe): string {
+  const time = new Date(timestamp).getTime();
+  const bucketMs = TIMEFRAME_TO_MINUTES[timeframe] * 60 * 1000;
+  const floored = Math.floor(time / bucketMs) * bucketMs;
+  return new Date(floored).toISOString();
+}
+
+function aggregateCandlesToTimeframe(
+  candles: CandleData[],
+  sourceTimeframe: Timeframe,
+  targetTimeframe: Timeframe,
+): CandleData[] | null {
+  if (candles.length === 0) {
+    return [];
+  }
+
+  const sourceMinutes = TIMEFRAME_TO_MINUTES[sourceTimeframe];
+  const targetMinutes = TIMEFRAME_TO_MINUTES[targetTimeframe];
+
+  if (targetMinutes < sourceMinutes || targetMinutes % sourceMinutes !== 0) {
+    return null;
+  }
+
+  if (targetMinutes === sourceMinutes) {
+    return candles.map((candle) => ({ ...candle }));
+  }
+
+  const aggregated = new Map<string, CandleData>();
+
+  candles.forEach((candle) => {
+    const bucketTimestamp = floorTimestampToBucket(candle.timestamp, targetTimeframe);
+    const existing = aggregated.get(bucketTimestamp);
+
+    if (!existing) {
+      aggregated.set(bucketTimestamp, {
+        ...candle,
+        timestamp: bucketTimestamp,
+      });
+      return;
+    }
+
+    aggregated.set(bucketTimestamp, {
+      ...existing,
+      high: Math.max(existing.high, candle.high),
+      low: Math.min(existing.low, candle.low),
+      close: candle.close,
+      volume: existing.volume + candle.volume,
+    });
+  });
+
+  return Array.from(aggregated.values()).sort((left, right) =>
+    new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
+  );
+}
+
+function upsertOrderById(list: BacktestOrder[], order: BacktestOrder): BacktestOrder[] {
+  const index = list.findIndex((item) => item.id === order.id);
+  if (index === -1) {
+    return [...list, order];
+  }
+
+  const next = [...list];
+  next[index] = order;
+  return next;
+}
+
+function dedupeOrdersById(list: BacktestOrder[]): BacktestOrder[] {
+  const byId = new Map<number, BacktestOrder>();
+  list.forEach((order) => {
+    byId.set(order.id, order);
+  });
+  return Array.from(byId.values());
+}
+
 // ─── API Functions ──────────────────────────────────────────────────────
 
 const BASE = "/v1";
@@ -175,6 +277,12 @@ export async function fetchAvailableAssetsApi(): Promise<AvailableAsset[]> {
   attachToken();
   const res = await api.get<ApiResponse<AvailableAsset[]>>(`${BASE}/backtest-assets`);
   return res.data.value;
+}
+
+export async function fetchTradingZonesApi(): Promise<TradingZoneDto[]> {
+  attachToken();
+  const res = await api.get<ApiResponse<TradingZoneDto[]>>(`${BASE}/trading-zones`);
+  return res.data.value || [];
 }
 
 async function fetchSessions(): Promise<BacktestSessionSummary[]> {
@@ -191,8 +299,15 @@ async function fetchSessionDetail(id: number): Promise<BacktestSession> {
 
 async function createSessionApi(req: CreateSessionRequest): Promise<number> {
   attachToken();
-  const res = await api.post<ApiResponse<number>>(`${BASE}/backtest-sessions`, req);
-  return res.data.value;
+  const res = await api.post<ApiResponse<any>>(`${BASE}/backtest-sessions`, req);
+  let val = res.data.value;
+  if (Array.isArray(val) && val.length > 0) {
+    return val[0].id;
+  }
+  if (val && typeof val === "object" && val.id) {
+    return val.id;
+  }
+  return val as number;
 }
 
 async function deleteSessionApi(id: number): Promise<void> {
@@ -210,6 +325,12 @@ async function advanceCandleApi(sessionId: number): Promise<AdvanceCandleRespons
   attachToken();
   const res = await api.post<ApiResponse<AdvanceCandleResponse>>(`${BASE}/backtest-playback/${sessionId}/advance`);
   return res.data.value;
+}
+
+async function setPlaybackTimeframeApi(sessionId: number, timeframe: Timeframe): Promise<Timeframe> {
+  attachToken();
+  const res = await api.put<ApiResponse<string>>(`${BASE}/backtest-playback/${sessionId}/timeframe`, { timeframe });
+  return res.data.value as Timeframe;
 }
 
 async function fetchHistoricalCandles(
@@ -236,9 +357,35 @@ async function placeOrderApi(req: PlaceOrderRequest): Promise<BacktestOrder> {
   return res.data.value;
 }
 
+async function finishSessionApi(sessionId: number, exitPrice?: number | null): Promise<void> {
+  attachToken();
+
+  const params = new URLSearchParams();
+  if (typeof exitPrice === "number" && Number.isFinite(exitPrice) && exitPrice > 0) {
+    params.set("exitPrice", exitPrice.toString());
+  }
+
+  const query = params.toString();
+  const url = query
+    ? `${BASE}/backtest-sessions/${sessionId}/finish?${query}`
+    : `${BASE}/backtest-sessions/${sessionId}/finish`;
+
+  await api.post(url);
+}
+
 async function cancelOrderApi(orderId: number): Promise<void> {
   attachToken();
   await api.delete(`${BASE}/backtest-orders/${orderId}`);
+}
+
+async function closeOrderApi(orderId: number, exitPrice: number): Promise<void> {
+  attachToken();
+  await api.post(`${BASE}/backtest-orders/${orderId}/close?exitPrice=${exitPrice}`);
+}
+
+async function updateOrderApi(orderId: number, req: Omit<UpdateOrderRequest, 'orderId'>): Promise<void> {
+  attachToken();
+  await api.put(`${BASE}/backtest-orders/${orderId}`, req);
 }
 
 async function fetchSessionOrders(sessionId: number): Promise<BacktestOrder[]> {
@@ -274,6 +421,9 @@ interface BacktestStore {
   createSession: (req: CreateSessionRequest) => Promise<number>;
   deleteSession: (id: number) => Promise<void>;
 
+  tradingZones: TradingZoneDto[];
+  loadTradingZones: () => Promise<void>;
+
   // ── Active Session ──
   session: BacktestSession | null;
   sessionLoading: boolean;
@@ -285,6 +435,7 @@ interface BacktestStore {
   isPlaying: boolean;
   playbackSpeed: PlaybackSpeed;
   activeTimeframe: Timeframe;
+  isSwitchingTimeframe: boolean;
   playbackIntervalId: ReturnType<typeof setInterval> | null;
 
   loadCandles: (sessionId: number, timeframe?: Timeframe) => Promise<void>;
@@ -297,11 +448,15 @@ interface BacktestStore {
   // ── Orders & Positions ──
   pendingOrders: BacktestOrder[];
   activePositions: BacktestOrder[];
+  closedPositions: BacktestOrder[];
   closedTrades: TradeResult[];
 
-  placeOrder: (req: PlaceOrderRequest) => Promise<BacktestOrder | null>;
+  placeOrder: (req: PlaceOrderRequest) => Promise<BacktestOrder>;
+  updateOrder: (req: UpdateOrderRequest) => Promise<void>;
   cancelOrder: (orderId: number) => Promise<void>;
+  closeOrder: (orderId: number, exitPrice: number) => Promise<void>;
   loadOrders: (sessionId: number) => Promise<void>;
+  finishSession: (sessionId: number, exitPrice?: number | null) => Promise<void>;
 
   // ── Account ──
   balance: number;
@@ -334,6 +489,7 @@ interface BacktestStore {
 const initialState = {
   sessions: [],
   sessionsLoading: false,
+  tradingZones: [],
   session: null,
   sessionLoading: false,
   candles: [],
@@ -341,9 +497,11 @@ const initialState = {
   isPlaying: false,
   playbackSpeed: 1 as PlaybackSpeed,
   activeTimeframe: "M15" as Timeframe,
+  isSwitchingTimeframe: false,
   playbackIntervalId: null,
   pendingOrders: [],
   activePositions: [],
+  closedPositions: [],
   closedTrades: [],
   balance: 0,
   equity: 0,
@@ -367,6 +525,15 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       set({ sessions, sessionsLoading: false });
     } catch {
       set({ sessionsLoading: false });
+    }
+  },
+
+  loadTradingZones: async () => {
+    try {
+      const tradingZones = await fetchTradingZonesApi();
+      set({ tradingZones });
+    } catch {
+      console.error("Failed to fetch trading zones");
     }
   },
 
@@ -416,16 +583,28 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
           : s.candles;
 
         // Update pending/active orders from fill/close events
-        let pendingOrders = [...s.pendingOrders];
-        let activePositions = [...s.activePositions];
+        let pendingOrders = s.pendingOrders;
+        let activePositions = s.activePositions;
+        let closedPositions = s.closedPositions;
+
+        if (result.filledOrders.length > 0 || result.closedPositions.length > 0) {
+          pendingOrders = dedupeOrdersById(pendingOrders);
+          activePositions = dedupeOrdersById(activePositions);
+          closedPositions = dedupeOrdersById(closedPositions);
+        }
 
         for (const filled of result.filledOrders) {
           pendingOrders = pendingOrders.filter((o) => o.id !== filled.id);
-          activePositions.push(filled);
+          activePositions = upsertOrderById(activePositions, filled);
+          toast.success(`Pending ${filled.side} Limit triggered at ${filled.filledPrice}`);
         }
 
         for (const closed of result.closedPositions) {
           activePositions = activePositions.filter((o) => o.id !== closed.id);
+          closedPositions = upsertOrderById(closedPositions, closed);
+          const pnl = closed.pnl ?? 0;
+          const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
+          toast.info(`${closed.side} Position closed. PnL: ${pnlText}`);
         }
 
         return {
@@ -436,6 +615,7 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
           currentTimestamp: result.currentTimestamp,
           pendingOrders,
           activePositions,
+          closedPositions,
         };
       });
 
@@ -497,29 +677,92 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
    * Reloads candles for the new timeframe, filtered server-side to currentTimestamp only.
    */
   switchTimeframe: async (sessionId, timeframe) => {
+    if (get().isSwitchingTimeframe || timeframe === get().activeTimeframe) {
+      return;
+    }
+
+    const previousTimeframe = get().activeTimeframe;
+    const previousCandles = get().candles;
+    const previousSession = get().session;
+    const optimisticCandles = aggregateCandlesToTimeframe(previousCandles, previousTimeframe, timeframe) ?? previousCandles;
+    let serverTimeframeUpdated = false;
+
     get().pausePlayback();
-    set({ activeTimeframe: timeframe });
-    await get().loadCandles(sessionId, timeframe);
+
+    set((state) => ({
+      activeTimeframe: timeframe,
+      candles: optimisticCandles,
+      isSwitchingTimeframe: true,
+      session: state.session
+        ? { ...state.session, activeTimeframe: timeframe }
+        : state.session,
+    }));
+
+    try {
+      await setPlaybackTimeframeApi(sessionId, timeframe);
+      serverTimeframeUpdated = true;
+
+      const candles = await fetchHistoricalCandles(sessionId, timeframe);
+
+      set((state) => ({
+        activeTimeframe: timeframe,
+        candles,
+        isSwitchingTimeframe: false,
+        session: state.session
+          ? { ...state.session, activeTimeframe: timeframe }
+          : state.session,
+      }));
+    } catch {
+      if (serverTimeframeUpdated && previousTimeframe !== timeframe) {
+        try {
+          await setPlaybackTimeframeApi(sessionId, previousTimeframe);
+        } catch {
+          // Best-effort rollback only.
+        }
+      }
+
+      set({
+        activeTimeframe: previousTimeframe,
+        candles: previousCandles,
+        isSwitchingTimeframe: false,
+        session: previousSession ? { ...previousSession } : null,
+      });
+      toast.error("Failed to switch timeframe");
+    }
   },
 
   // ── Orders & Positions ──
 
   placeOrder: async (req) => {
+    const order = await placeOrderApi(req);
+
+    set((s) => {
+      if (order.status === "Pending") {
+        return { pendingOrders: upsertOrderById(s.pendingOrders, order) };
+      }
+
+      if (order.status === "Active") {
+        return { activePositions: upsertOrderById(s.activePositions, order) };
+      }
+
+      return {};
+    });
+
+    return order;
+  },
+
+  updateOrder: async (req) => {
     try {
-      const order = await placeOrderApi(req);
+      const { orderId, ...payload } = req;
+      await updateOrderApi(orderId, payload);
+      toast.success("Order updated successfully");
 
-      set((s) => {
-        if (order.status === "Pending") {
-          return { pendingOrders: [...s.pendingOrders, order] };
-        } else if (order.status === "Active") {
-          return { activePositions: [...s.activePositions, order] };
-        }
-        return {};
-      });
-
-      return order;
+      const session = get().session;
+      if (session) {
+        await get().loadOrders(session.id);
+      }
     } catch {
-      return null;
+      toast.error("Failed to update order");
     }
   },
 
@@ -530,12 +773,37 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
     }));
   },
 
+  closeOrder: async (orderId, exitPrice) => {
+    await closeOrderApi(orderId, exitPrice);
+    
+    // Optimistically load orders again to sync up perfectly or move it locally
+    // For exact P&L, it's safer to fetch the orders again
+    const orders = await fetchSessionOrders(get().session!.id);
+    set({
+      pendingOrders: dedupeOrdersById(orders.filter((o) => o.status === "Pending")),
+      activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
+      closedPositions: dedupeOrdersById(orders.filter((o) => o.status === "Closed")),
+    });
+  },
+
   loadOrders: async (sessionId) => {
     const orders = await fetchSessionOrders(sessionId);
     set({
-      pendingOrders: orders.filter((o) => o.status === "Pending"),
-      activePositions: orders.filter((o) => o.status === "Active"),
+      pendingOrders: dedupeOrdersById(orders.filter((o) => o.status === "Pending")),
+      activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
+      closedPositions: dedupeOrdersById(orders.filter((o) => o.status === "Closed")),
     });
+  },
+
+  finishSession: async (sessionId, exitPrice) => {
+    get().pausePlayback();
+    await finishSessionApi(sessionId, exitPrice);
+
+    await Promise.all([
+      get().loadSession(sessionId),
+      get().loadOrders(sessionId),
+      get().loadSessions(),
+    ]);
   },
 
   // ── Drawings ──
@@ -577,6 +845,21 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   // ── Resume ──
 
   resumeSession: async (sessionId) => {
+    // Clear previous session data to prevent chart bleeding
+    set({
+      session: null,
+      candles: [],
+      isPlaying: false,
+      playbackIntervalId: null,
+      pendingOrders: [],
+      activePositions: [],
+      closedPositions: [],
+      drawings: [],
+      selectedDrawingId: null,
+      activeDrawingTool: null,
+      analytics: null,
+    });
+
     const state = await fetchPlaybackState(sessionId);
 
     // Parse drawings
@@ -593,14 +876,16 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       balance: state.balance,
       equity: state.equity,
       unrealizedPnl: state.unrealizedPnl,
-      pendingOrders: state.pendingOrders,
-      activePositions: state.activePositions,
+      pendingOrders: dedupeOrdersById(state.pendingOrders),
+      activePositions: dedupeOrdersById(state.activePositions),
+      closedPositions: [],
       drawings,
     });
 
-    // Load session detail and candles
+    // Load session detail, candles, and full order state.
     await get().loadSession(sessionId);
     await get().loadCandles(sessionId, state.activeTimeframe as Timeframe);
+    await get().loadOrders(sessionId);
   },
 
   // ── Reset ──

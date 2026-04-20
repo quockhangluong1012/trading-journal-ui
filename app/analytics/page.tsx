@@ -1,68 +1,143 @@
 "use client"
 
-import { useMemo, useState, useEffect, useCallback } from "react"
+import { type ElementType, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  AreaChart, Area, PieChart, Pie, Cell, Tooltip as ReTooltip, RadarChart,
-  PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  Tooltip as ReTooltip,
+  XAxis,
+  YAxis,
 } from "recharts"
+import {
+  AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
+  Award,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Download,
+  Info,
+  Layers,
+  Lightbulb,
+  PieChart as PieChartIcon,
+  Shield,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Zap,
+} from "lucide-react"
+import {
+  AnalyticsCommandCenter,
+  type AnalyticsTabValue,
+} from "@/components/analytics/analytics-command-center"
+import { Header } from "@/components/header"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 import {
-  BarChart3, TrendingUp, TrendingDown, Target, Activity, Shield, Clock,
-  Download, Lightbulb, ArrowUpRight, ArrowDownRight,
-  Calendar, Layers, Award, AlertTriangle, Info, CheckCircle2, Zap,
-  PieChart as PieChartIcon, Loader2,
-} from "lucide-react"
-import { Header } from "@/components/header"
-import {
-  fetchPerformanceSummary, fetchMonthlyReturns, fetchAssetBreakdown,
-  fetchDayOfWeekBreakdown, fetchEquityCurve, fetchInsights,
-  FILTER_LABELS, AnalyticsFilter,
-  type PerformanceSummary, type MonthlyReturn, type AssetBreakdown as AssetBreakdownType,
-  type DayOfWeekBreakdown as DayBreakdownType, type EquityPoint, type Insight,
+  AnalyticsFilter,
+  FILTER_LABELS,
+  fetchAssetBreakdown,
+  fetchDayOfWeekBreakdown,
+  fetchEquityCurve,
+  fetchInsights,
+  fetchMonthlyReturns,
+  fetchPerformanceSummary,
+  type AssetBreakdown as AssetBreakdownType,
+  type DayOfWeekBreakdown as DayBreakdownType,
+  type EquityPoint,
+  type Insight,
+  type MonthlyReturn,
+  type PerformanceSummary,
 } from "@/lib/analytics-api"
 
-// --- Helpers ---
-const fmt = (v: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(v)
+const fmt = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+  }).format(value)
 
-const pct = (v: number) => `${v.toFixed(1)}%`
+const pct = (value: number) => `${value.toFixed(1)}%`
 
 const TIME_RANGES = [
-  { label: "1W", days: 7 },
-  { label: "1M", days: 30 },
-  { label: "3M", days: 90 },
-  { label: "6M", days: 180 },
-  { label: "All", days: 9999 },
+  { label: "1W" },
+  { label: "1M" },
+  { label: "3M" },
+  { label: "6M" },
+  { label: "All" },
 ] as const
 
-// --- Loading Spinner ---
-function LoadingState({ height = "h-[200px]" }: { height?: string }) {
-  return (
-    <div className={`flex ${height} items-center justify-center`}>
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-    </div>
-  )
+const ANALYTICS_TABS = ["overview", "performance", "breakdown", "insights"] as const
+const ANALYTICS_RANGE_STORAGE_KEY = "trading-journal-analytics-range"
+const ANALYTICS_TAB_STORAGE_KEY = "trading-journal-analytics-tab"
+const SURFACE_CARD_CLASS = "border-border/70 bg-card/95 shadow-sm"
+
+type AnalyticsRangeLabel = (typeof TIME_RANGES)[number]["label"]
+
+interface AnalyticsViewState {
+  analytics: PerformanceSummary
+  monthlyData: MonthlyReturn[]
+  assetData: AssetBreakdownType[]
+  dayData: DayBreakdownType[]
+  equityData: EquityPoint[]
+  insightsData: Insight[]
+  isLoading: boolean
+  isRefreshing: boolean
+  lastUpdatedAt: Date | null
+  syncWarning: string | null
 }
 
-// --- Stat Metric Card ---
-function MetricCard({ label, value, sub, icon: Icon, color = "text-foreground", bgColor = "bg-secondary/30" }: {
-  label: string; value: string; sub?: string; icon: React.ElementType; color?: string; bgColor?: string
+function isAnalyticsRangeLabel(value: string | null): value is AnalyticsRangeLabel {
+  return TIME_RANGES.some((range) => range.label === value)
+}
+
+function isAnalyticsTabValue(value: string | null): value is AnalyticsTabValue {
+  return ANALYTICS_TABS.some((tab) => tab === value)
+}
+
+function MetricCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  color = "text-foreground",
+  bgColor = "border border-border/60 bg-secondary/30",
+}: {
+  label: string
+  value: string
+  sub?: string
+  icon: ElementType
+  color?: string
+  bgColor?: string
 }) {
   return (
-    <Card className="border-border bg-card">
+    <Card className="overflow-hidden border-border/70 bg-linear-to-b from-card to-card/80 shadow-sm">
       <CardContent className="pt-5 pb-4">
-        <div className="flex items-start justify-between">
-          <div className="min-w-0">
-            <p className="text-xs text-muted-foreground truncate">{label}</p>
-            <p className={`mt-1 text-xl font-bold ${color}`}>{value}</p>
-            {sub && <p className="mt-0.5 text-[10px] text-muted-foreground">{sub}</p>}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1">
+            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              {label}
+            </p>
+            <p className={`text-2xl font-semibold tracking-tight ${color}`}>{value}</p>
+            {sub ? <p className="text-xs leading-relaxed text-muted-foreground">{sub}</p> : null}
           </div>
-          <div className={`rounded-lg p-2 ${bgColor}`}>
+          <div className={cn("rounded-2xl p-2.5 shadow-sm", bgColor)}>
             <Icon className={`h-4 w-4 ${color}`} />
           </div>
         </div>
@@ -71,12 +146,17 @@ function MetricCard({ label, value, sub, icon: Icon, color = "text-foreground", 
   )
 }
 
-// --- Equity Curve ---
 function EquityCurveChart({ data }: { data: EquityPoint[] }) {
-  if (data.length === 0) return <div className="flex h-[280px] items-center justify-center text-sm text-muted-foreground">No closed trades in this period</div>
+  if (data.length === 0) {
+    return (
+      <div className="flex h-70 items-center justify-center text-sm text-muted-foreground">
+        No closed trades in this period
+      </div>
+    )
+  }
 
   return (
-    <ChartContainer config={{ profit: { label: "Equity", color: "#22c55e" } }} className="h-[280px]">
+    <ChartContainer config={{ profit: { label: "Equity", color: "#22c55e" } }} className="h-70">
       <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
@@ -85,28 +165,77 @@ function EquityCurveChart({ data }: { data: EquityPoint[] }) {
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-        <XAxis dataKey="date" tickFormatter={(v) => new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" })} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#374151" }} />
-        <YAxis tickFormatter={(v) => `$${v.toLocaleString()}`} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={70} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => fmt(v as number)} labelFormatter={(l) => new Date(l).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} />} />
+        <XAxis
+          dataKey="date"
+          tickFormatter={(value) =>
+            new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+          }
+          tick={{ fill: "#9ca3af", fontSize: 10 }}
+          tickLine={false}
+          axisLine={{ stroke: "#374151" }}
+        />
+        <YAxis
+          tickFormatter={(value) => `$${value.toLocaleString()}`}
+          tick={{ fill: "#9ca3af", fontSize: 10 }}
+          tickLine={false}
+          axisLine={false}
+          width={70}
+        />
+        <ChartTooltip
+          content={
+            <ChartTooltipContent
+              formatter={(value) => fmt(value as number)}
+              labelFormatter={(label) =>
+                new Date(label).toLocaleDateString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              }
+            />
+          }
+        />
         <Area type="monotone" dataKey="profit" stroke="#22c55e" strokeWidth={2} fill="url(#eqGrad)" />
       </AreaChart>
     </ChartContainer>
   )
 }
 
-// --- Monthly Returns Bar ---
 function MonthlyReturnsChart({ data }: { data: MonthlyReturn[] }) {
-  if (data.length === 0) return <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">No monthly data yet</div>
+  if (data.length === 0) {
+    return (
+      <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
+        No monthly data yet
+      </div>
+    )
+  }
+
   return (
-    <ChartContainer config={{ pnl: { label: "PnL", color: "#22c55e" } }} className="h-[240px]">
+    <ChartContainer config={{ pnl: { label: "PnL", color: "#22c55e" } }} className="h-60">
       <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-        <XAxis dataKey="month" tickFormatter={(v) => { const [y, m] = v.split("-"); return `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m)-1]} '${y.slice(2)}` }} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#374151" }} />
-        <YAxis tickFormatter={(v) => `$${v.toLocaleString()}`} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={70} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => fmt(v as number)} />} />
+        <XAxis
+          dataKey="month"
+          tickFormatter={(value) => {
+            const [year, month] = value.split("-")
+            const monthLabel = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number.parseInt(month, 10) - 1]
+            return `${monthLabel} '${year.slice(2)}`
+          }}
+          tick={{ fill: "#9ca3af", fontSize: 10 }}
+          tickLine={false}
+          axisLine={{ stroke: "#374151" }}
+        />
+        <YAxis
+          tickFormatter={(value) => `$${value.toLocaleString()}`}
+          tick={{ fill: "#9ca3af", fontSize: 10 }}
+          tickLine={false}
+          axisLine={false}
+          width={70}
+        />
+        <ChartTooltip content={<ChartTooltipContent formatter={(value) => fmt(value as number)} />} />
         <Bar dataKey="pnl" radius={[4, 4, 0, 0]} fill="#22c55e">
-          {data.map((d, i) => (
-            <Cell key={i} fill={d.pnl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
+          {data.map((item, index) => (
+            <Cell key={index} fill={item.pnl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
           ))}
         </Bar>
       </BarChart>
@@ -114,31 +243,60 @@ function MonthlyReturnsChart({ data }: { data: MonthlyReturn[] }) {
   )
 }
 
-// --- Asset Performance ---
 function AssetPerformanceChart({ data }: { data: AssetBreakdownType[] }) {
-  if (data.length === 0) return <div className="flex h-[240px] items-center justify-center text-sm text-muted-foreground">No asset data</div>
-  const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
+  const colors = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"]
+
+  if (data.length === 0) {
+    return (
+      <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">
+        No asset data
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <ChartContainer config={{ pnl: { label: "PnL", color: "#22c55e" } }} className="h-[200px]">
+      <ChartContainer config={{ pnl: { label: "PnL", color: "#22c55e" } }} className="h-50">
         <PieChart>
-          <Pie data={data.map((d) => ({ ...d, absPnl: Math.abs(d.pnl) }))} dataKey="absPnl" nameKey="asset" cx="50%" cy="50%" innerRadius={45} outerRadius={80} paddingAngle={2}>
-            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+          <Pie
+            data={data.map((item) => ({ ...item, absPnl: Math.abs(item.pnl) }))}
+            dataKey="absPnl"
+            nameKey="asset"
+            cx="50%"
+            cy="50%"
+            innerRadius={45}
+            outerRadius={80}
+            paddingAngle={2}
+          >
+            {data.map((_, index) => (
+              <Cell key={index} fill={colors[index % colors.length]} />
+            ))}
           </Pie>
-          <ReTooltip contentStyle={{ backgroundColor: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px", color: "var(--popover-foreground)" }} formatter={(v: any, name: any) => [fmt(data.find((d) => d.asset === name)?.pnl ?? 0), name]} />
+          <ReTooltip
+            contentStyle={{
+              backgroundColor: "var(--popover)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              fontSize: "12px",
+              color: "var(--popover-foreground)",
+            }}
+            formatter={(_value, name) => [fmt(data.find((item) => item.asset === String(name))?.pnl ?? 0), String(name)]}
+          />
         </PieChart>
       </ChartContainer>
       <div className="space-y-1.5">
-        {data.map((d, i) => (
-          <div key={d.asset} className="flex items-center justify-between rounded-md px-2.5 py-1.5 bg-secondary/20">
+        {data.map((item, index) => (
+          <div key={item.asset} className="flex items-center justify-between rounded-xl bg-secondary/20 px-3 py-2">
             <div className="flex items-center gap-2">
-              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-              <span className="text-xs font-medium text-foreground">{d.asset}</span>
+              <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors[index % colors.length] }} />
+              <span className="text-xs font-medium text-foreground">{item.asset}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] text-muted-foreground">{d.count} trades</span>
-              <span className="text-[10px] text-muted-foreground">{d.winRate}% WR</span>
-              <span className={`text-xs font-medium ${d.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{fmt(d.pnl)}</span>
+              <span className="text-[10px] text-muted-foreground">{item.count} trades</span>
+              <span className="text-[10px] text-muted-foreground">{item.winRate}% WR</span>
+              <span className={`text-xs font-medium ${item.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {fmt(item.pnl)}
+              </span>
             </div>
           </div>
         ))}
@@ -147,36 +305,39 @@ function AssetPerformanceChart({ data }: { data: AssetBreakdownType[] }) {
   )
 }
 
-// --- Day of Week ---
 function DayOfWeekChart({ data }: { data: DayBreakdownType[] }) {
   return (
-    <ChartContainer config={{ pnl: { label: "PnL", color: "#22c55e" } }} className="h-[200px]">
+    <ChartContainer config={{ pnl: { label: "PnL", color: "#22c55e" } }} className="h-50">
       <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
         <XAxis dataKey="day" tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#374151" }} />
-        <YAxis tickFormatter={(v) => `$${v}`} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={55} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => fmt(v as number)} />} />
+        <YAxis tickFormatter={(value) => `$${value}`} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={55} />
+        <ChartTooltip content={<ChartTooltipContent formatter={(value) => fmt(value as number)} />} />
         <Bar dataKey="pnl" radius={[4, 4, 0, 0]}>
-          {data.map((d, i) => <Cell key={i} fill={d.pnl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />)}
+          {data.map((item, index) => (
+            <Cell key={index} fill={item.pnl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
+          ))}
         </Bar>
       </BarChart>
     </ChartContainer>
   )
 }
 
-// --- Radar Performance ---
 function PerformanceRadar({ analytics }: { analytics: PerformanceSummary }) {
-  const data = useMemo(() => [
-    { metric: "Win Rate", value: Math.min(analytics.winRate, 100), fullMark: 100 },
-    { metric: "Profit Factor", value: Math.min(analytics.profitFactor * 25, 100), fullMark: 100 },
-    { metric: "R:R Ratio", value: Math.min(analytics.avgRiskReward * 20, 100), fullMark: 100 },
-    { metric: "Sharpe", value: Math.min(Math.max(analytics.sharpeRatio * 25, 0), 100), fullMark: 100 },
-    { metric: "Consistency", value: Math.min(100 - analytics.maxDrawdownPct, 100), fullMark: 100 },
-    { metric: "Discipline", value: Math.min(analytics.consecutiveWins * 15 + 30, 100), fullMark: 100 },
-  ], [analytics])
+  const data = useMemo(
+    () => [
+      { metric: "Win Rate", value: Math.min(analytics.winRate, 100), fullMark: 100 },
+      { metric: "Profit Factor", value: Math.min(analytics.profitFactor * 25, 100), fullMark: 100 },
+      { metric: "R:R Ratio", value: Math.min(analytics.avgRiskReward * 20, 100), fullMark: 100 },
+      { metric: "Sharpe", value: Math.min(Math.max(analytics.sharpeRatio * 25, 0), 100), fullMark: 100 },
+      { metric: "Consistency", value: Math.min(100 - analytics.maxDrawdownPct, 100), fullMark: 100 },
+      { metric: "Discipline", value: Math.min(analytics.consecutiveWins * 15 + 30, 100), fullMark: 100 },
+    ],
+    [analytics],
+  )
 
   return (
-    <ChartContainer config={{ value: { label: "Score", color: "#22c55e" } }} className="h-[260px]">
+    <ChartContainer config={{ value: { label: "Score", color: "#22c55e" } }} className="h-65">
       <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
         <PolarGrid stroke="#374151" />
         <PolarAngleAxis dataKey="metric" tick={{ fill: "#9ca3af", fontSize: 10 }} />
@@ -187,22 +348,27 @@ function PerformanceRadar({ analytics }: { analytics: PerformanceSummary }) {
   )
 }
 
-// --- Insights Panel ---
 function InsightsPanel({ insights }: { insights: Insight[] }) {
   const iconMap = { success: CheckCircle2, warning: AlertTriangle, info: Info }
-  const colorMap = { success: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20", warning: "text-amber-400 bg-amber-500/10 border-amber-500/20", info: "text-blue-400 bg-blue-500/10 border-blue-500/20" }
+  const colorMap = {
+    success: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+    warning: "text-amber-400 bg-amber-500/10 border-amber-500/20",
+    info: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+  }
+
   return (
     <div className="space-y-3">
-      {insights.map((insight, i) => {
+      {insights.map((insight, index) => {
         const Icon = iconMap[insight.type]
         const colors = colorMap[insight.type]
+
         return (
-          <div key={i} className={`rounded-lg border p-3 ${colors}`}>
-            <div className="flex items-start gap-2.5">
-              <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+          <div key={index} className={`rounded-2xl border px-4 py-3.5 shadow-sm ${colors}`}>
+            <div className="flex items-start gap-3">
+              <Icon className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                <p className="text-xs font-semibold">{insight.title}</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed opacity-80">{insight.description}</p>
+                <p className="text-sm font-semibold">{insight.title}</p>
+                <p className="mt-1 text-xs leading-relaxed opacity-80">{insight.description}</p>
               </div>
             </div>
           </div>
@@ -212,20 +378,32 @@ function InsightsPanel({ insights }: { insights: Insight[] }) {
   )
 }
 
-// --- Drawdown Chart (computed from equity curve data) ---
 function DrawdownChart({ equityData }: { equityData: EquityPoint[] }) {
   const data = useMemo(() => {
     let peak = 0
+
     return equityData.map((point) => {
-      if (point.profit > peak) peak = point.profit
-      return { date: point.date, drawdown: -(peak - point.profit) }
+      if (point.profit > peak) {
+        peak = point.profit
+      }
+
+      return {
+        date: point.date,
+        drawdown: -(peak - point.profit),
+      }
     })
   }, [equityData])
 
-  if (data.length === 0) return <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">No drawdown data</div>
+  if (data.length === 0) {
+    return (
+      <div className="flex h-50 items-center justify-center text-sm text-muted-foreground">
+        No drawdown data
+      </div>
+    )
+  }
 
   return (
-    <ChartContainer config={{ drawdown: { label: "Drawdown", color: "#ef4444" } }} className="h-[200px]">
+    <ChartContainer config={{ drawdown: { label: "Drawdown", color: "#ef4444" } }} className="h-50">
       <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="ddGrad" x1="0" y1="0" x2="0" y2="1">
@@ -234,57 +412,84 @@ function DrawdownChart({ equityData }: { equityData: EquityPoint[] }) {
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-        <XAxis dataKey="date" tickFormatter={(v) => new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" })} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#374151" }} />
-        <YAxis tickFormatter={(v) => `$${v}`} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={60} />
-        <ChartTooltip content={<ChartTooltipContent formatter={(v) => fmt(v as number)} />} />
+        <XAxis
+          dataKey="date"
+          tickFormatter={(value) =>
+            new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+          }
+          tick={{ fill: "#9ca3af", fontSize: 10 }}
+          tickLine={false}
+          axisLine={{ stroke: "#374151" }}
+        />
+        <YAxis tickFormatter={(value) => `$${value}`} tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={60} />
+        <ChartTooltip content={<ChartTooltipContent formatter={(value) => fmt(value as number)} />} />
         <Area type="monotone" dataKey="drawdown" stroke="#ef4444" strokeWidth={2} fill="url(#ddGrad)" />
       </AreaChart>
     </ChartContainer>
   )
 }
 
-// --- Win/Loss Distribution (computed from equity data) ---
 function WinLossDistribution({ equityData }: { equityData: EquityPoint[] }) {
   const data = useMemo(() => {
-    // Derive individual PnLs from cumulative equity curve
     const pnls: number[] = []
-    for (let i = 0; i < equityData.length; i++) {
-      if (i === 0) pnls.push(equityData[i].profit)
-      else pnls.push(equityData[i].profit - equityData[i - 1].profit)
+
+    for (let index = 0; index < equityData.length; index += 1) {
+      if (index === 0) {
+        pnls.push(equityData[index].profit)
+      } else {
+        pnls.push(equityData[index].profit - equityData[index - 1].profit)
+      }
     }
 
     const step = 1000
     const buckets: Record<string, number> = {}
+
     pnls.forEach((pnl) => {
       const bucket = Math.floor(pnl / step) * step
       const key = `${bucket >= 0 ? "+" : ""}${bucket}`
       buckets[key] = (buckets[key] || 0) + 1
     })
+
     return Object.entries(buckets)
-      .map(([range, count]) => ({ range, count, pnl: parseInt(range) }))
-      .sort((a, b) => a.pnl - b.pnl)
+      .map(([range, count]) => ({ range, count, pnl: Number.parseInt(range, 10) }))
+      .sort((left, right) => left.pnl - right.pnl)
   }, [equityData])
 
-  if (data.length === 0) return <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">No distribution data</div>
+  if (data.length === 0) {
+    return (
+      <div className="flex h-50 items-center justify-center text-sm text-muted-foreground">
+        No distribution data
+      </div>
+    )
+  }
 
   return (
-    <ChartContainer config={{ count: { label: "Trades", color: "#22c55e" } }} className="h-[200px]">
+    <ChartContainer config={{ count: { label: "Trades", color: "#22c55e" } }} className="h-50">
       <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
         <XAxis dataKey="range" tick={{ fill: "#9ca3af", fontSize: 9 }} tickLine={false} axisLine={{ stroke: "#374151" }} />
         <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} tickLine={false} axisLine={false} width={30} />
         <ChartTooltip content={<ChartTooltipContent />} />
         <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-          {data.map((d, i) => <Cell key={i} fill={d.pnl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />)}
+          {data.map((item, index) => (
+            <Cell key={index} fill={item.pnl >= 0 ? "#22c55e" : "#ef4444"} fillOpacity={0.8} />
+          ))}
         </Bar>
       </BarChart>
     </ChartContainer>
   )
 }
 
-// --- Export Report ---
-function ExportButton({ analytics, monthlyData, assetData, insightsData }: {
-  analytics: PerformanceSummary; monthlyData: MonthlyReturn[]; assetData: AssetBreakdownType[]; insightsData: Insight[]
+function ExportButton({
+  analytics,
+  monthlyData,
+  assetData,
+  insightsData,
+}: {
+  analytics: PerformanceSummary
+  monthlyData: MonthlyReturn[]
+  assetData: AssetBreakdownType[]
+  insightsData: Insight[]
 }) {
   const handleExport = useCallback(() => {
     const lines = [
@@ -311,372 +516,713 @@ function ExportButton({ analytics, monthlyData, assetData, insightsData }: {
       `Shorts Win Rate: ${pct(analytics.shortsWinRate)}`,
       "",
       "=== MONTHLY RETURNS ===",
-      ...monthlyData.map((m) => `${m.month}: ${fmt(m.pnl)}`),
+      ...monthlyData.map((item) => `${item.month}: ${fmt(item.pnl)}`),
       "",
       "=== ASSET BREAKDOWN ===",
-      ...assetData.map((a) => `${a.asset}: ${fmt(a.pnl)} (${a.count} trades, ${a.winRate}% WR)`),
+      ...assetData.map((item) => `${item.asset}: ${fmt(item.pnl)} (${item.count} trades, ${item.winRate}% WR)`),
       "",
       "=== INSIGHTS & RECOMMENDATIONS ===",
-      ...insightsData.map((ins) => `[${ins.type.toUpperCase()}] ${ins.title}: ${ins.description}`),
+      ...insightsData.map((insight) => `[${insight.type.toUpperCase()}] ${insight.title}: ${insight.description}`),
     ]
 
     const blob = new Blob([lines.join("\n")], { type: "text/plain" })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `trading-analytics-${new Date().toISOString().split("T")[0]}.txt`
-    a.click()
+    const anchor = document.createElement("a")
+
+    anchor.href = url
+    anchor.download = `trading-analytics-${new Date().toISOString().split("T")[0]}.txt`
+    anchor.click()
+
     URL.revokeObjectURL(url)
-  }, [analytics, monthlyData, assetData, insightsData])
+  }, [analytics, assetData, insightsData, monthlyData])
 
   return (
     <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5">
-      <Download className="h-3.5 w-3.5" /> Export Report
+      <Download className="h-3.5 w-3.5" />
+      Export report
     </Button>
   )
 }
 
-// --- Long vs Short Donut ---
 function LongShortSplit({ analytics }: { analytics: PerformanceSummary }) {
-  const data = useMemo(() => [
-    { name: "Long WR", value: analytics.longsWinRate, fill: "#22c55e" },
-    { name: "Short WR", value: analytics.shortsWinRate, fill: "#ef4444" },
-  ], [analytics])
+  const rows = [
+    {
+      label: "Longs",
+      value: analytics.longsWinRate,
+      barClassName: "bg-emerald-500/80",
+      textClassName: "text-emerald-400",
+    },
+    {
+      label: "Shorts",
+      value: analytics.shortsWinRate,
+      barClassName: "bg-red-500/80",
+      textClassName: "text-red-400",
+    },
+  ]
 
   return (
-    <div className="flex items-center gap-6">
-      <ChartContainer config={{ value: { label: "Win Rate" } }} className="h-[120px] w-[120px]">
-        <PieChart>
-          <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={30} outerRadius={50} paddingAngle={4}>
-            {data.map((d, i) => <Cell key={i} fill={d.fill} />)}
-          </Pie>
-        </PieChart>
-      </ChartContainer>
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-emerald-500" />
-          <span className="text-xs text-muted-foreground">Longs</span>
-          <span className="text-xs font-bold text-emerald-400">{pct(analytics.longsWinRate)}</span>
+    <div className="space-y-3">
+      {rows.map((row) => (
+        <div key={row.label} className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">{row.label}</span>
+            <span className={`font-semibold ${row.textClassName}`}>{pct(row.value)}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-secondary/60">
+            <div
+              className={`h-full rounded-full ${row.barClassName}`}
+              style={{ width: `${Math.max(0, Math.min(row.value, 100))}%` }}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-red-500" />
-          <span className="text-xs text-muted-foreground">Shorts</span>
-          <span className="text-xs font-bold text-red-400">{pct(analytics.shortsWinRate)}</span>
+      ))}
+    </div>
+  )
+}
+
+function SessionBreakdownPlaceholder() {
+  return (
+    <div className="flex h-50 flex-col items-center justify-center gap-2 text-center">
+      <Clock className="h-6 w-6 text-muted-foreground" />
+      <p className="text-sm font-medium text-foreground">Session analytics are next.</p>
+      <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+        Asia, London, and New York splits will appear here once session-based analytics are exposed from the backend.
+      </p>
+    </div>
+  )
+}
+
+function AnalyticsPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-background via-background to-primary/5 shadow-sm">
+        <div className="grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1.45fr)_360px] lg:px-8">
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Skeleton className="h-6 w-40 rounded-full" />
+              <Skeleton className="h-6 w-14 rounded-full" />
+              <Skeleton className="h-6 w-36 rounded-full" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-72 rounded-xl" />
+              <Skeleton className="h-5 w-full max-w-2xl rounded-md" />
+              <Skeleton className="h-4 w-full max-w-3xl rounded-md" />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Skeleton className="h-10 w-60 rounded-2xl" />
+              <Skeleton className="h-9 w-32 rounded-xl" />
+              <Skeleton className="h-9 w-24 rounded-xl" />
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border/70 bg-background/85 p-5 shadow-sm backdrop-blur-sm">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                  <Skeleton className="h-3 w-20 rounded-md" />
+                  <Skeleton className="mt-3 h-7 w-24 rounded-md" />
+                  <Skeleton className="mt-2 h-3 w-full rounded-md" />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Card key={index} className={SURFACE_CARD_CLASS}>
+            <CardContent className="pt-5 pb-4">
+              <Skeleton className="h-4 w-24 rounded-md" />
+              <Skeleton className="mt-3 h-8 w-28 rounded-md" />
+              <Skeleton className="mt-3 h-3 w-32 rounded-md" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className={SURFACE_CARD_CLASS}>
+          <CardContent className="pt-6">
+            <Skeleton className="h-70 w-full rounded-2xl" />
+          </CardContent>
+        </Card>
+        <Card className={SURFACE_CARD_CLASS}>
+          <CardContent className="pt-6">
+            <Skeleton className="h-70 w-full rounded-2xl" />
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
 }
 
-// --- Default empty analytics ---
 const emptyAnalytics: PerformanceSummary = {
-  totalPnl: 0, winRate: 0, wins: 0, losses: 0, totalClosed: 0,
-  avgWin: 0, avgLoss: 0, largestWin: 0, largestLoss: 0,
-  profitFactor: 0, expectancy: 0, maxDrawdown: 0, maxDrawdownPct: 0,
-  sharpeRatio: 0, avgHoldingDays: 0, longsWinRate: 0, shortsWinRate: 0,
-  consecutiveWins: 0, consecutiveLosses: 0, avgRiskReward: 0,
+  totalPnl: 0,
+  winRate: 0,
+  wins: 0,
+  losses: 0,
+  totalClosed: 0,
+  avgWin: 0,
+  avgLoss: 0,
+  largestWin: 0,
+  largestLoss: 0,
+  profitFactor: 0,
+  expectancy: 0,
+  maxDrawdown: 0,
+  maxDrawdownPct: 0,
+  sharpeRatio: 0,
+  avgHoldingDays: 0,
+  longsWinRate: 0,
+  shortsWinRate: 0,
+  consecutiveWins: 0,
+  consecutiveLosses: 0,
+  avgRiskReward: 0,
 }
 
-// --- Main Content ---
-function AnalyticsContent() {
-  const [range, setRange] = useState("All")
-  const [loading, setLoading] = useState(true)
+const initialViewState: AnalyticsViewState = {
+  analytics: emptyAnalytics,
+  monthlyData: [],
+  assetData: [],
+  dayData: [],
+  equityData: [],
+  insightsData: [],
+  isLoading: true,
+  isRefreshing: false,
+  lastUpdatedAt: null,
+  syncWarning: null,
+}
 
-  const [analytics, setAnalytics] = useState<PerformanceSummary>(emptyAnalytics)
-  const [monthlyData, setMonthlyData] = useState<MonthlyReturn[]>([])
-  const [assetData, setAssetData] = useState<AssetBreakdownType[]>([])
-  const [dayData, setDayData] = useState<DayBreakdownType[]>([])
-  const [equityData, setEquityData] = useState<EquityPoint[]>([])
-  const [insightsData, setInsightsData] = useState<Insight[]>([])
+function AnalyticsContent() {
+  const [range, setRange] = useState<AnalyticsRangeLabel>("All")
+  const [activeTab, setActiveTab] = useState<AnalyticsTabValue>("overview")
+  const [viewState, setViewState] = useState<AnalyticsViewState>(initialViewState)
+  const requestIdRef = useRef(0)
 
   useEffect(() => {
-    const filter = FILTER_LABELS[range] ?? AnalyticsFilter.AllTime
+    try {
+      const storedRange = window.localStorage.getItem(ANALYTICS_RANGE_STORAGE_KEY)
+      const storedTab = window.localStorage.getItem(ANALYTICS_TAB_STORAGE_KEY)
 
-    setLoading(true)
+      if (isAnalyticsRangeLabel(storedRange)) {
+        setRange(storedRange)
+      }
 
-    Promise.all([
+      if (isAnalyticsTabValue(storedTab)) {
+        setActiveTab(storedTab)
+      }
+    } catch {
+      // Ignore storage access failures.
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ANALYTICS_RANGE_STORAGE_KEY, range)
+    } catch {
+      // Ignore storage access failures.
+    }
+  }, [range])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(ANALYTICS_TAB_STORAGE_KEY, activeTab)
+    } catch {
+      // Ignore storage access failures.
+    }
+  }, [activeTab])
+
+  const loadAnalytics = useCallback(async (nextRange: AnalyticsRangeLabel) => {
+    requestIdRef.current += 1
+    const currentRequestId = requestIdRef.current
+
+    setViewState((previous) => ({
+      ...previous,
+      isLoading: previous.lastUpdatedAt === null,
+      isRefreshing: previous.lastUpdatedAt !== null,
+      syncWarning: null,
+    }))
+
+    const filter = FILTER_LABELS[nextRange] ?? AnalyticsFilter.AllTime
+    const [
+      performanceResult,
+      monthlyResult,
+      assetResult,
+      dayResult,
+      equityResult,
+      insightsResult,
+    ] = await Promise.allSettled([
       fetchPerformanceSummary(filter),
       fetchMonthlyReturns(filter),
       fetchAssetBreakdown(filter),
       fetchDayOfWeekBreakdown(filter),
       fetchEquityCurve(filter),
       fetchInsights(filter),
-    ]).then(([perf, monthly, assets, days, equity, insights]) => {
-      setAnalytics(perf)
-      setMonthlyData(monthly)
-      setAssetData(assets)
-      setDayData(days)
-      setEquityData(equity)
-      setInsightsData(insights)
-    }).catch((error) => {
-      console.error("Failed to fetch analytics:", error)
-    }).finally(() => {
-      setLoading(false)
-    })
-  }, [range])
+    ])
 
-  if (loading) {
+    if (currentRequestId !== requestIdRef.current) {
+      return
+    }
+
+    const failedParts: string[] = []
+
+    setViewState((previous) => {
+      const nextState: AnalyticsViewState = {
+        ...previous,
+        isLoading: false,
+        isRefreshing: false,
+      }
+
+      if (performanceResult.status === "fulfilled") {
+        nextState.analytics = performanceResult.value
+      } else {
+        failedParts.push("performance summary")
+      }
+
+      if (monthlyResult.status === "fulfilled") {
+        nextState.monthlyData = monthlyResult.value
+      } else {
+        failedParts.push("monthly returns")
+      }
+
+      if (assetResult.status === "fulfilled") {
+        nextState.assetData = assetResult.value
+      } else {
+        failedParts.push("asset breakdown")
+      }
+
+      if (dayResult.status === "fulfilled") {
+        nextState.dayData = dayResult.value
+      } else {
+        failedParts.push("day-of-week breakdown")
+      }
+
+      if (equityResult.status === "fulfilled") {
+        nextState.equityData = equityResult.value
+      } else {
+        failedParts.push("equity curve")
+      }
+
+      if (insightsResult.status === "fulfilled") {
+        nextState.insightsData = insightsResult.value
+      } else {
+        failedParts.push("insights")
+      }
+
+      nextState.syncWarning =
+        failedParts.length > 0
+          ? `Some analytics data could not be refreshed: ${failedParts.join(", ")}.`
+          : null
+      nextState.lastUpdatedAt = failedParts.length === 6 ? previous.lastUpdatedAt : new Date()
+
+      return nextState
+    })
+  }, [])
+
+  useEffect(() => {
+    void loadAnalytics(range)
+  }, [loadAnalytics, range])
+
+  const isInitialLoading = viewState.isLoading && viewState.lastUpdatedAt === null
+
+  if (isInitialLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <LoadingState height="h-[400px]" />
+          <AnalyticsPageSkeleton />
         </main>
       </div>
     )
   }
 
+  const { analytics, monthlyData, assetData, dayData, equityData, insightsData, isRefreshing, lastUpdatedAt, syncWarning } = viewState
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Page header */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-              <BarChart3 className="h-6 w-6 text-primary" />
-              Analytics
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Deep dive into your trading performance with actionable insights and metrics.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 rounded-md border border-border bg-secondary/30 p-0.5">
-              {TIME_RANGES.map((r) => (
-                <Button key={r.label} variant={range === r.label ? "default" : "ghost"} size="sm" onClick={() => setRange(r.label)} className="h-7 px-2.5 text-xs">
-                  {r.label}
-                </Button>
-              ))}
-            </div>
-            <ExportButton analytics={analytics} monthlyData={monthlyData} assetData={assetData} insightsData={insightsData} />
-          </div>
-        </div>
+        <div className="space-y-6">
+          <AnalyticsCommandCenter
+            range={range}
+            rangeOptions={TIME_RANGES}
+            onRangeChange={(nextRange) => {
+              if (isAnalyticsRangeLabel(nextRange)) {
+                setRange(nextRange)
+              }
+            }}
+            analytics={analytics}
+            assetData={assetData}
+            insights={insightsData}
+            isLoading={false}
+            isRefreshing={isRefreshing}
+            lastUpdatedAt={lastUpdatedAt}
+            syncWarning={syncWarning}
+            exportAction={
+              <ExportButton
+                analytics={analytics}
+                monthlyData={monthlyData}
+                assetData={assetData}
+                insightsData={insightsData}
+              />
+            }
+            onSelectTab={setActiveTab}
+          />
 
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="overview" className="gap-1.5"><Activity className="h-3.5 w-3.5" /> Overview</TabsTrigger>
-            <TabsTrigger value="performance" className="gap-1.5"><TrendingUp className="h-3.5 w-3.5" /> Performance</TabsTrigger>
-            <TabsTrigger value="breakdown" className="gap-1.5"><Layers className="h-3.5 w-3.5" /> Breakdown</TabsTrigger>
-            <TabsTrigger value="insights" className="gap-1.5"><Lightbulb className="h-3.5 w-3.5" /> Insights</TabsTrigger>
-          </TabsList>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              if (isAnalyticsTabValue(value)) {
+                setActiveTab(value)
+              }
+            }}
+            className="space-y-6"
+          >
+            <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1 lg:grid-cols-4">
+              <TabsTrigger value="overview" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <Layers className="h-3.5 w-3.5" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="performance" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <TrendingUp className="h-3.5 w-3.5" />
+                Performance
+              </TabsTrigger>
+              <TabsTrigger value="breakdown" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <PieChartIcon className="h-3.5 w-3.5" />
+                Breakdown
+              </TabsTrigger>
+              <TabsTrigger value="insights" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm">
+                <Lightbulb className="h-3.5 w-3.5" />
+                Insights
+              </TabsTrigger>
+            </TabsList>
 
-          {/* ===== OVERVIEW TAB ===== */}
-          <TabsContent value="overview" className="space-y-6">
-            {/* KPI Row */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="Total P&L" value={fmt(analytics.totalPnl)} sub={`${analytics.totalClosed} closed trades`} icon={analytics.totalPnl >= 0 ? TrendingUp : TrendingDown} color={analytics.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"} bgColor={analytics.totalPnl >= 0 ? "bg-emerald-500/10" : "bg-red-500/10"} />
-              <MetricCard label="Win Rate" value={pct(analytics.winRate)} sub={`${analytics.wins}W / ${analytics.losses}L`} icon={Target} color="text-primary" bgColor="bg-primary/10" />
-              <MetricCard label="Profit Factor" value={analytics.profitFactor >= 1e15 ? "Inf" : analytics.profitFactor.toFixed(2)} sub="Gross profit / Gross loss" icon={Award} color={analytics.profitFactor >= 1.5 ? "text-emerald-400" : analytics.profitFactor >= 1 ? "text-amber-400" : "text-red-400"} bgColor={analytics.profitFactor >= 1.5 ? "bg-emerald-500/10" : analytics.profitFactor >= 1 ? "bg-amber-500/10" : "bg-red-500/10"} />
-              <MetricCard label="Max Drawdown" value={fmt(analytics.maxDrawdown)} sub={pct(analytics.maxDrawdownPct)} icon={Shield} color="text-red-400" bgColor="bg-red-500/10" />
-            </div>
-
-            {/* Secondary KPI Row */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="Expectancy" value={fmt(analytics.expectancy)} sub="Expected $ per trade" icon={Zap} color={analytics.expectancy > 0 ? "text-emerald-400" : "text-red-400"} bgColor={analytics.expectancy > 0 ? "bg-emerald-500/10" : "bg-red-500/10"} />
-              <MetricCard label="Sharpe Ratio" value={analytics.sharpeRatio.toFixed(2)} sub="Risk-adjusted returns" icon={Activity} color={analytics.sharpeRatio > 1 ? "text-emerald-400" : "text-amber-400"} bgColor={analytics.sharpeRatio > 1 ? "bg-emerald-500/10" : "bg-amber-500/10"} />
-              <MetricCard label="Avg R:R" value={`${analytics.avgRiskReward.toFixed(1)}:1`} sub="Risk to reward" icon={Target} color="text-accent" bgColor="bg-accent/10" />
-              <MetricCard label="Avg Hold Time" value={`${analytics.avgHoldingDays.toFixed(0)}d`} sub="Days per trade" icon={Clock} color="text-muted-foreground" bgColor="bg-secondary/40" />
-            </div>
-
-            {/* Equity Curve */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg text-foreground">Equity Curve</CardTitle>
-                <CardDescription className="text-muted-foreground">Cumulative profit trajectory over time</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <EquityCurveChart data={equityData} />
-              </CardContent>
-            </Card>
-
-            {/* Radar + Insights side by side */}
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-foreground">Performance Profile</CardTitle>
-                  <CardDescription className="text-muted-foreground">Multi-dimensional view of your trading edge</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <PerformanceRadar analytics={analytics} />
-                </CardContent>
-              </Card>
-
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-foreground flex items-center gap-2">
-                    <Lightbulb className="h-4 w-4 text-amber-400" />
-                    Key Insights
-                  </CardTitle>
-                  <CardDescription className="text-muted-foreground">Actionable recommendations based on your data</CardDescription>
-                </CardHeader>
-                <CardContent className="max-h-[320px] overflow-y-auto">
-                  <InsightsPanel insights={insightsData} />
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* ===== PERFORMANCE TAB ===== */}
-          <TabsContent value="performance" className="space-y-6">
-            {/* Win/Loss Summary */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="Avg Win" value={fmt(analytics.avgWin)} icon={ArrowUpRight} color="text-emerald-400" bgColor="bg-emerald-500/10" />
-              <MetricCard label="Avg Loss" value={fmt(analytics.avgLoss)} icon={ArrowDownRight} color="text-red-400" bgColor="bg-red-500/10" />
-              <MetricCard label="Largest Win" value={fmt(analytics.largestWin)} icon={TrendingUp} color="text-emerald-400" bgColor="bg-emerald-500/10" />
-              <MetricCard label="Largest Loss" value={fmt(analytics.largestLoss)} icon={TrendingDown} color="text-red-400" bgColor="bg-red-500/10" />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <MetricCard label="Consec. Wins" value={String(analytics.consecutiveWins)} icon={CheckCircle2} color="text-emerald-400" bgColor="bg-emerald-500/10" />
-              <MetricCard label="Consec. Losses" value={String(analytics.consecutiveLosses)} icon={AlertTriangle} color="text-red-400" bgColor="bg-red-500/10" />
-              <Card className="border-border bg-card">
-                <CardContent className="pt-5 pb-4">
-                  <p className="text-xs text-muted-foreground mb-2">Long vs Short</p>
-                  <LongShortSplit analytics={analytics} />
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Monthly Returns */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg text-foreground">Monthly Returns</CardTitle>
-                <CardDescription className="text-muted-foreground">Profit and loss by month</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <MonthlyReturnsChart data={monthlyData} />
-              </CardContent>
-            </Card>
-
-            {/* Drawdown + Distribution */}
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-foreground">Drawdown Chart</CardTitle>
-                  <CardDescription className="text-muted-foreground">Underwater equity from peak</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <DrawdownChart equityData={equityData} />
-                </CardContent>
-              </Card>
-
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-foreground">PnL Distribution</CardTitle>
-                  <CardDescription className="text-muted-foreground">Trade outcomes by dollar range</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <WinLossDistribution equityData={equityData} />
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {/* ===== BREAKDOWN TAB ===== */}
-          <TabsContent value="breakdown" className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-2">
-              {/* Asset Performance */}
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-foreground flex items-center gap-2">
-                    <PieChartIcon className="h-4 w-4 text-primary" />
-                    Performance by Asset
-                  </CardTitle>
-                  <CardDescription className="text-muted-foreground">PnL and win rate per instrument</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <AssetPerformanceChart data={assetData} />
-                </CardContent>
-              </Card>
-
-              {/* Session Breakdown placeholder */}
-              <Card className="border-border bg-card">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg text-foreground flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-amber-400" />
-                    Performance by Session
-                  </CardTitle>
-                  <CardDescription className="text-muted-foreground">Results across trading zones</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">Coming soon</div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Day of Week */}
-            <Card className="border-border bg-card">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg text-foreground flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-accent" />
-                  Performance by Day of Week
-                </CardTitle>
-                <CardDescription className="text-muted-foreground">Identify your best and worst trading days</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <DayOfWeekChart data={dayData} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ===== INSIGHTS TAB ===== */}
-          <TabsContent value="insights" className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-5">
-              {/* Full Insights */}
-              <div className="lg:col-span-3 space-y-6">
-                <Card className="border-border bg-card">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg text-foreground flex items-center gap-2">
-                      <Lightbulb className="h-5 w-5 text-amber-400" />
-                      Recommendations
-                    </CardTitle>
-                    <CardDescription className="text-muted-foreground">AI-driven analysis of your trading patterns and habits</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <InsightsPanel insights={insightsData} />
-                  </CardContent>
-                </Card>
+            <TabsContent value="overview" className="space-y-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  label="Total P&L"
+                  value={fmt(analytics.totalPnl)}
+                  sub={`${analytics.totalClosed} closed trades`}
+                  icon={analytics.totalPnl >= 0 ? TrendingUp : TrendingDown}
+                  color={analytics.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}
+                  bgColor={analytics.totalPnl >= 0 ? "border border-emerald-500/20 bg-emerald-500/10" : "border border-red-500/20 bg-red-500/10"}
+                />
+                <MetricCard
+                  label="Win Rate"
+                  value={pct(analytics.winRate)}
+                  sub={`${analytics.wins}W / ${analytics.losses}L`}
+                  icon={Target}
+                  color="text-primary"
+                  bgColor="border border-primary/20 bg-primary/10"
+                />
+                <MetricCard
+                  label="Profit Factor"
+                  value={analytics.profitFactor >= 1e15 ? "Inf" : analytics.profitFactor.toFixed(2)}
+                  sub="Gross profit / gross loss"
+                  icon={Award}
+                  color={
+                    analytics.profitFactor >= 1.5
+                      ? "text-emerald-400"
+                      : analytics.profitFactor >= 1
+                        ? "text-amber-400"
+                        : "text-red-400"
+                  }
+                  bgColor={
+                    analytics.profitFactor >= 1.5
+                      ? "border border-emerald-500/20 bg-emerald-500/10"
+                      : analytics.profitFactor >= 1
+                        ? "border border-amber-500/20 bg-amber-500/10"
+                        : "border border-red-500/20 bg-red-500/10"
+                  }
+                />
+                <MetricCard
+                  label="Max Drawdown"
+                  value={fmt(analytics.maxDrawdown)}
+                  sub={pct(analytics.maxDrawdownPct)}
+                  icon={Shield}
+                  color="text-red-400"
+                  bgColor="border border-red-500/20 bg-red-500/10"
+                />
               </div>
 
-              {/* Quick Stats */}
-              <div className="lg:col-span-2 space-y-4">
-                <Card className="border-border bg-card">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base text-foreground">Quick Stats</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {[
-                      { label: "Win Rate", value: pct(analytics.winRate), good: analytics.winRate >= 50 },
-                      { label: "Profit Factor", value: analytics.profitFactor >= 1e15 ? "Inf" : analytics.profitFactor.toFixed(2), good: analytics.profitFactor >= 1.5 },
-                      { label: "Expectancy", value: fmt(analytics.expectancy), good: analytics.expectancy > 0 },
-                      { label: "Sharpe Ratio", value: analytics.sharpeRatio.toFixed(2), good: analytics.sharpeRatio > 1 },
-                      { label: "Avg R:R", value: `${analytics.avgRiskReward.toFixed(1)}:1`, good: analytics.avgRiskReward >= 2 },
-                      { label: "Max Drawdown", value: pct(analytics.maxDrawdownPct), good: analytics.maxDrawdownPct < 15 },
-                    ].map((item) => (
-                      <div key={item.label} className="flex items-center justify-between rounded-md bg-secondary/20 px-3 py-2">
-                        <span className="text-xs text-muted-foreground">{item.label}</span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-foreground">{item.value}</span>
-                          <div className={`h-1.5 w-1.5 rounded-full ${item.good ? "bg-emerald-500" : "bg-red-500"}`} />
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  label="Expectancy"
+                  value={fmt(analytics.expectancy)}
+                  sub="Expected $ per trade"
+                  icon={Zap}
+                  color={analytics.expectancy > 0 ? "text-emerald-400" : "text-red-400"}
+                  bgColor={analytics.expectancy > 0 ? "border border-emerald-500/20 bg-emerald-500/10" : "border border-red-500/20 bg-red-500/10"}
+                />
+                <MetricCard
+                  label="Sharpe Ratio"
+                  value={analytics.sharpeRatio.toFixed(2)}
+                  sub="Risk-adjusted returns"
+                  icon={Target}
+                  color={analytics.sharpeRatio > 1 ? "text-emerald-400" : "text-amber-400"}
+                  bgColor={analytics.sharpeRatio > 1 ? "border border-emerald-500/20 bg-emerald-500/10" : "border border-amber-500/20 bg-amber-500/10"}
+                />
+                <MetricCard
+                  label="Avg R:R"
+                  value={`${analytics.avgRiskReward.toFixed(1)}:1`}
+                  sub="Risk to reward"
+                  icon={ArrowUpRight}
+                  color="text-accent"
+                  bgColor="border border-accent/20 bg-accent/10"
+                />
+                <MetricCard
+                  label="Avg Hold Time"
+                  value={`${analytics.avgHoldingDays.toFixed(0)}d`}
+                  sub="Days per trade"
+                  icon={Clock}
+                  color="text-muted-foreground"
+                  bgColor="border border-border/60 bg-secondary/40"
+                />
+              </div>
 
-                <Card className="border-border bg-card">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base text-foreground">Performance Profile</CardTitle>
+              <Card className={SURFACE_CARD_CLASS}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg text-foreground">Equity Curve</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    Cumulative profit trajectory over time
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <EquityCurveChart data={equityData} />
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg text-foreground">Performance Profile</CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      Multi-dimensional read on edge, consistency, and payoff quality
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <PerformanceRadar analytics={analytics} />
                   </CardContent>
                 </Card>
+
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                      <Lightbulb className="h-4 w-4 text-amber-400" />
+                      Key insights
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      Actionable recommendations based on your current trading behavior
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="max-h-80 overflow-y-auto">
+                    <InsightsPanel insights={insightsData} />
+                  </CardContent>
+                </Card>
               </div>
-            </div>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+
+            <TabsContent value="performance" className="space-y-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  label="Avg Win"
+                  value={fmt(analytics.avgWin)}
+                  icon={ArrowUpRight}
+                  color="text-emerald-400"
+                  bgColor="border border-emerald-500/20 bg-emerald-500/10"
+                />
+                <MetricCard
+                  label="Avg Loss"
+                  value={fmt(analytics.avgLoss)}
+                  icon={ArrowDownRight}
+                  color="text-red-400"
+                  bgColor="border border-red-500/20 bg-red-500/10"
+                />
+                <MetricCard
+                  label="Largest Win"
+                  value={fmt(analytics.largestWin)}
+                  icon={TrendingUp}
+                  color="text-emerald-400"
+                  bgColor="border border-emerald-500/20 bg-emerald-500/10"
+                />
+                <MetricCard
+                  label="Largest Loss"
+                  value={fmt(analytics.largestLoss)}
+                  icon={TrendingDown}
+                  color="text-red-400"
+                  bgColor="border border-red-500/20 bg-red-500/10"
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <MetricCard
+                  label="Consec. Wins"
+                  value={String(analytics.consecutiveWins)}
+                  icon={CheckCircle2}
+                  color="text-emerald-400"
+                  bgColor="border border-emerald-500/20 bg-emerald-500/10"
+                />
+                <MetricCard
+                  label="Consec. Losses"
+                  value={String(analytics.consecutiveLosses)}
+                  icon={AlertTriangle}
+                  color="text-red-400"
+                  bgColor="border border-red-500/20 bg-red-500/10"
+                />
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardContent className="pt-5 pb-4">
+                    <p className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      Long vs short
+                    </p>
+                    <LongShortSplit analytics={analytics} />
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className={SURFACE_CARD_CLASS}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg text-foreground">Monthly Returns</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    Profit and loss by month
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <MonthlyReturnsChart data={monthlyData} />
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg text-foreground">Drawdown chart</CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      Underwater equity from the last peak
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DrawdownChart equityData={equityData} />
+                  </CardContent>
+                </Card>
+
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg text-foreground">PnL Distribution</CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      Trade outcomes grouped by dollar range
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <WinLossDistribution equityData={equityData} />
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="breakdown" className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                      <PieChartIcon className="h-4 w-4 text-primary" />
+                      Performance by asset
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      P&L and win rate per instrument
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <AssetPerformanceChart data={assetData} />
+                  </CardContent>
+                </Card>
+
+                <Card className={SURFACE_CARD_CLASS}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                      <Clock className="h-4 w-4 text-amber-400" />
+                      Performance by session
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                      Results across trading zones and killzones
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <SessionBreakdownPlaceholder />
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className={SURFACE_CARD_CLASS}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                    <Calendar className="h-4 w-4 text-accent" />
+                    Performance by day of week
+                  </CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    Identify your strongest and weakest trading days
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DayOfWeekChart data={dayData} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="insights" className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-5">
+                <div className="space-y-6 lg:col-span-3">
+                  <Card className={SURFACE_CARD_CLASS}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                        <Lightbulb className="h-5 w-5 text-amber-400" />
+                        Recommendations
+                      </CardTitle>
+                      <CardDescription className="text-muted-foreground">
+                        AI-driven analysis of your trading patterns, discipline, and payoff profile
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <InsightsPanel insights={insightsData} />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="space-y-4 lg:col-span-2">
+                  <Card className={SURFACE_CARD_CLASS}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base text-foreground">Quick stats</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {[
+                        { label: "Win Rate", value: pct(analytics.winRate), good: analytics.winRate >= 50 },
+                        { label: "Profit Factor", value: analytics.profitFactor >= 1e15 ? "Inf" : analytics.profitFactor.toFixed(2), good: analytics.profitFactor >= 1.5 },
+                        { label: "Expectancy", value: fmt(analytics.expectancy), good: analytics.expectancy > 0 },
+                        { label: "Sharpe Ratio", value: analytics.sharpeRatio.toFixed(2), good: analytics.sharpeRatio > 1 },
+                        { label: "Avg R:R", value: `${analytics.avgRiskReward.toFixed(1)}:1`, good: analytics.avgRiskReward >= 2 },
+                        { label: "Max Drawdown", value: pct(analytics.maxDrawdownPct), good: analytics.maxDrawdownPct < 15 },
+                      ].map((item) => (
+                        <div key={item.label} className="flex items-center justify-between rounded-xl bg-secondary/20 px-3 py-2">
+                          <span className="text-xs text-muted-foreground">{item.label}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-foreground">{item.value}</span>
+                            <div className={`h-1.5 w-1.5 rounded-full ${item.good ? "bg-emerald-500" : "bg-red-500"}`} />
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+
+                  <Card className={SURFACE_CARD_CLASS}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base text-foreground">Performance profile</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <PerformanceRadar analytics={analytics} />
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
       </main>
     </div>
   )

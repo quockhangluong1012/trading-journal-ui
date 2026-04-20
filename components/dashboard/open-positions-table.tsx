@@ -14,12 +14,15 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpRight, ArrowDownRight, Eye } from "lucide-react"
 import { PositionType } from "@/lib/enum/PositionType"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
 import { EmotionTag, TradeHistory } from "@/app/types/trade"
 import { EmotionType } from "@/lib/enum/EmotionType"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
+import { buildCreateTradeHref } from "@/lib/create-trade-form"
+import { useToast } from "@/hooks/use-toast"
 
 function getFromDateForFilter(filter: DashboardFilter): string | null {
   const now = new Date()
@@ -38,9 +41,17 @@ function getFromDateForFilter(filter: DashboardFilter): string | null {
   }
 }
 
-export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number; filter: DashboardFilter }) {
-  const [openPositions, setOpenPositions] = useState<TradeHistory[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+interface OpenPositionsTableProps {
+  refreshKey?: number
+  filter: DashboardFilter
+  openPositions?: TradeHistory[]
+  isLoading?: boolean
+}
+
+export function OpenPositionsTable({ refreshKey, filter, openPositions: providedOpenPositions, isLoading: providedLoading }: OpenPositionsTableProps) {
+  const { toast } = useToast()
+  const [openPositions, setOpenPositions] = useState<TradeHistory[]>(providedOpenPositions ?? [])
+  const [isLoading, setIsLoading] = useState(Boolean(providedLoading ?? !providedOpenPositions))
 
   const fetchOpenPositions = useCallback(async () => {
     try {
@@ -62,16 +73,32 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
       if (response.data?.isSuccess) {
         setOpenPositions(response.data.value.values);
       }
-    } catch (error) {
-      console.error("Failed to fetch open positions:", error)
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Failed to load open positions",
+        description: "Unable to fetch your open trades right now. Please refresh and try again.",
+      })
     } finally {
       setIsLoading(false)
     }
-  }, [filter])
+  }, [filter, toast])
 
   useEffect(() => {
-    fetchOpenPositions()
-  }, [fetchOpenPositions, refreshKey])
+    if (providedOpenPositions) {
+      setOpenPositions(providedOpenPositions)
+    }
+
+    if (typeof providedLoading === "boolean") {
+      setIsLoading(providedLoading)
+    }
+
+    if (providedOpenPositions || typeof providedLoading === "boolean") {
+      return
+    }
+
+    void fetchOpenPositions()
+  }, [fetchOpenPositions, providedLoading, providedOpenPositions, refreshKey])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -92,18 +119,8 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
       }
     }
   
-    const getTradeStatusLabel = (status: TradeStatus) => {
-      switch (status) {
-        case TradeStatus.Open:
-          return "Open"
-        case TradeStatus.Closed:
-          return "Closed"
-        default:
-          return "All"
-      }
-    }
   return (
-    <Card className="border-border bg-card">
+    <Card className="border-border bg-card min-w-0">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
@@ -118,18 +135,19 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
-            <p className="text-muted-foreground">Loading open positions...</p>
+          <div className="space-y-3 py-2">
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
           </div>
         ) : openPositions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <p className="text-muted-foreground">No open positions</p>
-            <Link href="/create">
-              <Button variant="link" className="mt-2">
+            <Button variant="outline" className="mt-3" asChild>
+              <Link href={buildCreateTradeHref("/")}>
                 Create your first trade
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -184,7 +202,7 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
                             <div
                               key={level}
                               className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                                trade.confidenceLevel! >= level
+                                (trade.confidenceLevel ?? 0) >= level
                                   ? "bg-primary"
                                   : "bg-secondary"
                               }`}
@@ -194,7 +212,7 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {trade.emotionTags.map((emotionTag: EmotionTag) => {
+                          {trade.emotionTags.slice(0, 2).map((emotionTag: EmotionTag) => {
                             const label = emotionTag.name;
                             const category = emotionTag.emotionType;
                             const colorMap = {

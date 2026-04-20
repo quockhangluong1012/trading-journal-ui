@@ -34,7 +34,20 @@ export default function BacktestDashboard() {
       : "https://localhost:7139/hubs/backtest"; // Fallback to common backend port if env is missing
 
     const connection = new signalR.HubConnectionBuilder()
-      .withUrl(hubUrl)
+      .withUrl(hubUrl, {
+        accessTokenFactory: () => {
+          try {
+            const stored = localStorage.getItem("trading-journey-auth-user");
+            if (stored) {
+              const user = JSON.parse(stored);
+              return user?.token || "";
+            }
+          } catch {
+            return "";
+          }
+          return "";
+        }
+      })
       .withAutomaticReconnect()
       .build();
 
