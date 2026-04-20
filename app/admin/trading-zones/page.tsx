@@ -12,6 +12,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { attachToken } from "@/lib/api";
 import { TradingZoneDto, getTradingZones, createTradingZone, updateTradingZone, deleteTradingZone } from "@/lib/admin-api";
+import { getPlainTextFromRichText } from "@/lib/rich-text";
 import { SectionHeader, TableSkeleton, EmptyState } from "../components/shared";
 
 export default function TradingZonesPage() {
@@ -133,7 +134,7 @@ export default function TradingZonesPage() {
                     <Badge variant="secondary" className="font-mono text-xs">{item.toTime}</Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-xs truncate hidden md:table-cell">
-                    {item.description || "—"}
+                    {getPlainTextFromRichText(item.description || "") || "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, ApiPaginatedResponse, type ApiResponse } from "@/lib/api"
-import { CreateTradeDialog } from "@/components/create-trade-dialog"
 import {
   Table,
   TableBody,
@@ -22,6 +21,8 @@ import { TradeStatus } from "@/lib/enum/TradeStatus"
 import { EmotionTag, TradeHistory } from "@/app/types/trade"
 import { EmotionType } from "@/lib/enum/EmotionType"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
+import { buildCreateTradeHref } from "@/lib/create-trade-form"
+import { useToast } from "@/hooks/use-toast"
 
 function getFromDateForFilter(filter: DashboardFilter): string | null {
   const now = new Date()
@@ -40,9 +41,17 @@ function getFromDateForFilter(filter: DashboardFilter): string | null {
   }
 }
 
-export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number; filter: DashboardFilter }) {
-  const [openPositions, setOpenPositions] = useState<TradeHistory[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+interface OpenPositionsTableProps {
+  refreshKey?: number
+  filter: DashboardFilter
+  openPositions?: TradeHistory[]
+  isLoading?: boolean
+}
+
+export function OpenPositionsTable({ refreshKey, filter, openPositions: providedOpenPositions, isLoading: providedLoading }: OpenPositionsTableProps) {
+  const { toast } = useToast()
+  const [openPositions, setOpenPositions] = useState<TradeHistory[]>(providedOpenPositions ?? [])
+  const [isLoading, setIsLoading] = useState(Boolean(providedLoading ?? !providedOpenPositions))
 
   const fetchOpenPositions = useCallback(async () => {
     try {
@@ -64,16 +73,32 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
       if (response.data?.isSuccess) {
         setOpenPositions(response.data.value.values);
       }
-    } catch (error) {
-      console.error("Failed to fetch open positions:", error)
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Failed to load open positions",
+        description: "Unable to fetch your open trades right now. Please refresh and try again.",
+      })
     } finally {
       setIsLoading(false)
     }
-  }, [filter])
+  }, [filter, toast])
 
   useEffect(() => {
-    fetchOpenPositions()
-  }, [fetchOpenPositions, refreshKey])
+    if (providedOpenPositions) {
+      setOpenPositions(providedOpenPositions)
+    }
+
+    if (typeof providedLoading === "boolean") {
+      setIsLoading(providedLoading)
+    }
+
+    if (providedOpenPositions || typeof providedLoading === "boolean") {
+      return
+    }
+
+    void fetchOpenPositions()
+  }, [fetchOpenPositions, providedLoading, providedOpenPositions, refreshKey])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -118,11 +143,11 @@ export function OpenPositionsTable({ refreshKey, filter }: { refreshKey?: number
         ) : openPositions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <p className="text-muted-foreground">No open positions</p>
-            <CreateTradeDialog onSuccess={fetchOpenPositions}>
-              <Button variant="outline" className="mt-3">
+            <Button variant="outline" className="mt-3" asChild>
+              <Link href={buildCreateTradeHref("/")}>
                 Create your first trade
-              </Button>
-            </CreateTradeDialog>
+              </Link>
+            </Button>
           </div>
         ) : (
           <div className="overflow-x-auto">

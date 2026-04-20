@@ -4,18 +4,20 @@ import { useBacktestStore } from "@/lib/backtest-store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, X, TrendingUp, TrendingDown } from "lucide-react";
+import { ChevronDown, Pencil, X, TrendingUp, TrendingDown } from "lucide-react";
 import { format } from "date-fns";
 import { useState } from "react";
 import { BacktestOrder } from "@/lib/backtest-store";
 import { EditPositionModal } from "./edit-position-modal";
+import { toast } from "sonner";
 
 interface PositionsPanelProps {
   sessionId: number;
   currentPrice: number;
+  onCollapse?: () => void;
 }
 
-export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps) {
+export function PositionsPanel({ sessionId, currentPrice, onCollapse }: PositionsPanelProps) {
   const { session, activePositions, pendingOrders, closedPositions, closeOrder, cancelOrder } = useBacktestStore();
   const [editModal, setEditModal] = useState<{ isOpen: boolean; order: BacktestOrder | null }>({ isOpen: false, order: null });
 
@@ -23,8 +25,9 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
     if (!window.confirm("Are you sure you want to close this position?")) return;
     try {
       await closeOrder(id, currentPrice);
+      toast.success("Position closed");
     } catch (err) {
-      console.error(err);
+      toast.error("Failed to close position");
     }
   };
 
@@ -32,8 +35,9 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
     if (!window.confirm("Are you sure you want to cancel this order?")) return;
     try {
       await cancelOrder(id);
+      toast.success("Pending order cancelled");
     } catch (err) {
-      console.error(err);
+      toast.error("Failed to cancel order");
     }
   };
 
@@ -52,7 +56,36 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
   return (
     <div className="flex flex-col h-full bg-card overflow-hidden text-sm">
       <Tabs defaultValue="positions" className="flex flex-col h-full">
-        <div className="border-b px-2 pt-2 bg-secondary/10 flex items-end">
+        <div className="border-b bg-secondary/10">
+          <div className="flex flex-wrap items-center gap-2 px-3 pt-3 text-xs">
+            <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
+              Open {activePositions.length}
+            </Badge>
+            <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
+              Pending {pendingOrders.length}
+            </Badge>
+            <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
+              Closed {closedPositions.length}
+            </Badge>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-muted-foreground">Last price {formatCurrency(currentPrice)}</span>
+              {onCollapse && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full border border-border/60 bg-background shadow-sm"
+                  onClick={onCollapse}
+                  title="Collapse positions and orders panel"
+                  aria-label="Collapse positions and orders panel"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-end px-2 pt-2">
           <TabsList className="h-9 bg-transparent p-0 justify-start space-x-6 border-b-none rounded-none">
             <TabsTrigger 
               value="positions" 
@@ -73,10 +106,11 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
               Order History
             </TabsTrigger>
           </TabsList>
+          </div>
         </div>
 
         <TabsContent value="positions" className="flex-1 overflow-auto m-0 outline-none">
-          <div className="min-w-[1000px]">
+          <div className="min-w-250">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 bg-card border-b z-10 text-xs text-muted-foreground font-medium">
                 <tr>
@@ -120,7 +154,7 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
                       <tr key={pos.id} className="border-b border-border/50 hover:bg-muted/30 group">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                            <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
                                <TrendingUp className="h-3 w-3 text-primary" />
                             </div>
                             <span className="font-medium px-2 py-0.5 rounded bg-primary/10 text-primary text-xs">
@@ -170,7 +204,7 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
         </TabsContent>
 
         <TabsContent value="orders" className="flex-1 overflow-auto m-0 outline-none">
-          <div className="min-w-[1000px]">
+          <div className="min-w-250">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 bg-card border-b z-10 text-xs text-muted-foreground font-medium">
                 <tr>
@@ -195,7 +229,7 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
                     <tr key={ord.id} className="border-b border-border/50 hover:bg-muted/30 group">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                             <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                             <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
                                <TrendingUp className="h-3 w-3 text-primary" />
                             </div>
                             <span className="font-medium px-2 py-0.5 rounded bg-primary/10 text-primary text-xs">
@@ -233,7 +267,7 @@ export function PositionsPanel({ sessionId, currentPrice }: PositionsPanelProps)
         </TabsContent>
 
         <TabsContent value="history" className="flex-1 overflow-auto m-0 outline-none">
-          <div className="min-w-[1000px]">
+          <div className="min-w-250">
             <table className="w-full text-left border-collapse">
               <thead className="sticky top-0 bg-card border-b z-10 text-xs text-muted-foreground font-medium">
                 <tr>

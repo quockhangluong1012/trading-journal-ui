@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { CreateTradeDialog } from "@/components/create-trade-dialog"
 import { Header } from "@/components/header"
 import { useTrades } from "@/lib/trade-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -55,6 +54,8 @@ import {
 import { PositionType } from "@/lib/enum/PositionType"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
 import { api, ApiPaginatedResponse, ApiResponse } from "@/lib/api"
+import { buildCreateTradeHref } from "@/lib/create-trade-form"
+import { useToast } from "@/hooks/use-toast"
 import { AxiosResponse } from "axios"
 import { EmotionTag, Trade, TradeHistory } from "../types/trade"
 import { EmotionType } from "@/lib/enum/EmotionType"
@@ -64,6 +65,7 @@ type SortDirection = "asc" | "desc"
 
 function HistoryContent() {
   const { userSessions } = useTrades()
+  const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [positionFilter, setPositionFilter] = useState<PositionType>(PositionType.All)
   const [statusFilter, setStatusFilter] = useState<TradeStatus>(TradeStatus.All)
@@ -104,12 +106,16 @@ function HistoryContent() {
         setApiTrades(items);
         setTotalRecords(dataValue.totalItems || items.length)
       }
-    } catch (error) {
-      console.error("Failed to fetch trades:", error)
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Failed to load trades",
+        description: "Unable to fetch your trade history. Please refresh and try again.",
+      })
     } finally {
       setIsLoading(false)
     }
-  }, [searchQuery, positionFilter, statusFilter, dateFrom, dateTo, page])
+  }, [dateFrom, dateTo, page, positionFilter, searchQuery, statusFilter, toast])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -124,8 +130,14 @@ function HistoryContent() {
         let data = response.data;
         if (data.isSuccess) setApiTags(data.value)
       })
-      .catch((err) => console.error("Failed to fetch API tags:", err))
-  }, [])
+      .catch(() => {
+        toast({
+          variant: "destructive",
+          title: "Failed to load emotion tags",
+          description: "Trade emotions could not be loaded for the history view.",
+        })
+      })
+  }, [toast])
 
   const filteredAndSortedTrades = useMemo(() => {
     let filtered = [...apiTrades]
@@ -169,9 +181,13 @@ function HistoryContent() {
       setIsDeleting(true)
       try {
         await api.delete(`/v1/trade-histories/${tradeToDelete.id}`)
-        fetchTrades()
-      } catch (error) {
-        console.error("Failed to delete trade:", error)
+        await fetchTrades()
+      } catch {
+        toast({
+          variant: "destructive",
+          title: "Failed to delete trade",
+          description: "The trade could not be deleted. Please try again.",
+        })
       } finally {
         setIsDeleting(false)
         setDeleteDialogOpen(false)
@@ -228,12 +244,12 @@ function HistoryContent() {
             <h1 className="text-2xl font-bold text-foreground">Trade History</h1>
             <p className="text-muted-foreground">View and manage all your trades</p>
           </div>
-          <CreateTradeDialog>
-            <Button className="gap-2">
+          <Button className="gap-2" asChild>
+            <Link href={buildCreateTradeHref("/history")}>
               <Plus className="h-4 w-4" />
               Create Trade
-            </Button>
-          </CreateTradeDialog>
+            </Link>
+          </Button>
         </div>
 
         <Tabs defaultValue="trades" className="space-y-4">

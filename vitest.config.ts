@@ -8,8 +8,9 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "node",
+    environment: "jsdom",
     clearMocks: true,
     restoreMocks: true,
+    setupFiles: ["./__tests__/setup.ts"],
   },
 });

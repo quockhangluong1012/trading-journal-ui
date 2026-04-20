@@ -7,22 +7,21 @@ import { toast } from "sonner";
 
 export const orderSchema = z.object({
   positionSize: z.coerce.number().positive("Size must be positive"),
-  entryPrice: z.coerce.number().positive("Price must be positive").optional(), 
+  entryPrice: z.coerce.number().positive("Price must be positive").optional(),
   stopLoss: z.coerce.number().positive().optional().or(z.literal("")),
   takeProfit: z.coerce.number().positive().optional().or(z.literal("")),
 });
 
 export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, currentPrice: number }) {
   const [side, setSide] = useState<"Long" | "Short">("Long");
-  const [orderType, setOrderType] = useState<"Market" | "Limit" | "Stop">("Limit");
+  const [orderType, setOrderType] = useState<"Market" | "Limit">("Limit");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [exitsOpen, setExitsOpen] = useState(true);
-  const [openPositionsOpen, setOpenPositionsOpen] = useState(true);
   const [enableTp, setEnableTp] = useState(false);
   const [enableSl, setEnableSl] = useState(false);
-  
-  const { placeOrder, activePositions, pendingOrders, cancelOrder, closeOrder, balance, session } = useBacktestStore();
+
+  const { placeOrder, balance, session } = useBacktestStore();
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
@@ -34,7 +33,9 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
 
   const onSubmit = async (values: z.infer<typeof orderSchema>) => {
     const priceToUse = orderType === "Market" ? currentPrice : Number(values.entryPrice || currentPrice);
-    if (values.positionSize * priceToUse / 50 > balance) {
+    const leverage = session?.leverage || 50;
+
+    if (values.positionSize * priceToUse / leverage > balance) {
       toast.error(`Insufficient margin.`);
       return;
     }
@@ -52,38 +53,35 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
 
     setIsSubmitting(true);
     try {
-      await placeOrder({
+      const order = await placeOrder({
         sessionId,
-        orderType: orderType === "Market" ? 0 : 1, 
+        orderType: orderType === "Market" ? 0 : 1,
         side: side === "Long" ? 0 : 1,
         entryPrice: priceToUse,
         positionSize: values.positionSize,
         stopLoss: enableSl && values.stopLoss ? Number(values.stopLoss) : null,
         takeProfit: enableTp && values.takeProfit ? Number(values.takeProfit) : null,
       });
-      toast.success("Order placed successfully");
+
+      const fillPrice = order.filledPrice ?? order.entryPrice;
+      toast.success(
+        order.status === "Pending"
+          ? `${side} limit order added to Pending Orders at ${priceToUse.toFixed(3)}.`
+          : `${side} position opened at ${fillPrice.toFixed(3)}.`,
+      );
+
+      form.reset({
+        positionSize: 1,
+        entryPrice: currentPrice,
+        stopLoss: "",
+        takeProfit: "",
+      });
+      setEnableTp(false);
+      setEnableSl(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.error?.message || err.message || "Failed to place order");
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleCancel = async (id: number) => {
-    try {
-      await cancelOrder(id);
-      toast.success("Order cancelled");
-    } catch (err: any) {
-      toast.error("Failed to cancel order");
-    }
-  };
-
-  const handleClose = async (id: number, price: number) => {
-    try {
-      await closeOrder(id, price);
-      toast.success("Position closed");
-    } catch (err: any) {
-      toast.error("Failed to close position");
     }
   };
 
@@ -93,14 +91,9 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
     orderType, setOrderType,
     isSubmitting,
     exitsOpen, setExitsOpen,
-    openPositionsOpen, setOpenPositionsOpen,
     enableTp, setEnableTp,
     enableSl, setEnableSl,
     onSubmit,
-    handleCancel,
-    handleClose,
     balance, session,
-    activePositions,
-    pendingOrders
   };
 }

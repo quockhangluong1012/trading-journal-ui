@@ -9,11 +9,31 @@ import { api, ApiResponse } from "@/lib/api"
 import { WinLossData } from "@/app/types/trade"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 
-export function WinLossChart({ filter }: { filter: DashboardFilter }) {
-  const [data, setData] = useState<WinLossData[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+interface WinLossChartProps {
+  filter: DashboardFilter
+  data?: WinLossData[]
+  isLoading?: boolean
+}
+
+export function WinLossChart({ filter, data: providedData, isLoading: providedLoading }: WinLossChartProps) {
+  const [data, setData] = useState<WinLossData[]>(providedData ?? [])
+  const [isLoading, setIsLoading] = useState(Boolean(providedLoading ?? !providedData))
 
   useEffect(() => {
+    if (providedData) {
+      setData(providedData)
+    }
+
+    if (typeof providedLoading === "boolean") {
+      setIsLoading(providedLoading)
+      return
+    }
+
+    if (providedData) {
+      setIsLoading(false)
+      return
+    }
+
     async function fetchWinLossRatio() {
       try {
         setIsLoading(true)
@@ -33,8 +53,8 @@ export function WinLossChart({ filter }: { filter: DashboardFilter }) {
       }
     }
 
-    fetchWinLossRatio()
-  }, [filter])
+    void fetchWinLossRatio()
+  }, [filter, providedData, providedLoading])
 
   const wins = data.find((d) => d.name === "Wins")?.value || 0
   const losses = data.find((d) => d.name === "Losses")?.value || 0

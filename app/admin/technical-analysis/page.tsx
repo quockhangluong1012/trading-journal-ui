@@ -12,6 +12,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { attachToken } from "@/lib/api";
 import { TechnicalAnalysisTagDto, getTechnicalAnalysisTags, createTechnicalAnalysis, updateTechnicalAnalysis, deleteTechnicalAnalysis } from "@/lib/admin-api";
+import { getPlainTextFromRichText } from "@/lib/rich-text";
 import { SectionHeader, TableSkeleton, EmptyState } from "../components/shared";
 
 export default function TechnicalAnalysisPage() {
@@ -132,7 +133,7 @@ export default function TechnicalAnalysisPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-xs truncate hidden md:table-cell">
-                    {item.description || "—"}
+                    {getPlainTextFromRichText(item.description || "") || "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

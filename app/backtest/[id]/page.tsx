@@ -1,33 +1,37 @@
 "use client";
 
-import { useEffect, useRef, use, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, use, useMemo, useState } from "react";
 import { useBacktestStore, type Timeframe } from "@/lib/backtest-store";
+import type { ImperativePanelHandle } from "react-resizable-panels";
 import { KLineChartPro, DatafeedSubscribeCallback, SymbolInfo, Period, ChartPro } from '@klinecharts/pro';
 import { init as klineInit, dispose as klineDispose, registerOverlay, LineType, type OverlayCreate } from 'klinecharts';
 import '@klinecharts/pro/dist/klinecharts-pro.css';
 import { useTheme } from "next-themes";
-import { Play, Pause, SkipForward } from "lucide-react";
+import { Flag, PanelRightOpen, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { BacktestWorkspaceHeader } from "../../../components/backtest/backtest-workspace-header";
 import { OrderPanel } from "@/components/backtest/order-panel";
 import { PositionsPanel } from "@/components/backtest/positions-panel";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Header } from "@/components/header";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useRouter } from "next/navigation";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 
 // Register custom order marker overlay (arrow + label)
 let _orderMarkerRegistered = false;
 const CHART_TIMEZONE = "Etc/UTC";
-const TIMEFRAME_OPTIONS: Array<{ value: Timeframe; label: string }> = [
-  { value: "M1", label: "1m" },
-  { value: "M5", label: "5m" },
-  { value: "M15", label: "15m" },
-  { value: "H1", label: "1H" },
-  { value: "H4", label: "4H" },
-  { value: "D1", label: "1D" },
-];
 
 function getTimeframeMs(tf: Timeframe) {
   if (tf === 'M1') return 60000;
@@ -158,13 +162,20 @@ function ensureOrderMarkerRegistered() {
 export default function BacktestWorkspace({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const sessionId = parseInt(resolvedParams.id, 10);
+  const router = useRouter();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<ChartPro | null>(null);
   const klineChartRef = useRef<ReturnType<typeof klineInit>>(null);
   const orderOverlayIdsRef = useRef<string[]>([]);
   const [chartReadyVersion, setChartReadyVersion] = useState(0);
   const [isSwitchingTimeframe, setIsSwitchingTimeframe] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [isOrderPanelCollapsed, setIsOrderPanelCollapsed] = useState(false);
+  const [isPositionsPanelCollapsed, setIsPositionsPanelCollapsed] = useState(false);
   const { theme } = useTheme();
+  const orderPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const positionsPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const chartResizeFrameRef = useRef<number | null>(null);
 
   // Datafeed state
   const datafeedCallbackRef = useRef<DatafeedSubscribeCallback | null>(null);
@@ -201,7 +212,8 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     pendingOrders,
     activePositions,
     closedPositions,
-    loadTradingZones
+    loadTradingZones,
+    finishSession,
   } = useBacktestStore();
   const hasLoadedCandles = candles.length > 0;
 
@@ -473,15 +485,69 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   }, [activePositions, closedPositions, lastCandleTimestamp, pendingOrders, activeTimeframe]);
 
   const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
+  const previousPrice = candles.length > 1 ? candles[candles.length - 2].close : null;
 
-  const togglePlayback = () => {
+  const togglePlayback = useCallback(() => {
     if (isPlaying) pausePlayback();
     else startPlayback(sessionId);
+  }, [isPlaying, pausePlayback, sessionId, startPlayback]);
+
+  const handleSkip = useCallback(() => {
+    advanceCandle(sessionId);
+  }, [advanceCandle, sessionId]);
+
+  const requestChartResize = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (chartResizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(chartResizeFrameRef.current);
+    }
+
+    chartResizeFrameRef.current = window.requestAnimationFrame(() => {
+      chartResizeFrameRef.current = null;
+
+      const chartApi = klineChartRef.current as (ReturnType<typeof klineInit> & { resize?: () => void }) | null;
+      chartApi?.resize?.();
+    });
+  }, []);
+
+  const handleCollapseOrderPanel = () => {
+    orderPanelRef.current?.collapse();
   };
 
-  const handleSkip = () => {
-    advanceCandle(sessionId);
+  const handleExpandOrderPanel = () => {
+    orderPanelRef.current?.expand(22);
   };
+
+  const handleCollapsePositionsPanel = () => {
+    positionsPanelRef.current?.collapse();
+  };
+
+  const handleExpandPositionsPanel = () => {
+    positionsPanelRef.current?.expand();
+  };
+
+  const handleOrderPanelCollapsed = useCallback(() => {
+    setIsOrderPanelCollapsed(true);
+    requestChartResize();
+  }, [requestChartResize]);
+
+  const handleOrderPanelExpanded = useCallback(() => {
+    setIsOrderPanelCollapsed(false);
+    requestChartResize();
+  }, [requestChartResize]);
+
+  const handlePositionsPanelCollapsed = useCallback(() => {
+    setIsPositionsPanelCollapsed(true);
+    requestChartResize();
+  }, [requestChartResize]);
+
+  const handlePositionsPanelExpanded = useCallback(() => {
+    setIsPositionsPanelCollapsed(false);
+    requestChartResize();
+  }, [requestChartResize]);
 
   const handleTimeframeChange = async (nextTimeframe: Timeframe) => {
     if (nextTimeframe === activeTimeframe || isSwitchingTimeframe) {
@@ -491,8 +557,26 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     setIsSwitchingTimeframe(true);
     try {
       await switchTimeframe(sessionId, nextTimeframe);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to switch timeframe.";
+      toast.error(message);
     } finally {
       setIsSwitchingTimeframe(false);
+    }
+  };
+
+  const handleFinishSession = async () => {
+    setIsFinishing(true);
+
+    try {
+      await finishSession(sessionId, currentPrice > 0 ? currentPrice : null);
+      toast.success("Backtest session finished.");
+      router.push(`/backtest/${sessionId}/results`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to finish session.";
+      toast.error(message);
+    } finally {
+      setIsFinishing(false);
     }
   };
 
@@ -511,13 +595,15 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, sessionId, startPlayback, pausePlayback, advanceCandle]);
+  }, [handleSkip, togglePlayback]);
 
-  const formatCurrency = (val: number) => {
-    const absVal = Math.abs(val);
-    const maxDigits = absVal > 0 && absVal < 0.01 ? 5 : 2;
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: maxDigits }).format(val);
-  };
+  useEffect(() => {
+    return () => {
+      if (chartResizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(chartResizeFrameRef.current);
+      }
+    };
+  }, []);
 
   if (!session) return (
     <div className="flex min-h-screen items-center justify-center p-8 bg-background">
@@ -533,120 +619,128 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center justify-between border-b px-6 py-3 bg-card shadow-sm z-10 transition-all">
-        <div className="flex items-center gap-4">
-          <div className="font-bold text-xl tracking-tight">{session.asset}</div>
-          <div className="flex items-center gap-3 rounded-lg border bg-secondary/35 px-2 py-1 shadow-sm">
-            <ToggleGroup
-              type="single"
-              value={activeTimeframe}
-              variant="outline"
-              size="sm"
-              className="flex-wrap"
-              onValueChange={(value) => {
-                if (value) {
-                  void handleTimeframeChange(value as Timeframe);
-                }
-              }}
-            >
-              {TIMEFRAME_OPTIONS.map((option) => (
-                <ToggleGroupItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={isSwitchingTimeframe}
-                  aria-label={`Switch to ${option.label} timeframe`}
-                  className="min-w-12"
-                >
-                  {option.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+          <BacktestWorkspaceHeader
+            asset={session.asset}
+            sessionStatus={session.status}
+            isPlaying={isPlaying}
+            playbackSpeed={playbackSpeed}
+            activeTimeframe={activeTimeframe}
+            isSwitchingTimeframe={isSwitchingTimeframe}
+            formattedTimestamp={formattedTimestamp}
+            activePositionsCount={activePositions.length}
+            pendingOrdersCount={pendingOrders.length}
+            closedPositionsCount={closedPositions.length}
+            balance={balance}
+            equity={equity}
+            unrealizedPnl={unrealizedPnl}
+            onTogglePlayback={togglePlayback}
+            onSkip={handleSkip}
+            onPlaybackSpeedChange={setPlaybackSpeed}
+            onTimeframeChange={(nextTimeframe: Timeframe) => {
+              void handleTimeframeChange(nextTimeframe);
+            }}
+            finishAction={session.status === "InProgress" ? (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" className="h-8 rounded-md border-amber-500/40 bg-amber-500/5 px-2.5 text-xs font-semibold shadow-sm hover:bg-amber-500/10" title="Close open positions and cancel pending orders now.">
+                    <Flag className="mr-2 h-4 w-4 text-amber-600" />
+                    Finish Early
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Finish this backtest now?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Any open positions will be closed at the visible market price and pending orders will be cancelled before sending you to the results page.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isFinishing}>Keep Session Running</AlertDialogCancel>
+                    <AlertDialogAction disabled={isFinishing} onClick={() => void handleFinishSession()}>
+                      {isFinishing ? "Finishing..." : "Finish Session"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            ) : null}
+          />
 
-            <div className="h-6 w-px bg-border/70" />
-
-            <div className="flex flex-col leading-none">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Candle Time</span>
-              <span className="text-sm font-semibold tabular-nums">{formattedTimestamp}</span>
-            </div>
-          </div>
-
-          <div className="h-8 w-px bg-border mx-3" />
-
-          <div className="flex items-center gap-3">
-            <div className="flex items-center bg-secondary/80 rounded-lg p-1.5 gap-1 shadow-inner border border-secondary">
-              <Button
-                variant={isPlaying ? "default" : "ghost"}
-                size="sm"
-                className={`h-8 w-8 p-0 rounded-md transition-all ${isPlaying ? 'bg-primary text-primary-foreground shadow-md' : 'hover:bg-primary/20'}`}
-                onClick={togglePlayback}
+      <div className="flex min-h-0 flex-1 overflow-hidden px-4 pb-4 pt-1.5">
+        <ResizablePanelGroup direction="vertical" className="h-full w-full min-h-0 flex-1 overflow-hidden rounded-2xl border bg-background shadow-sm">
+          <ResizablePanel defaultSize={70} minSize={30} onResize={requestChartResize} className="relative z-0 flex min-h-0 w-full">
+            <ResizablePanelGroup direction="horizontal" className="w-full min-h-0">
+              <ResizablePanel
+                defaultSize={75}
+                minSize={30}
+                onResize={requestChartResize}
+                className="relative min-h-0 w-full overflow-hidden bg-background shadow-inner"
               >
-                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
-              </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-md hover:bg-primary/20 transition-colors" onClick={handleSkip} title="Forward 1 Candle">
-                <SkipForward className="h-4 w-4" />
-              </Button>
-              
-              <div className="h-5 w-px bg-border/50 mx-1" />
-
-              <Select
-                value={playbackSpeed.toString()}
-                onValueChange={(v) => setPlaybackSpeed(parseInt(v) as any)}
-              >
-                <SelectTrigger className="h-8 w-16.25 text-xs font-semibold border-none bg-transparent hover:bg-black/5 dark:hover:bg-white/5 focus:ring-0 focus:ring-offset-0 transition-colors">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1x</SelectItem>
-                  <SelectItem value="2">2x</SelectItem>
-                  <SelectItem value="5">5x</SelectItem>
-                  <SelectItem value="10">10x</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex bg-secondary/30 rounded-lg p-1.5 border border-border shadow-sm">
-              <div className="flex flex-col items-start px-3 border-r border-border">
-                <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-bold">Balance</span>
-                <span className="font-bold text-sm leading-tight">{formatCurrency(balance)}</span>
-              </div>
-              <div className="flex flex-col items-start px-3 border-r border-border">
-                <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-bold">Equity</span>
-                <span className="font-bold text-sm leading-tight">{formatCurrency(equity)}</span>
-              </div>
-              <div className="flex flex-col items-start px-3">
-                <span className="text-muted-foreground text-[10px] uppercase tracking-wider font-bold">Open PnL</span>
-                <span className={`font-bold text-sm leading-tight ${unrealizedPnl > 0 ? "text-emerald-500" : unrealizedPnl < 0 ? "text-rose-500" : ""}`}>
-                  {unrealizedPnl > 0 ? "+" : ""}{formatCurrency(unrealizedPnl)}
-                </span>
-              </div>
-            </div>
-            <Badge variant={session.status === "Liquidated" ? "destructive" : "default"} className="px-3 py-1.5 text-xs uppercase tracking-wider font-bold shadow-sm">
-              {session.status}
-            </Badge>
-          </div>
-        </div>
-
-      <div className="flex flex-1 overflow-hidden relative w-full" style={{ height: 'calc(100vh - 140px)' }}>
-        <ResizablePanelGroup direction="vertical" className="w-full h-full">
-          <ResizablePanel defaultSize={70} minSize={30} className="flex relative z-0 w-full h-full">
-            <ResizablePanelGroup direction="horizontal" className="w-full h-full">
-              <ResizablePanel defaultSize={75} minSize={30} className="relative bg-background shadow-inner overflow-hidden w-full h-full">
                 <div className="backtest-chart-shell w-full h-full">
                   <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
                 </div>
+
+                {isOrderPanelCollapsed && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="absolute right-3 top-3 z-20 h-10 w-10 rounded-xl bg-background/90 shadow-sm backdrop-blur"
+                    onClick={handleExpandOrderPanel}
+                    title="Expand order ticket"
+                    aria-label="Expand order ticket"
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                  </Button>
+                )}
+
+                {isPositionsPanelCollapsed && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="absolute bottom-3 right-3 z-20 h-10 w-10 rounded-xl bg-background/90 shadow-sm backdrop-blur"
+                    onClick={handleExpandPositionsPanel}
+                    title="Expand positions and orders panel"
+                    aria-label="Expand positions and orders panel"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                )}
               </ResizablePanel>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={25} minSize={15} maxSize={40} collapsible={true} collapsedSize={0} className="border-l bg-card hidden md:block z-10 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] h-full">
-                <OrderPanel sessionId={sessionId} currentPrice={currentPrice} />
+              <ResizablePanel
+                ref={orderPanelRef}
+                defaultSize={24}
+                minSize={18}
+                maxSize={36}
+                collapsible={true}
+                collapsedSize={0}
+                onCollapse={handleOrderPanelCollapsed}
+                onExpand={handleOrderPanelExpanded}
+                className="z-10 hidden min-h-0 border-l bg-card shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] md:block"
+              >
+                <OrderPanel
+                  sessionId={sessionId}
+                  currentPrice={currentPrice}
+                  previousPrice={previousPrice}
+                  onCollapse={handleCollapseOrderPanel}
+                />
               </ResizablePanel>
             </ResizablePanelGroup>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={30} minSize={10} maxSize={60} collapsible={true} collapsedSize={0} className="flex flex-col bg-card z-10 border-t h-full w-full">
-            <PositionsPanel sessionId={sessionId} currentPrice={currentPrice} />
+          <ResizablePanel
+            ref={positionsPanelRef}
+            defaultSize={30}
+            minSize={10}
+            maxSize={60}
+            collapsible={true}
+            collapsedSize={0}
+            onCollapse={handlePositionsPanelCollapsed}
+            onExpand={handlePositionsPanelExpanded}
+            className="z-10 flex min-h-0 w-full flex-col border-t bg-card"
+          >
+            <PositionsPanel sessionId={sessionId} currentPrice={currentPrice} onCollapse={handleCollapsePositionsPanel} />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

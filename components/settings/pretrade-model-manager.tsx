@@ -43,6 +43,7 @@ import {
   updateChecklistModel,
   updatePretradeChecklist,
 } from "@/lib/pretrade-models-api";
+import { getPlainTextFromRichText } from "@/lib/rich-text";
 
 type ModelFormState = {
   name: string;
@@ -148,7 +149,7 @@ export function PretradeModelManager() {
   }, [loadModels]);
 
   const filteredModels = models.filter((model) => {
-    const searchableText = `${model.name} ${model.description ?? ""}`.toLowerCase();
+    const searchableText = `${model.name} ${getPlainTextFromRichText(model.description ?? "")}`.toLowerCase();
     return searchableText.includes(search.trim().toLowerCase());
   });
 
@@ -418,7 +419,7 @@ export function PretradeModelManager() {
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {model.description || "No description yet. Add context so you can quickly choose the right model before a trade."}
+                        {getPlainTextFromRichText(model.description || "") || "No description yet. Add context so you can quickly choose the right model before a trade."}
                       </p>
                     </div>
                   </button>

@@ -357,6 +357,22 @@ async function placeOrderApi(req: PlaceOrderRequest): Promise<BacktestOrder> {
   return res.data.value;
 }
 
+async function finishSessionApi(sessionId: number, exitPrice?: number | null): Promise<void> {
+  attachToken();
+
+  const params = new URLSearchParams();
+  if (typeof exitPrice === "number" && Number.isFinite(exitPrice) && exitPrice > 0) {
+    params.set("exitPrice", exitPrice.toString());
+  }
+
+  const query = params.toString();
+  const url = query
+    ? `${BASE}/backtest-sessions/${sessionId}/finish?${query}`
+    : `${BASE}/backtest-sessions/${sessionId}/finish`;
+
+  await api.post(url);
+}
+
 async function cancelOrderApi(orderId: number): Promise<void> {
   attachToken();
   await api.delete(`${BASE}/backtest-orders/${orderId}`);
@@ -435,11 +451,12 @@ interface BacktestStore {
   closedPositions: BacktestOrder[];
   closedTrades: TradeResult[];
 
-  placeOrder: (req: PlaceOrderRequest) => Promise<BacktestOrder | null>;
+  placeOrder: (req: PlaceOrderRequest) => Promise<BacktestOrder>;
   updateOrder: (req: UpdateOrderRequest) => Promise<void>;
   cancelOrder: (orderId: number) => Promise<void>;
   closeOrder: (orderId: number, exitPrice: number) => Promise<void>;
   loadOrders: (sessionId: number) => Promise<void>;
+  finishSession: (sessionId: number, exitPrice?: number | null) => Promise<void>;
 
   // ── Account ──
   balance: number;
@@ -717,22 +734,21 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   // ── Orders & Positions ──
 
   placeOrder: async (req) => {
-    try {
-      const order = await placeOrderApi(req);
+    const order = await placeOrderApi(req);
 
-      set((s) => {
-        if (order.status === "Pending") {
-          return { pendingOrders: upsertOrderById(s.pendingOrders, order) };
-        } else if (order.status === "Active") {
-          return { activePositions: upsertOrderById(s.activePositions, order) };
-        }
-        return {};
-      });
+    set((s) => {
+      if (order.status === "Pending") {
+        return { pendingOrders: upsertOrderById(s.pendingOrders, order) };
+      }
 
-      return order;
-    } catch {
-      return null;
-    }
+      if (order.status === "Active") {
+        return { activePositions: upsertOrderById(s.activePositions, order) };
+      }
+
+      return {};
+    });
+
+    return order;
   },
 
   updateOrder: async (req) => {
@@ -777,6 +793,17 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
       closedPositions: dedupeOrdersById(orders.filter((o) => o.status === "Closed")),
     });
+  },
+
+  finishSession: async (sessionId, exitPrice) => {
+    get().pausePlayback();
+    await finishSessionApi(sessionId, exitPrice);
+
+    await Promise.all([
+      get().loadSession(sessionId),
+      get().loadOrders(sessionId),
+      get().loadSessions(),
+    ]);
   },
 
   // ── Drawings ──

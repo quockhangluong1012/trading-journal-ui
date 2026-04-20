@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   XAxis,
   YAxis,
@@ -12,29 +12,40 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
+import { buildProfitChartData, ProfitTrajectoryPoint } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 
-export function ProfitChart({ filter }: { filter: DashboardFilter }) {
-  const [chartData, setChartData] = useState<{ date: string; profit: number }[]>([])
-  const [totalPnL, setTotalPnL] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
+interface ProfitChartProps {
+  filter: DashboardFilter
+  profitTrajectory?: ProfitTrajectoryPoint[]
+  isLoading?: boolean
+}
+
+export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLoading: providedLoading }: ProfitChartProps) {
+  const [profitTrajectory, setProfitTrajectory] = useState<ProfitTrajectoryPoint[]>(providedTrajectory ?? [])
+  const [isLoading, setIsLoading] = useState(Boolean(providedLoading ?? !providedTrajectory))
 
   useEffect(() => {
+    if (providedTrajectory) {
+      setProfitTrajectory(providedTrajectory)
+    }
+
+    if (typeof providedLoading === "boolean") {
+      setIsLoading(providedLoading)
+      return
+    }
+
+    if (providedTrajectory) {
+      setIsLoading(false)
+      return
+    }
+
     const fetchData = async () => {
       try {
         setIsLoading(true)
         const response = await api.get(`/v1/dashboard/profit-trajectory?filter=${filter}`)
         if (response.data.isSuccess) {
-          let cumulativeProfit = 0
-          const formattedData = response.data.value.map((item: any) => {
-            cumulativeProfit += item.pnL
-            return {
-              date: item.date,
-              profit: cumulativeProfit,
-            }
-          })
-          setChartData(formattedData)
-          setTotalPnL(cumulativeProfit)
+          setProfitTrajectory(response.data.value)
         }
       } catch (error) {
         console.error("Failed to fetch profit trajectory", error)
@@ -42,8 +53,14 @@ export function ProfitChart({ filter }: { filter: DashboardFilter }) {
         setIsLoading(false)
       }
     }
-    fetchData()
-  }, [filter])
+
+    void fetchData()
+  }, [filter, providedLoading, providedTrajectory])
+
+  const { chartData, totalPnL } = useMemo(
+    () => buildProfitChartData(profitTrajectory),
+    [profitTrajectory],
+  )
 
   const chartConfig = {
     profit: {
