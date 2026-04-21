@@ -1,10 +1,12 @@
 "use client"
 
-import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { GitBranch } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShellLoader } from "@/components/app-shell-loader"
+import { TodaySetupDialog } from "@/components/dashboard/today-setup-dialog"
 import { useAuth } from "@/lib/auth-context"
+import { Button } from "@/components/ui/button"
 import { Header } from "@/components/header"
 import { DashboardCommandCenter } from "@/components/dashboard/dashboard-command-center"
 import { StatsCards } from "@/components/dashboard/stats-cards"
@@ -17,6 +19,7 @@ import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
+import { useTodaySetup } from "@/hooks/use-today-setup"
 
 const timeFilterOptions = [
   { label: "1D", value: DashboardFilter.OneDay },
@@ -38,10 +41,12 @@ const dashboardFilterLabels: Record<DashboardFilter, string> = {
 
 function DashboardContent() {
   const [filter, setFilter] = useState<DashboardFilter>(DashboardFilter.All)
+  const [isTodaySetupDialogOpen, setIsTodaySetupDialogOpen] = useState(false)
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const isDashboardEnabled = Boolean(user) && !isLoading
+  const { setup: todaySetup } = useTodaySetup(user?.email ?? user?.username ?? null)
   const {
     stats,
     winLossData,
@@ -87,6 +92,12 @@ function DashboardContent() {
     }
   }, [user, isLoading, pathname, router])
 
+  useEffect(() => {
+    if (!todaySetup) {
+      setIsTodaySetupDialogOpen(false)
+    }
+  }, [todaySetup])
+
   const overview = useMemo(
     () =>
       buildDashboardOverview({
@@ -99,6 +110,7 @@ function DashboardContent() {
   )
 
   const userName = user?.fullName || user?.username || user?.email
+  const todaySetupSummary = todaySetup?.description?.trim() || todaySetup?.name
 
   if (isLoading) {
     return <AppShellLoader title="Loading your dashboard" description="Syncing your trades, analytics, and active session." />
@@ -130,6 +142,21 @@ function DashboardContent() {
               void refresh()
             }}
             sessionControl={<ActiveSessionWidget />}
+            todaySetupBadge={todaySetup && todaySetupSummary ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsTodaySetupDialogOpen(true)}
+                className="h-auto max-w-full gap-2 rounded-full border-sky-500/25 bg-sky-500/10 px-3 py-1 text-[11px] font-medium text-sky-700 hover:bg-sky-500/15 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200"
+                title={todaySetup.name}
+              >
+                <GitBranch className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[18rem] truncate text-left">
+                  Today setup: {todaySetupSummary}
+                </span>
+              </Button>
+            ) : null}
           />
 
           <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />
@@ -144,8 +171,14 @@ function DashboardContent() {
           <CalendarWidget filter={filter} />
         </div>
       </main>
+
+      <TodaySetupDialog
+        open={isTodaySetupDialogOpen}
+        onOpenChange={setIsTodaySetupDialogOpen}
+        setup={todaySetup}
+      />
     </div>
-  );
+  )
 }
 
 export default function DashboardPage() {

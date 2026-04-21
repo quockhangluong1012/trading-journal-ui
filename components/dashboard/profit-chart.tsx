@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Area,
   AreaChart,
+  ReferenceLine,
 } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
@@ -78,18 +79,20 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
   }
 
   return (
-    <Card className="border-border bg-card min-w-0">
-      <CardHeader className="pb-2">
+    <Card className="min-w-0 border-0 bg-card rounded-[1.5rem] shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)] relative overflow-hidden">
+      <CardHeader className="pb-4 pt-6 px-6">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg text-foreground">Profit Trajectory</CardTitle>
-            <CardDescription className="text-muted-foreground">
+          <div className="space-y-1">
+            <CardTitle className="text-[1.1rem] font-bold text-foreground">
+              Profit Trajectory
+            </CardTitle>
+            <CardDescription className="text-sm font-medium text-muted-foreground">
               Cumulative profit over time
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-6 pb-6 pt-0">
         {isLoading ? (
           <div className="space-y-4">
             <div className="mb-4 flex items-baseline gap-2">
@@ -110,31 +113,61 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
               </span>
               <span className="text-sm text-muted-foreground">Total P&L</span>
             </div>
-            <ChartContainer config={chartConfig} className="h-62.5 w-full" style={{ aspectRatio: "auto" }}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <ChartContainer
+              config={chartConfig}
+              className="h-62.5 w-full"
+              style={{ aspectRatio: "auto" }}
+            >
+              <AreaChart
+                data={chartData}
+                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+              >
                 <defs>
-                  <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  <linearGradient
+                    id="profitGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="5%"
+                      stopColor="var(--success)"
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="var(--success)"
+                      stopOpacity={0}
+                    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#374151"
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(value) =>
-                    new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                    new Date(value).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
                   }
                   tick={{ fill: "#9ca3af", fontSize: 11 }}
                   tickLine={false}
-                  axisLine={{ stroke: "#374151" }}
+                  axisLine={{ stroke: "transparent" }}
+                  dy={10}
                 />
                 <YAxis
                   tickFormatter={(value) => `$${value.toLocaleString()}`}
                   tick={{ fill: "#9ca3af", fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
-                  width={80}
+                  width={60}
                 />
+                <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
@@ -152,7 +185,7 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
                 <Area
                   type="monotone"
                   dataKey="profit"
-                  stroke="#22c55e"
+                  stroke="var(--success)"
                   strokeWidth={2}
                   fill="url(#profitGradient)"
                   name="Profit"
@@ -163,5 +196,5 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

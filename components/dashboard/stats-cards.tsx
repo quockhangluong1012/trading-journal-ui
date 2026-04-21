@@ -99,29 +99,35 @@ export function StatsCards({ filter, stats: providedStats, isLoading: providedLo
   ]
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
       {isLoading
         ? cards.map((card) => (
-            <Card key={card.title} className="border-border bg-card/90 shadow-sm">
-              <CardContent className="pt-3">
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-20 rounded-md" />
-                  <Skeleton className="h-8 w-24 rounded-md" />
-                  <Skeleton className="h-11 w-11 rounded-full" />
+            <Card key={card.title} className="border-0 bg-card rounded-3xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)]">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-20 rounded-md" />
+                    <Skeleton className="h-8 w-24 rounded-md" />
+                  </div>
+                  <Skeleton className="h-14 w-14 rounded-2xl" />
                 </div>
               </CardContent>
             </Card>
           ))
-        : cards.map((card) => (
-            <Card key={card.title} className="border-border bg-card">
-              <CardContent className="pt-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{card.title}</p>
-                    <p className="text-2xl font-bold text-foreground">{card.value}</p>
+        : cards.map((card, index) => (
+            <Card 
+              key={card.title} 
+              className="group relative overflow-hidden border-0 bg-card shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)] rounded-[1.5rem] animate-in slide-in-from-bottom-[5%] fade-in"
+              style={{ animationDelay: `${index * 100}ms`, animationFillMode: "both" }}
+            >
+              <CardContent className="p-6">
+                <div className="flex justify-between items-start">
+                  <div className="flex flex-col gap-2 relative z-10">
+                    <p className="text-sm font-medium text-muted-foreground">{card.title}</p>
+                    <p className="text-3xl font-bold tracking-tight text-foreground">{card.value}</p>
                   </div>
-                  <div className={`rounded-full p-3 ${card.bgColor}`}>
-                    <card.icon className={`h-5 w-5 ${card.iconColor}`} />
+                  <div className={`flex h-14 w-14 items-center justify-center rounded-[1.25rem] transition-all duration-500 group-hover:scale-110 group-hover:rotate-3 ${card.bgColor} relative z-10`}>
+                    <card.icon className={`h-6 w-6 ${card.iconColor}`} />
                   </div>
                 </div>
               </CardContent>

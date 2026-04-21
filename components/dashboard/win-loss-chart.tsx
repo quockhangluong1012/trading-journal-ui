@@ -62,8 +62,8 @@ export function WinLossChart({ filter, data: providedData, isLoading: providedLo
   const winRate = total > 0 ? ((wins / total) * 100).toFixed(1) : 0
 
   const chartData = [
-    { name: "Wins", value: wins, fill: "#22c55e" },
-    { name: "Losses", value: losses, fill: "#ef4444" },
+    { name: "Wins", value: wins, fill: "var(--success)" },
+    { name: "Losses", value: losses, fill: "var(--destructive)" },
   ]
 
   const chartConfig = {
@@ -78,14 +78,16 @@ export function WinLossChart({ filter, data: providedData, isLoading: providedLo
   }
 
   return (
-    <Card className="border-border bg-card min-w-0">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg text-foreground">Win/Loss Ratio</CardTitle>
-        <CardDescription className="text-muted-foreground">
-          Performance breakdown of closed trades
-        </CardDescription>
+    <Card className="min-w-0 border-0 bg-card rounded-[1.5rem] shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)] relative overflow-hidden flex flex-col h-full">
+      <CardHeader className="pb-4 pt-6 px-6">
+        <div className="space-y-1">
+          <CardTitle className="text-[1.1rem] font-bold text-foreground">Win/Loss Ratio</CardTitle>
+          <CardDescription className="text-sm font-medium text-muted-foreground">
+            Performance breakdown of closed trades
+          </CardDescription>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-6 pb-6 pt-0 flex-1 flex flex-col justify-between">
         {isLoading ? (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4 pb-4">
@@ -99,27 +101,28 @@ export function WinLossChart({ filter, data: providedData, isLoading: providedLo
           <>
             <div className="grid grid-cols-3 gap-4 pb-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-success">{wins}</p>
-                <p className="text-xs text-muted-foreground">Winning Trades</p>
+                <p className="text-[1.75rem] font-bold text-success leading-none mb-1.5">{wins}</p>
+                <p className="text-xs font-medium text-muted-foreground">Winning Trades</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-destructive">{losses}</p>
-                <p className="text-xs text-muted-foreground">Losing Trades</p>
+                <p className="text-[1.75rem] font-bold text-destructive leading-none mb-1.5">{losses}</p>
+                <p className="text-xs font-medium text-muted-foreground">Losing Trades</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground">{winRate}%</p>
-                <p className="text-xs text-muted-foreground">Win Rate</p>
+                <p className="text-[1.75rem] font-bold text-foreground leading-none mb-1.5">{winRate}%</p>
+                <p className="text-xs font-medium text-muted-foreground">Win Rate</p>
               </div>
             </div>
-            <ChartContainer config={chartConfig} className="h-[200px]">
+            <ChartContainer config={chartConfig} className="h-[250px]">
               <PieChart>
                 <Pie
                   data={chartData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={2}
+                  innerRadius={60}
+                  outerRadius={90}
+                  stroke="none"
+                  paddingAngle={5}
                   dataKey="value"
                 >
                   {chartData.map((entry, index) => (

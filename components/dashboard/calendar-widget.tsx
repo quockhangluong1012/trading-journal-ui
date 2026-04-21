@@ -154,10 +154,10 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
         </div>
       </CardHeader>
       <CardContent className="px-0 pb-0">
-        <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
-          <div className="grid grid-cols-7 border-b bg-muted/40">
+        <div className="rounded-[1.5rem] border-0 bg-card overflow-hidden shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)]">
+          <div className="grid grid-cols-7 border-b border-border/30 bg-muted/20">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
-               <div key={day} className={cn("text-center py-3 text-sm font-medium text-muted-foreground", i > 0 && "border-l")}>
+               <div key={day} className={cn("text-center py-3 text-[13px] font-semibold text-muted-foreground", i > 0 && "border-l border-border/30")}>
                   {day}
                </div>
             ))}

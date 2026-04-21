@@ -45,9 +45,9 @@ interface DashboardCommandCenterProps {
 }
 
 const toneClasses = {
-  positive: "border-emerald-500/20 bg-emerald-500/8 text-emerald-400",
-  neutral: "border-border/70 bg-background/70 text-foreground",
-  warning: "border-amber-500/20 bg-amber-500/10 text-amber-400",
+  positive: "border-0 bg-emerald-50 text-emerald-600 shadow-[0_2px_10px_-3px_rgba(16,185,129,0.1)] dark:bg-emerald-500/10 dark:text-emerald-400",
+  neutral: "border-0 bg-muted/40 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] text-foreground",
+  warning: "border-0 bg-amber-50 text-amber-600 shadow-[0_2px_10px_-3px_rgba(245,158,11,0.1)] dark:bg-amber-500/10 dark:text-amber-400",
 } as const
 
 function getGreeting(name?: string): string {
@@ -109,7 +109,7 @@ export function DashboardCommandCenter({
   sessionControl,
 }: DashboardCommandCenterProps) {
   return (
-    <section className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-background via-background to-primary/5 shadow-sm">
+    <section className="overflow-hidden rounded-[2rem] border-0 bg-card shadow-[0_2px_20px_-5px_rgba(6,81,237,0.08)]">
       <div className="grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1.45fr)_360px] lg:grid-rows-[auto_auto] lg:px-8">
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -194,7 +194,7 @@ export function DashboardCommandCenter({
           ) : null}
         </div>
 
-        <div className="rounded-2xl border border-border/70 bg-background/85 p-5 shadow-sm backdrop-blur-sm lg:row-span-2">
+        <div className="rounded-[1.75rem] border-0 bg-card p-7 shadow-[0_2px_20px_-5px_rgba(6,81,237,0.08)] lg:row-span-2">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2">
               <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -222,7 +222,7 @@ export function DashboardCommandCenter({
           </div>
 
           <div className="mt-5 space-y-4">
-            <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+            <div className="rounded-2xl border-0 bg-muted/40 p-5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Win rate</span>
                 <span>{stats.winRate.toFixed(1)}%</span>
@@ -231,7 +231,7 @@ export function DashboardCommandCenter({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+              <div className="rounded-2xl border-0 bg-muted/40 p-5">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   Open book
                 </p>
@@ -241,7 +241,7 @@ export function DashboardCommandCenter({
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
+              <div className="rounded-2xl border-0 bg-muted/40 p-5">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                   Setup quality
                 </p>
@@ -277,7 +277,7 @@ export function DashboardCommandCenter({
               <div
                 key={insight.title}
                 className={cn(
-                  "rounded-2xl border p-4 shadow-sm backdrop-blur-sm",
+                  "rounded-[1.25rem] p-5 transition-all hover:shadow-[0_4px_15px_-5px_rgba(0,0,0,0.05)]",
                   toneClasses[insight.tone],
                 )}
               >

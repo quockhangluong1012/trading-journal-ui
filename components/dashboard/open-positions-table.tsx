@@ -120,20 +120,20 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
     }
   
   return (
-    <Card className="border-border bg-card min-w-0">
-      <CardHeader className="pb-3">
+    <Card className="min-w-0 border-0 bg-card rounded-[1.5rem] shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)] relative overflow-hidden">
+      <CardHeader className="pb-4 pt-6 px-6">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg text-foreground">
+          <div className="space-y-1">
+            <CardTitle className="text-[1.1rem] font-bold text-foreground">
               Open Positions
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
+            <CardDescription className="text-sm font-medium text-muted-foreground">
               Currently active trades
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-6 pb-6 pt-0">
         {isLoading ? (
           <div className="space-y-3 py-2">
             <Skeleton className="h-10 w-full rounded-lg" />
@@ -153,7 +153,7 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
+                <TableRow className="border-border/30 hover:bg-transparent">
                   <TableHead className="text-muted-foreground">Asset</TableHead>
                   <TableHead className="text-muted-foreground">
                     Position
@@ -175,7 +175,7 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
               <TableBody>
                 {openPositions.map((trade) => {
                   return (
-                    <TableRow key={trade.id} className="border-border">
+                    <TableRow key={trade.id} className="border-border/30 transition-colors hover:bg-primary/5 dark:hover:bg-primary/10">
                       <TableCell className="font-medium text-foreground">
                         {trade.asset}
                       </TableCell>

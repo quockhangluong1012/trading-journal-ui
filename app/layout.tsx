@@ -1,6 +1,6 @@
 import React from "react"
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Outfit } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from '@/components/theme-provider'
@@ -10,7 +10,7 @@ import { Toaster } from "@/components/ui/toaster"
 
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const outfit = Outfit({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Trading Journey - Track Your Trades',
@@ -42,10 +42,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased`}>
+      <body className={`${outfit.className} antialiased`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="light"
           enableSystem
           disableTransitionOnChange={false}
         >
