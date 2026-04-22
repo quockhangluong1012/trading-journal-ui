@@ -117,12 +117,12 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
           <CardTitle className="text-xl font-bold">{format(currentDate, dateFormat)}</CardTitle>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div className="flex items-center space-x-1 border px-3 py-1.5 rounded-md text-sm font-medium bg-card cursor-pointer hover:bg-muted/50 transition-colors">
-                 <span className="text-muted-foreground mr-1">{pnlView}:</span>
-                 <span className={cn(displayedPnl > 0 ? "text-emerald-600 dark:text-emerald-500" : displayedPnl < 0 ? "text-rose-600 dark:text-rose-500" : "")}>
+              <div className="flex items-center space-x-1 border border-border/50 px-4 py-2 rounded-xl text-sm font-bold bg-background/50 backdrop-blur-md cursor-pointer hover:bg-background/80 transition-all shadow-sm group">
+                 <span className="text-muted-foreground uppercase tracking-wider text-[11px] mr-1">{pnlView}:</span>
+                 <span className={cn("drop-shadow-sm", displayedPnl > 0 ? "text-success" : displayedPnl < 0 ? "text-destructive" : "")}>
                     {displayedPnl === 0 ? '$0' : formatCurrency(displayedPnl)}
                  </span>
-                 <ChevronDown className="h-4 w-4 text-muted-foreground ml-1 opacity-50" />
+                 <ChevronDown className="h-4 w-4 text-muted-foreground ml-1 opacity-50 group-hover:opacity-100 transition-opacity" />
               </div>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -137,27 +137,27 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
              <Upload className="h-4 w-4 mr-2" />
              Import CSV
           </Button>
-          <Button variant="outline" size="icon" className="h-9 w-9 bg-card shrink-0">
+          <Button variant="outline" size="icon" className="h-10 w-10 bg-background/50 backdrop-blur-sm border-border/50 shrink-0 hover:bg-muted rounded-xl transition-transform hover:scale-105">
              <CalendarIcon className="h-4 w-4 text-muted-foreground" />
           </Button>
           <div className="flex items-center space-x-1">
-            <Button variant="outline" size="icon" className="h-9 w-9 bg-card shrink-0 text-muted-foreground hover:text-foreground" onClick={prevMonth}>
+            <Button variant="outline" size="icon" className="h-10 w-10 bg-background/50 backdrop-blur-sm border-border/50 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-transform hover:-translate-x-1" onClick={prevMonth}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-9 w-9 bg-card shrink-0 text-muted-foreground hover:text-foreground" onClick={nextMonth}>
+            <Button variant="outline" size="icon" className="h-10 w-10 bg-background/50 backdrop-blur-sm border-border/50 shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-transform hover:translate-x-1" onClick={nextMonth}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <Button variant="outline" size="sm" className="h-9 bg-card text-muted-foreground hover:text-foreground" onClick={() => setCurrentDate(new Date())}>
+          <Button variant="outline" size="sm" className="h-10 bg-background/50 backdrop-blur-sm border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl font-bold uppercase tracking-wider text-[11px] transition-transform hover:scale-105" onClick={() => setCurrentDate(new Date())}>
             Today
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="px-0 pb-0">
-        <div className="rounded-[1.5rem] border-0 bg-card overflow-hidden shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)]">
-          <div className="grid grid-cols-7 border-b border-border/30 bg-muted/20">
+      <CardContent className="px-0 pb-0 relative z-10">
+        <div className="rounded-[2rem] border border-border/50 bg-card/80 backdrop-blur-xl overflow-hidden shadow-sm dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:shadow-md hover:border-border/80">
+          <div className="grid grid-cols-7 border-b border-border/30 bg-muted/20 backdrop-blur-md">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
-               <div key={day} className={cn("text-center py-3 text-[13px] font-semibold text-muted-foreground", i > 0 && "border-l border-border/30")}>
+               <div key={day} className={cn("text-center py-4 text-[11px] uppercase tracking-wider font-bold text-muted-foreground", i > 0 && "border-l border-border/30")}>
                   {day}
                </div>
             ))}
@@ -175,17 +175,18 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                 <div
                   key={day.toString()}
                   className={cn(
-                    "min-h-[120px] p-2 flex flex-col items-center border-t transition-colors",
-                    i % 7 !== 0 && "border-l",
-                    !isCurrentMonth ? "bg-muted/10 opacity-60" : "bg-card hover:bg-muted/10",
-                    isCurrentMonth && pnl > 0 && "bg-emerald-50/60 dark:bg-emerald-950/20 hover:bg-emerald-100/60 dark:hover:bg-emerald-950/40",
-                    isCurrentMonth && pnl < 0 && "bg-rose-50/60 dark:bg-rose-950/20 hover:bg-rose-100/60 dark:hover:bg-rose-950/40",
+                    "min-h-[120px] p-3 flex flex-col items-center border-t border-border/30 transition-all duration-300 relative group/day",
+                    i % 7 !== 0 && "border-l border-border/30",
+                    !isCurrentMonth ? "bg-muted/20 opacity-50 grayscale" : "bg-card hover:bg-muted/30",
+                    isCurrentMonth && pnl > 0 && "bg-success/5 hover:bg-success/15",
+                    isCurrentMonth && pnl < 0 && "bg-destructive/5 hover:bg-destructive/15",
                   )}
                 >
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover/day:opacity-100 transition-opacity pointer-events-none" />
                   <div
                     className={cn(
-                      "text-sm font-medium mb-1",
-                      isDayToday && "bg-primary text-primary-foreground h-7 w-7 rounded-full flex items-center justify-center -mt-0.5",
+                      "text-sm font-bold mb-2 relative z-10",
+                      isDayToday && "bg-primary text-primary-foreground h-8 w-8 rounded-full flex items-center justify-center -mt-1 shadow-md shadow-primary/20",
                       (!isDayToday && !isCurrentMonth) && "text-muted-foreground",
                       (!isDayToday && isCurrentMonth) && "text-foreground"
                     )}
@@ -193,18 +194,18 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                     {format(day, "d")}
                   </div>
                   {tradesCount > 0 && (
-                    <div className="flex flex-col items-center justify-center flex-1 gap-1 w-full">
+                    <div className="flex flex-col items-center justify-center flex-1 gap-1 w-full relative z-10">
                       <div
                         className={cn(
-                          "text-sm font-bold tracking-tight",
-                          pnl > 0 && "text-emerald-600 dark:text-emerald-500",
-                          pnl < 0 && "text-rose-600 dark:text-rose-500",
+                          "text-base font-extrabold tracking-tight drop-shadow-sm",
+                          pnl > 0 && "text-success",
+                          pnl < 0 && "text-destructive",
                           pnl === 0 && "text-muted-foreground",
                         )}
                       >
                         {pnl > 0 ? "+" : ""}{formatCurrency(pnl).replace("+", "")}
                       </div>
-                      <div className="text-xs text-muted-foreground font-medium">
+                      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
                         {tradesCount} {tradesCount === 1 ? 'trade' : 'trades'}
                       </div>
                     </div>

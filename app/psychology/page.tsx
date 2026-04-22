@@ -877,7 +877,7 @@ function PsychologyCoachPanel({
             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Latest note
             </p>
-            <p className="mt-2 text-sm leading-relaxed text-foreground">
+            <p className="mt-2 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
               {getRichTextPreview(latestEntry.todayTradingReview, 120)}
             </p>
           </div>
@@ -1028,8 +1028,14 @@ function JournalEntryCard({
     <div className="rounded-2xl border border-border/70 bg-linear-to-br from-card/95 to-card/75 p-4 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 shadow-sm">
-            <span className="text-base font-semibold text-accent">{entry.overallMood}</span>
+          <div
+            className={cn(
+              "flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm",
+              moodBadgeClasses[entry.overallMood] ||
+                "border-border/70 bg-background/70 text-muted-foreground",
+            )}
+          >
+            <span className="text-base font-semibold">{entry.overallMood}</span>
           </div>
           <div className="space-y-2">
             <div>
@@ -1109,7 +1115,7 @@ function JournalEntryCard({
       ) : null}
 
       <div className="mt-4 rounded-2xl border border-border/70 bg-background/60 p-3">
-        <p className="text-sm leading-relaxed text-foreground/85">
+        <p className="text-sm leading-relaxed text-foreground/85 whitespace-pre-wrap">
           {expanded
             ? getPlainTextFromRichText(entry.todayTradingReview)
             : getRichTextPreview(entry.todayTradingReview, 190)}
@@ -1256,10 +1262,10 @@ function NewEntryForm({
                       onClick={() => setOverallMood(level)}
                       className={`flex h-11 items-center justify-center rounded-2xl border text-sm font-semibold transition-all ${
                         overallMood === level
-                          ? "border-accent bg-accent/20 text-accent ring-2 ring-accent/20"
+                          ? "border-violet-500 bg-violet-500/20 text-violet-600 dark:text-violet-400 ring-2 ring-violet-500/20"
                           : overallMood >= level
-                            ? "border-accent/30 bg-accent/8 text-accent"
-                            : "border-border bg-secondary/40 text-muted-foreground hover:border-accent/20"
+                            ? "border-violet-500/30 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                            : "border-border bg-secondary/40 text-muted-foreground hover:border-violet-500/20 hover:text-violet-500"
                       }`}
                     >
                       {level}
@@ -1624,7 +1630,7 @@ function PsychologyContent() {
             journalEntriesCount={sortedEntries.length}
             latestEntry={latestEntry}
             exportAction={
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleExport}>
+              <Button variant="outline" size="default" className="gap-2 rounded-full border-border/70 bg-background/50 shadow-sm backdrop-blur-md transition-all hover:bg-accent/50" onClick={handleExport}>
                 <Download className="h-4 w-4" />
                 Export data
               </Button>

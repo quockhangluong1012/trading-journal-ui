@@ -858,7 +858,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   positionSize: returnedValue.riskGuardrail.positionSize,
                 }
               : undefined,
-            tradeSumamry: returnedValue.tradeSumamry,
+            tradeSummary: returnedValue.tradeSummary,
           };
           setTrade(mappedTrade);
           // Setup form default data for editing
@@ -2592,7 +2592,7 @@ function TradeDetailContent({ id }: { id: string }) {
           </TabsContent>
 
           <TabsContent value="summary" className="space-y-4 outline-none">
-            {trade.tradeSumamry ? (
+            {trade.tradeSummary ? (
               <div className="grid gap-4 lg:grid-cols-2">
                 <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
                   <CardHeader>
@@ -2603,7 +2603,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm leading-relaxed">
-                      {trade.tradeSumamry.executiveSummary}
+                      {trade.tradeSummary.executiveSummary}
                     </p>
                   </CardContent>
                 </Card>
@@ -2617,7 +2617,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm leading-relaxed whitespace-pre-line">
-                      {trade.tradeSumamry.technicalInsights}
+                      {trade.tradeSummary.technicalInsights}
                     </p>
                   </CardContent>
                 </Card>
@@ -2631,14 +2631,14 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm leading-relaxed whitespace-pre-line">
-                      {trade.tradeSumamry.psychologyAnalysis}
+                      {trade.tradeSummary.psychologyAnalysis}
                     </p>
                   </CardContent>
                 </Card>
 
-                {trade.tradeSumamry.criticalMistakes &&
-                  (trade.tradeSumamry.criticalMistakes.technical?.length > 0 ||
-                    trade.tradeSumamry.criticalMistakes.psychological?.length >
+                {trade.tradeSummary.criticalMistakes &&
+                  (trade.tradeSummary.criticalMistakes.technical?.length > 0 ||
+                    trade.tradeSummary.criticalMistakes.psychological?.length >
                       0) && (
                     <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
                       <CardHeader>
@@ -2648,7 +2648,7 @@ function TradeDetailContent({ id }: { id: string }) {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-6">
-                        {trade.tradeSumamry.criticalMistakes.technical?.length >
+                        {trade.tradeSummary.criticalMistakes.technical?.length >
                           0 && (
                           <div>
                             <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -2656,7 +2656,7 @@ function TradeDetailContent({ id }: { id: string }) {
                               Technical Mistakes
                             </h4>
                             <ul className="list-disc pl-5 text-sm space-y-1.5 text-muted-foreground">
-                              {trade.tradeSumamry.criticalMistakes.technical.map(
+                              {trade.tradeSummary.criticalMistakes.technical.map(
                                 (m: string, i: number) => (
                                   <li key={i}>{m}</li>
                                 ),
@@ -2664,7 +2664,7 @@ function TradeDetailContent({ id }: { id: string }) {
                             </ul>
                           </div>
                         )}
-                        {trade.tradeSumamry.criticalMistakes.psychological
+                        {trade.tradeSummary.criticalMistakes.psychological
                           ?.length > 0 && (
                           <div>
                             <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -2672,7 +2672,7 @@ function TradeDetailContent({ id }: { id: string }) {
                               Psychological Mistakes
                             </h4>
                             <ul className="list-disc pl-5 text-sm space-y-1.5 text-muted-foreground">
-                              {trade.tradeSumamry.criticalMistakes.psychological.map(
+                              {trade.tradeSummary.criticalMistakes.psychological.map(
                                 (m: string, i: number) => (
                                   <li key={i}>{m}</li>
                                 ),

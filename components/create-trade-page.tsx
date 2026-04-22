@@ -777,7 +777,7 @@ export function CreateTradePage({
         <div className="mx-auto mt-4 mb-4 flex w-full max-w-3xl justify-between relative px-2 sm:px-6">
           <div className="absolute left-6 right-6 top-1/2 -z-10 h-1.5 -translate-y-1/2 rounded-full bg-secondary/50 overflow-hidden">
             <div
-              className="h-full rounded-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(var(--primary),0.5)]"
+              className="h-full rounded-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(79,70,229,0.5)]"
               style={{ width: `${(currentStep / (WIZARD_STEPS.length - 1)) * 100}%` }}
             />
           </div>
@@ -787,7 +787,7 @@ export function CreateTradePage({
                 className={cn(
                   "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-500",
                   index <= currentStep
-                    ? "border-primary bg-primary text-primary-foreground shadow-[0_0_20px_rgba(var(--primary),0.4)] scale-110"
+                    ? "border-primary bg-primary text-primary-foreground shadow-[0_0_20px_rgba(79,70,229,0.4)] scale-110"
                     : "border-white/10 bg-background/80 text-muted-foreground backdrop-blur-sm",
                 )}
               >
@@ -1291,7 +1291,7 @@ export function CreateTradePage({
                           className={cn(
                             "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(0,0,0,0.1)]",
                             isSelected
-                              ? "border-primary/50 bg-primary/20 text-primary ring-2 ring-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.2)]"
+                              ? "border-primary/50 bg-primary/20 text-primary ring-2 ring-primary/30 shadow-[0_0_15px_rgba(79,70,229,0.2)]"
                               : "border-white/10 bg-background/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary",
                           )}
                           title={tag.description}
@@ -1451,7 +1451,7 @@ export function CreateTradePage({
                           "flex h-12 w-12 items-center justify-center rounded-full border text-base font-bold transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
                           errors.confidenceLevel && confidenceLevel === 0 && "border-destructive/50",
                           confidenceLevel >= level
-                            ? "border-primary bg-primary/20 text-primary shadow-[0_0_15px_rgba(var(--primary),0.3)] ring-2 ring-primary/40 scale-110"
+                            ? "border-primary bg-primary/20 text-primary shadow-[0_0_15px_rgba(79,70,229,0.3)] ring-2 ring-primary/40 scale-110"
                             : "border-white/10 bg-background/50 text-muted-foreground hover:border-primary/50 hover:text-foreground",
                         )}
                         aria-label={`Confidence level ${level}`}

@@ -81,10 +81,10 @@ export interface Trade {
     takeProfit?: number
     positionSize?: number
   }
-  tradeSumamry?: TradeSumamry
+  tradeSummary?: TradeSummary
 }
 
-export interface TradeSumamry {
+export interface TradeSummary {
   tradeId: number
   executiveSummary: string
   technicalInsights: string

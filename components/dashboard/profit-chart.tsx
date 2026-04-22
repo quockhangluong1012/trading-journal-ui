@@ -79,8 +79,9 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
   }
 
   return (
-    <Card className="min-w-0 border-0 bg-card rounded-[1.5rem] shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)] relative overflow-hidden">
-      <CardHeader className="pb-4 pt-6 px-6">
+    <Card className="min-w-0 border border-white/10 bg-card/60 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:shadow-[0_15px_40px_-10px_rgba(79,70,229,0.2)] hover:border-white/20 relative overflow-hidden group">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      <CardHeader className="pb-4 pt-6 px-6 relative z-10">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <CardTitle className="text-[1.1rem] font-bold text-foreground">
@@ -92,7 +93,7 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
           </div>
         </div>
       </CardHeader>
-      <CardContent className="px-6 pb-6 pt-0">
+      <CardContent className="px-6 pb-6 pt-0 relative z-10">
         {isLoading ? (
           <div className="space-y-4">
             <div className="mb-4 flex items-baseline gap-2">
@@ -103,15 +104,17 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
           </div>
         ) : (
           <>
-            <div className="mb-4 flex items-baseline gap-2">
-              <span
-                className={`text-3xl font-bold ${
-                  totalPnL >= 0 ? "text-success" : "text-destructive"
-                }`}
-              >
-                {formatCurrency(totalPnL)}
-              </span>
-              <span className="text-sm text-muted-foreground">Total P&L</span>
+            <div className="mb-4 flex items-center gap-4 rounded-2xl bg-white/5 border border-white/5 p-4 backdrop-blur-sm max-w-xs">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">Total P&L</span>
+                <span
+                  className={`text-3xl font-extrabold drop-shadow-sm ${
+                    totalPnL >= 0 ? "text-success" : "text-destructive"
+                  }`}
+                >
+                  {formatCurrency(totalPnL)}
+                </span>
+              </div>
             </div>
             <ChartContainer
               config={chartConfig}

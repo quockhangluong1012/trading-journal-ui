@@ -78,8 +78,9 @@ export function WinLossChart({ filter, data: providedData, isLoading: providedLo
   }
 
   return (
-    <Card className="min-w-0 border-0 bg-card rounded-[1.5rem] shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-500 hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.12)] relative overflow-hidden flex flex-col h-full">
-      <CardHeader className="pb-4 pt-6 px-6">
+    <Card className="min-w-0 border border-white/10 bg-card/60 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:shadow-[0_15px_40px_-10px_rgba(79,70,229,0.2)] hover:border-white/20 relative overflow-hidden flex flex-col h-full group">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      <CardHeader className="pb-4 pt-6 px-6 relative z-10">
         <div className="space-y-1">
           <CardTitle className="text-[1.1rem] font-bold text-foreground">Win/Loss Ratio</CardTitle>
           <CardDescription className="text-sm font-medium text-muted-foreground">
@@ -87,7 +88,7 @@ export function WinLossChart({ filter, data: providedData, isLoading: providedLo
           </CardDescription>
         </div>
       </CardHeader>
-      <CardContent className="px-6 pb-6 pt-0 flex-1 flex flex-col justify-between">
+      <CardContent className="px-6 pb-6 pt-0 flex-1 flex flex-col justify-between relative z-10">
         {isLoading ? (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4 pb-4">
@@ -100,17 +101,17 @@ export function WinLossChart({ filter, data: providedData, isLoading: providedLo
         ) : (
           <>
             <div className="grid grid-cols-3 gap-4 pb-4">
-              <div className="text-center">
-                <p className="text-[1.75rem] font-bold text-success leading-none mb-1.5">{wins}</p>
-                <p className="text-xs font-medium text-muted-foreground">Winning Trades</p>
+              <div className="text-center rounded-2xl bg-white/5 border border-white/5 p-3 backdrop-blur-sm transition-transform hover:scale-105">
+                <p className="text-[1.75rem] font-bold text-success leading-none mb-1.5 drop-shadow-sm">{wins}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Wins</p>
               </div>
-              <div className="text-center">
-                <p className="text-[1.75rem] font-bold text-destructive leading-none mb-1.5">{losses}</p>
-                <p className="text-xs font-medium text-muted-foreground">Losing Trades</p>
+              <div className="text-center rounded-2xl bg-white/5 border border-white/5 p-3 backdrop-blur-sm transition-transform hover:scale-105">
+                <p className="text-[1.75rem] font-bold text-destructive leading-none mb-1.5 drop-shadow-sm">{losses}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Losses</p>
               </div>
-              <div className="text-center">
-                <p className="text-[1.75rem] font-bold text-foreground leading-none mb-1.5">{winRate}%</p>
-                <p className="text-xs font-medium text-muted-foreground">Win Rate</p>
+              <div className="text-center rounded-2xl bg-white/5 border border-white/5 p-3 backdrop-blur-sm transition-transform hover:scale-105">
+                <p className="text-[1.75rem] font-bold text-foreground leading-none mb-1.5 drop-shadow-sm">{winRate}%</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-primary">Win Rate</p>
               </div>
             </div>
             <ChartContainer config={chartConfig} className="h-[250px]">

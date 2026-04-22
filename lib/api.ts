@@ -70,26 +70,89 @@ export function attachToken(): void {
 }
 
 let isRedirecting = false;
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function onTokenRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
+function addRefreshSubscriber(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
 
 api.interceptors.response.use(
   (response) => {
     isRedirecting = false;
     return response;
   },
-  (error) => {
+  async (error) => {
     const status = error?.response?.status;
+    const originalRequest = error.config;
 
     if (status === 401 && typeof window !== "undefined") {
       const onLoginPage = window.location.pathname === "/login" || window.location.pathname === "/admin/login";
 
-      if (!onLoginPage) {
-        if (!isRedirecting) {
-          isRedirecting = true;
-          clearAuthAndRedirectToLogin();
-        }
+      if (onLoginPage) {
         return Promise.reject(error);
       }
 
+      // Attempt silent token refresh
+      if (!originalRequest._retry) {
+        originalRequest._retry = true;
+
+        if (!isRefreshing) {
+          isRefreshing = true;
+
+          try {
+            const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+            if (!stored) throw new Error("No auth state");
+
+            const user = JSON.parse(stored);
+            if (!user?.refreshToken || !user?.token) throw new Error("No refresh token");
+
+            const res = await axios.post<ApiResponse<AuthResponse>>(
+              `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/refresh`,
+              { accessToken: user.token, refreshToken: user.refreshToken }
+            );
+
+            const newAuth = res.data.value;
+            const updatedUser = { ...user, token: newAuth.token, refreshToken: newAuth.refreshToken, expiry: newAuth.expiry };
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));
+            api.defaults.headers.common["Authorization"] = `Bearer ${newAuth.token}`;
+            syncAuthCookies(newAuth.token, Boolean(user.isAdmin));
+
+            isRefreshing = false;
+            onTokenRefreshed(newAuth.token);
+
+            originalRequest.headers["Authorization"] = `Bearer ${newAuth.token}`;
+            return api(originalRequest);
+          } catch {
+            isRefreshing = false;
+            refreshSubscribers = [];
+
+            if (!isRedirecting) {
+              isRedirecting = true;
+              clearAuthAndRedirectToLogin();
+            }
+            return Promise.reject(error);
+          }
+        } else {
+          // Another request is already refreshing — queue this one
+          return new Promise((resolve) => {
+            addRefreshSubscriber((token: string) => {
+              originalRequest.headers["Authorization"] = `Bearer ${token}`;
+              resolve(api(originalRequest));
+            });
+          });
+        }
+      }
+
+      if (!isRedirecting) {
+        isRedirecting = true;
+        clearAuthAndRedirectToLogin();
+      }
       return Promise.reject(error);
     }
     return Promise.reject(error);
@@ -151,6 +214,7 @@ export async function createTradeHistory(data: CreateTradeRequest) {
 // Auth API
 export interface AuthResponse {
   token: string;
+  refreshToken: string;
   email: string;
   fullName: string;
   expiry: string;
