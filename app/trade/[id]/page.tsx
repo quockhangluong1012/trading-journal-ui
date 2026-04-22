@@ -1570,6 +1570,46 @@ function TradeDetailContent({ id }: { id: string }) {
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
               {/* Left Column - Price, analysis, and notes */}
               <div className="space-y-5">
+                {/* Trade Notes - Prominent Section */}
+                <Card className="border-primary/20 bg-card shadow-sm relative overflow-hidden">
+                  <CardHeader className="border-b border-primary/10 bg-primary/5 pb-4 relative z-10">
+                    <CardTitle className="flex items-center gap-2 text-xl font-bold text-primary pt-5">
+                      <FileText className="h-6 w-6" />
+                      Trade Notes
+                    </CardTitle>
+                    <CardDescription className="text-sm">
+                      The core narrative of your trade. Document your rationale, execution thoughts, and market context here.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 pt-6">
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <Textarea
+                          value={formData.notes}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              notes: e.target.value,
+                            }))
+                          }
+                          rows={12}
+                          placeholder="Add your trade rationale, market conditions, or any other notes..."
+                          className="min-h-[240px] resize-none border-primary/20 bg-background/50 p-4 text-base focus-visible:ring-primary/30"
+                        />
+                      </div>
+                    ) : (
+                      <div className="min-h-[240px] rounded-xl bg-secondary/20 p-6 border border-border/50">
+                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">
+                          {getPlainTextFromRichText(trade.notes || "") || (
+                            <span className="font-normal italic text-muted-foreground">
+                              No notes added for this trade. Taking detailed notes is the key to improving your edge.
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
                 {/* Price Level Visualization */}
                 {trade.status === TradeStatus.Open && (
                   <Card className="border-border/70 bg-card/90 shadow-sm">
@@ -2057,44 +2097,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   </Card>
                 )}
 
-                {/* Trade Notes */}
-                <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-accent" />
-                      Trade Notes
-                    </CardTitle>
-                    <CardDescription>
-                      Preserve rationale, market context, and any manual observations tied to this setup.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {isEditing ? (
-                      <Textarea
-                        value={formData.notes}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            notes: e.target.value,
-                          }))
-                        }
-                        rows={6}
-                        placeholder="Add your trade rationale, market conditions, or any other notes..."
-                        className="resize-none"
-                      />
-                    ) : (
-                      <div className="rounded-lg bg-secondary/30 p-3">
-                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                          {getPlainTextFromRichText(trade.notes || "") || (
-                            <span className="text-muted-foreground italic">
-                              No notes added for this trade
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+
               </div>
 
               {/* Right Column - Snapshot & risk analysis */}
