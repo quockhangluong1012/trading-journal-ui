@@ -120,20 +120,21 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
     }
   
   return (
-    <Card className="border-border bg-card min-w-0">
-      <CardHeader className="pb-3">
+    <Card className="min-w-0 border border-white/10 bg-card/60 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:shadow-[0_15px_40px_-10px_rgba(79,70,229,0.2)] hover:border-white/20 relative overflow-hidden group">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      <CardHeader className="pb-4 pt-6 px-6 relative z-10">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg text-foreground">
+          <div className="space-y-1">
+            <CardTitle className="text-[1.1rem] font-bold text-foreground">
               Open Positions
             </CardTitle>
-            <CardDescription className="text-muted-foreground">
+            <CardDescription className="text-sm font-medium text-muted-foreground">
               Currently active trades
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-6 pb-6 pt-0 relative z-10">
         {isLoading ? (
           <div className="space-y-3 py-2">
             <Skeleton className="h-10 w-full rounded-lg" />
@@ -153,21 +154,21 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground">Asset</TableHead>
-                  <TableHead className="text-muted-foreground">
+                <TableRow className="border-border/30 hover:bg-transparent">
+                  <TableHead className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">Asset</TableHead>
+                  <TableHead className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">
                     Position
                   </TableHead>
-                  <TableHead className="text-muted-foreground">
+                  <TableHead className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">
                     Confidence Level
                   </TableHead>
-                  <TableHead className="text-muted-foreground">
+                  <TableHead className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">
                     Emotions
                   </TableHead>
-                  <TableHead className="text-muted-foreground">
+                  <TableHead className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">
                     Entry
                   </TableHead>
-                  <TableHead className="text-muted-foreground">
+                  <TableHead className="text-muted-foreground uppercase tracking-wider text-[11px] font-bold">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -175,8 +176,8 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
               <TableBody>
                 {openPositions.map((trade) => {
                   return (
-                    <TableRow key={trade.id} className="border-border">
-                      <TableCell className="font-medium text-foreground">
+                    <TableRow key={trade.id} className="border-border/30 transition-colors hover:bg-white/5 dark:hover:bg-white/10 group/row">
+                      <TableCell className="font-bold text-foreground">
                         {trade.asset}
                       </TableCell>
                       <TableCell>
@@ -247,7 +248,7 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className="h-8 w-8 p-0 opacity-50 group-hover/row:opacity-100 transition-opacity hover:bg-primary/10 hover:text-primary"
                           >
                             <Eye className="h-4 w-4" />
                           </Button>

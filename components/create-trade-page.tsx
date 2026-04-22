@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import React, { useEffect, useMemo, useRef, useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { useTrades } from "@/lib/trade-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -201,25 +202,26 @@ function TradeFormSection({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-2xl border border-border/70 bg-card/80 shadow-sm backdrop-blur-sm",
+        "group relative overflow-hidden rounded-3xl border border-white/10 border-t-[3px] border-t-primary/70 dark:border-white/5 dark:border-t-primary bg-background/30 shadow-lg backdrop-blur-xl transition-all duration-500 hover:shadow-2xl hover:shadow-primary/5",
         className,
       )}
     >
-      <div className="flex flex-col gap-3 border-b border-border/60 bg-linear-to-r from-card via-card to-muted/20 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/80 text-foreground shadow-sm">
+      <div className="absolute inset-0 -z-10 bg-linear-to-br from-primary/5 via-transparent to-background/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+      <div className="relative flex flex-col gap-4 border-b border-white/10 dark:border-white/5 bg-white/5 dark:bg-black/5 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-linear-to-br from-background/80 to-muted/50 text-foreground shadow-inner transition-transform duration-500 group-hover:scale-105 group-hover:-rotate-3">
             {icon}
           </div>
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-            <p className="text-xs leading-relaxed text-muted-foreground">
+          <div className="space-y-1.5">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
+            <p className="text-xs leading-relaxed text-muted-foreground/80">
               {description}
             </p>
           </div>
         </div>
-        {headerAccessory}
+        {headerAccessory ? <div className="ml-[64px] sm:ml-0">{headerAccessory}</div> : null}
       </div>
-      <div className={cn("px-5 py-5", contentClassName)}>{children}</div>
+      <div className={cn("relative z-10 px-6 py-6", contentClassName)}>{children}</div>
     </section>
   )
 }
@@ -231,15 +233,15 @@ function TradeSummaryStat({
   valueClassName,
 }: TradeSummaryStatProps) {
   return (
-    <div className="rounded-xl border border-border/60 bg-background/80 p-3 shadow-sm">
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="group overflow-hidden rounded-2xl border border-white/10 bg-background/40 p-4 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-background/60 hover:shadow-md">
+      <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground transition-colors group-hover:text-foreground/80">
         {label}
       </p>
-      <p className={cn("mt-2 text-lg font-semibold text-foreground", valueClassName)}>
-        {value}
-      </p>
+      <div className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+        <span className={cn("inline-block transition-transform duration-300 group-hover:translate-x-0.5", valueClassName)}>{value}</span>
+      </div>
       {helper ? (
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-2 border-t border-border/30 pt-2 text-[11px] leading-relaxed text-muted-foreground/80">
           {helper}
         </p>
       ) : null}
@@ -272,6 +274,13 @@ export function CreateTradePage({
     useState<ChecklistModelDetailApi | null>(null)
   const [formData, setFormData] = useState<TradeFormData>(getInitialTradeFormData)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [currentStep, setCurrentStep] = useState(0)
+
+  const WIZARD_STEPS = [
+    { id: "setup", label: "Setup" },
+    { id: "context", label: "Context & Psych" },
+    { id: "evidence", label: "Review" },
+  ]
 
   const checklistDetailRequestRef = useRef(0)
 
@@ -661,7 +670,7 @@ export function CreateTradePage({
     return "text-red-400"
   }
 
-  const surfaceFieldClassName = "border-border/70 bg-background/80 shadow-sm"
+  const surfaceFieldClassName = "border-white/10 bg-background/50 backdrop-blur-sm shadow-inner transition-all hover:border-primary/40 focus:bg-background/80 focus:ring-2 focus:ring-primary/20"
   const selectedTradingZone = apiTradingZones.find(
     (zone) => zone.id.toString() === tradingSession,
   )
@@ -691,15 +700,23 @@ export function CreateTradePage({
   const completionTone = getProgressTone(completionProgress)
 
   return (
-    <div className="space-y-6">
-      <div className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-background via-background to-primary/5 shadow-sm">
-        <div className="flex flex-col gap-5 px-6 py-6 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 space-y-4">
+    <div className="relative space-y-8 pb-32">
+      {/* Background glow effects */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-[10%] left-[-5%] h-[600px] w-[600px] animate-pulse rounded-full bg-primary/10 blur-[120px] duration-1000" />
+        <div className="absolute right-[-5%] top-[20%] h-[500px] w-[500px] animate-pulse rounded-full bg-accent/10 blur-[100px] duration-700" />
+        <div className="absolute bottom-[10%] left-[10%] h-[700px] w-[700px] animate-pulse rounded-full bg-emerald-500/5 blur-[150px] duration-1000" />
+      </div>
+
+      <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-background/40 shadow-sm backdrop-blur-2xl">
+        <div className="absolute inset-0 bg-linear-to-br from-primary/5 via-transparent to-accent/5 opacity-50" />
+        <div className="relative flex flex-col gap-8 px-8 py-10 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0 space-y-5">
             <Button
               variant="ghost"
               size="sm"
               asChild
-              className="-ml-2 w-fit gap-2 text-muted-foreground hover:text-foreground"
+              className="-ml-2 w-fit gap-2 text-muted-foreground transition-all hover:text-foreground hover:bg-white/5"
             >
               <Link href={returnTo}>
                 <ArrowLeft className="h-4 w-4" />
@@ -710,36 +727,36 @@ export function CreateTradePage({
             <div className="flex flex-wrap items-center gap-2">
               <Badge
                 variant="outline"
-                className="rounded-full border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-medium text-primary"
+                className="rounded-full border-primary/30 bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary shadow-inner"
               >
-                <Save className="h-3.5 w-3.5" />
+                <Save className="mr-1.5 h-3.5 w-3.5" />
                 Trade Planner
               </Badge>
               <Badge
                 variant="outline"
-                className="rounded-full border-border/70 bg-background/80 px-3 py-1 text-[11px]"
+                className="rounded-full border-white/10 bg-background/60 px-3 py-1.5 text-[11px] backdrop-blur-md"
               >
                 {activeSession ? "Session linked" : "Manual entry"}
               </Badge>
               <Badge
                 variant="outline"
-                className="rounded-full border-border/70 bg-background/80 px-3 py-1 text-[11px]"
+                className="rounded-full border-white/10 bg-background/60 px-3 py-1.5 text-[11px] backdrop-blur-md"
               >
                 Standalone page
               </Badge>
             </div>
 
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-foreground">
+              <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent drop-shadow-sm">
                 Create New Trade
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-muted-foreground/80">
                 Capture execution details, risk guardrails, and trading psychology before the position goes live.
               </p>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             <TradeSummaryStat
               label="Risk score"
               value={`${riskMetrics.riskScore}/100`}
@@ -756,9 +773,51 @@ export function CreateTradePage({
         </div>
       </div>
 
+        {/* Stepper Progress */}
+        <div className="mx-auto mt-4 mb-4 flex w-full max-w-3xl justify-between relative px-2 sm:px-6">
+          <div className="absolute left-6 right-6 top-1/2 -z-10 h-1.5 -translate-y-1/2 rounded-full bg-secondary/50 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(79,70,229,0.5)]"
+              style={{ width: `${(currentStep / (WIZARD_STEPS.length - 1)) * 100}%` }}
+            />
+          </div>
+          {WIZARD_STEPS.map((step, index) => (
+            <div key={step.id} className="flex flex-col items-center gap-3">
+              <div
+                className={cn(
+                  "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-500",
+                  index <= currentStep
+                    ? "border-primary bg-primary text-primary-foreground shadow-[0_0_20px_rgba(79,70,229,0.4)] scale-110"
+                    : "border-white/10 bg-background/80 text-muted-foreground backdrop-blur-sm",
+                )}
+              >
+                {index < currentStep ? <Check className="h-6 w-6" /> : <span className="text-sm font-bold">{index + 1}</span>}
+              </div>
+              <span
+                className={cn(
+                  "text-[10px] sm:text-xs font-bold uppercase tracking-[0.15em] transition-colors duration-300",
+                  index <= currentStep ? "text-foreground" : "text-muted-foreground/50",
+                )}
+              >
+                {step.label}
+              </span>
+            </div>
+          ))}
+        </div>
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-6">
+          <div className="relative overflow-visible">
+            <AnimatePresence mode="wait">
+              {currentStep === 0 && (
+                <motion.div
+                  key="step0"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
             <TradeFormSection
               title="Trade Setup"
               description="Set the core execution details first, then define a clear profit ladder before the trade is live."
@@ -1042,6 +1101,17 @@ export function CreateTradePage({
                 </div>
               </div>
             </TradeFormSection>
+                </motion.div>
+              )}
+              {currentStep === 1 && (
+                <motion.div
+                  key="step1"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
 
             <TradeFormSection
               title="Pre-trade Checklist"
@@ -1149,10 +1219,10 @@ export function CreateTradePage({
                                   <label
                                     key={item.id}
                                     className={cn(
-                                      "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-all",
+                                      "group flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-all duration-300 hover:shadow-sm",
                                       isChecked
-                                        ? "border-emerald-500/30 bg-emerald-500/5"
-                                        : "border-border bg-secondary/20 hover:bg-secondary/40",
+                                        ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
+                                        : "border-white/10 bg-background/50 hover:border-emerald-500/30 hover:bg-emerald-500/5 hover:-translate-y-0.5",
                                     )}
                                   >
                                     <Checkbox
@@ -1219,10 +1289,10 @@ export function CreateTradePage({
                           type="button"
                           onClick={() => toggleAnalysisTag(tag.id.toString())}
                           className={cn(
-                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
+                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(0,0,0,0.1)]",
                             isSelected
-                              ? "border-primary/40 bg-primary/15 text-primary ring-1 ring-primary/20"
-                              : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary",
+                              ? "border-primary/50 bg-primary/20 text-primary ring-2 ring-primary/30 shadow-[0_0_15px_rgba(79,70,229,0.2)]"
+                              : "border-white/10 bg-background/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary",
                           )}
                           title={tag.description}
                         >
@@ -1267,11 +1337,11 @@ export function CreateTradePage({
                             }
                           }}
                           className={cn(
-                            "flex flex-col items-start rounded-xl border px-3 py-3 text-left transition-all",
+                            "group flex flex-col items-start rounded-xl border px-4 py-3 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_4px_20px_rgba(0,0,0,0.1)]",
                             errors.tradingSession && !isSelected && "border-destructive/50",
                             isSelected
-                              ? "border-amber-500/40 bg-amber-500/15 ring-1 ring-amber-500/30"
-                              : "border-border bg-secondary/20 hover:border-amber-500/30 hover:bg-amber-500/5",
+                              ? "border-amber-500/50 bg-amber-500/15 ring-2 ring-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]"
+                              : "border-white/10 bg-background/50 hover:border-amber-500/40 hover:bg-amber-500/10",
                           )}
                           title={getPlainTextFromRichText(zone.description || "") || undefined}
                         >
@@ -1338,8 +1408,8 @@ export function CreateTradePage({
                                 type="button"
                                 onClick={() => toggleEmotion(tag.id.toString())}
                                 className={cn(
-                                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
-                                  colorMap[category],
+                                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_10px_rgba(0,0,0,0.1)]",
+                                  colorMap[category].replace("border-border bg-secondary/40", "border-white/10 bg-background/50"),
                                 )}
                               >
                                 {tag.name}
@@ -1378,11 +1448,11 @@ export function CreateTradePage({
                           }
                         }}
                         className={cn(
-                          "flex h-10 w-10 items-center justify-center rounded-full border text-sm font-medium transition-all",
+                          "flex h-12 w-12 items-center justify-center rounded-full border text-base font-bold transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
                           errors.confidenceLevel && confidenceLevel === 0 && "border-destructive/50",
                           confidenceLevel >= level
-                            ? "border-primary bg-primary/20 text-primary shadow-sm"
-                            : "border-border bg-secondary/40 text-muted-foreground hover:border-primary/50",
+                            ? "border-primary bg-primary/20 text-primary shadow-[0_0_15px_rgba(79,70,229,0.3)] ring-2 ring-primary/40 scale-110"
+                            : "border-white/10 bg-background/50 text-muted-foreground hover:border-primary/50 hover:text-foreground",
                         )}
                         aria-label={`Confidence level ${level}`}
                       >
@@ -1400,6 +1470,17 @@ export function CreateTradePage({
                 </div>
               </div>
             </TradeFormSection>
+                </motion.div>
+              )}
+              {currentStep === 2 && (
+                <motion.div
+                  key="step2"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
 
             <TradeFormSection
               title="Notes & Evidence"
@@ -1475,44 +1556,48 @@ export function CreateTradePage({
                 </div>
               </div>
             </TradeFormSection>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          <aside className="order-first self-start space-y-4 xl:order-last xl:sticky xl:top-6">
-            <div className="overflow-hidden rounded-2xl border border-border/70 bg-linear-to-br from-card via-card to-primary/5 shadow-sm">
-              <div className="border-b border-border/60 px-5 py-4">
+          <aside className="order-first self-start space-y-6 xl:sticky xl:top-24 xl:order-last">
+            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-background/50 shadow-xl backdrop-blur-2xl transition-all duration-500 hover:shadow-2xl">
+              <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent opacity-50" />
+              <div className="relative border-b border-border/30 px-6 py-6">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     variant="outline"
-                    className="rounded-full border-border/70 bg-background/80 px-3 py-1 text-[11px]"
+                    className="rounded-full border-white/10 bg-background/80 px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-md"
                   >
                     Open trade
                   </Badge>
                   <Badge
                     variant="outline"
                     className={cn(
-                      "rounded-full px-3 py-1 text-[11px]",
+                      "rounded-full px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-md",
                       isLongPosition
-                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                        : "border-red-500/20 bg-red-500/10 text-red-400",
+                        ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400"
+                        : "border-red-500/30 bg-red-500/15 text-red-400",
                     )}
                   >
                     {isLongPosition ? (
-                      <TrendingUp className="h-3.5 w-3.5" />
+                      <TrendingUp className="mr-1.5 h-3.5 w-3.5" />
                     ) : (
-                      <TrendingDown className="h-3.5 w-3.5" />
+                      <TrendingDown className="mr-1.5 h-3.5 w-3.5" />
                     )}
                     {isLongPosition ? "Long" : "Short"}
                   </Badge>
                 </div>
 
-                <div className="mt-4">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                <div className="mt-5">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Live preview
                   </p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
+                  <h2 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text mt-2 text-3xl font-bold tracking-tight text-transparent">
                     {previewAsset}
                   </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
+                  <p className="mt-1 text-sm font-medium text-muted-foreground/80">
                     {formatTradeDate(formData.date)}
                   </p>
                 </div>
@@ -1601,13 +1686,14 @@ export function CreateTradePage({
           </aside>
         </div>
 
-        <div className="rounded-2xl border border-border/60 bg-background/95 px-6 py-4 shadow-sm backdrop-blur">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-foreground">
+        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-3rem)] max-w-5xl -translate-x-1/2 overflow-hidden rounded-[2rem] border border-white/10 bg-background/60 px-6 py-4 shadow-2xl backdrop-blur-2xl transition-all duration-500">
+          <div className="absolute inset-0 bg-linear-to-r from-primary/10 via-transparent to-accent/10 opacity-30" />
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1.5">
+              <p className="text-sm font-semibold text-foreground">
                 Review the guardrails before you submit
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs font-medium text-muted-foreground/80">
                 This trade will be saved as open and synced to your dashboard immediately.
               </p>
             </div>
@@ -1616,19 +1702,32 @@ export function CreateTradePage({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => router.push(returnTo)}
-                className="sm:min-w-30"
+                onClick={() => {
+                  if (currentStep > 0) setCurrentStep(prev => prev - 1)
+                  else router.push(returnTo)
+                }}
+                className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10 sm:min-w-32 backdrop-blur-md transition-all duration-300"
               >
-                Cancel
+                {currentStep > 0 ? "Back" : "Cancel"}
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="gap-2 sm:min-w-40">
-                {isSubmitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {isSubmitting ? "Creating..." : "Create Trade"}
-              </Button>
+              {currentStep < WIZARD_STEPS.length - 1 ? (
+                <Button 
+                  type="button" 
+                  onClick={() => setCurrentStep(prev => prev + 1)}
+                  className="rounded-xl sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40"
+                >
+                  Continue to Next Step
+                </Button>
+              ) : (
+                <Button type="submit" disabled={isSubmitting} className="rounded-xl gap-2 sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40">
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {isSubmitting ? "Creating..." : "Create Trade"}
+                </Button>
+              )}
             </div>
           </div>
         </div>

@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Area,
   AreaChart,
+  ReferenceLine,
 } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
@@ -78,18 +79,21 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
   }
 
   return (
-    <Card className="border-border bg-card min-w-0">
-      <CardHeader className="pb-2">
+    <Card className="min-w-0 border border-white/10 bg-card/60 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:shadow-[0_15px_40px_-10px_rgba(79,70,229,0.2)] hover:border-white/20 relative overflow-hidden group">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      <CardHeader className="pb-4 pt-6 px-6 relative z-10">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg text-foreground">Profit Trajectory</CardTitle>
-            <CardDescription className="text-muted-foreground">
+          <div className="space-y-1">
+            <CardTitle className="text-[1.1rem] font-bold text-foreground">
+              Profit Trajectory
+            </CardTitle>
+            <CardDescription className="text-sm font-medium text-muted-foreground">
               Cumulative profit over time
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-6 pb-6 pt-0 relative z-10">
         {isLoading ? (
           <div className="space-y-4">
             <div className="mb-4 flex items-baseline gap-2">
@@ -100,41 +104,73 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
           </div>
         ) : (
           <>
-            <div className="mb-4 flex items-baseline gap-2">
-              <span
-                className={`text-3xl font-bold ${
-                  totalPnL >= 0 ? "text-success" : "text-destructive"
-                }`}
-              >
-                {formatCurrency(totalPnL)}
-              </span>
-              <span className="text-sm text-muted-foreground">Total P&L</span>
+            <div className="mb-4 flex items-center gap-4 rounded-2xl bg-white/5 border border-white/5 p-4 backdrop-blur-sm max-w-xs">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block mb-1">Total P&L</span>
+                <span
+                  className={`text-3xl font-extrabold drop-shadow-sm ${
+                    totalPnL >= 0 ? "text-success" : "text-destructive"
+                  }`}
+                >
+                  {formatCurrency(totalPnL)}
+                </span>
+              </div>
             </div>
-            <ChartContainer config={chartConfig} className="h-62.5 w-full" style={{ aspectRatio: "auto" }}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <ChartContainer
+              config={chartConfig}
+              className="h-62.5 w-full"
+              style={{ aspectRatio: "auto" }}
+            >
+              <AreaChart
+                data={chartData}
+                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+              >
                 <defs>
-                  <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  <linearGradient
+                    id="profitGradient"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="5%"
+                      stopColor="var(--success)"
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor="var(--success)"
+                      stopOpacity={0}
+                    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#374151"
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(value) =>
-                    new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                    new Date(value).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
                   }
                   tick={{ fill: "#9ca3af", fontSize: 11 }}
                   tickLine={false}
-                  axisLine={{ stroke: "#374151" }}
+                  axisLine={{ stroke: "transparent" }}
+                  dy={10}
                 />
                 <YAxis
                   tickFormatter={(value) => `$${value.toLocaleString()}`}
                   tick={{ fill: "#9ca3af", fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
-                  width={80}
+                  width={60}
                 />
+                <ReferenceLine y={0} stroke="#9ca3af" strokeDasharray="3 3" />
                 <ChartTooltip
                   content={
                     <ChartTooltipContent
@@ -152,7 +188,7 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
                 <Area
                   type="monotone"
                   dataKey="profit"
-                  stroke="#22c55e"
+                  stroke="var(--success)"
                   strokeWidth={2}
                   fill="url(#profitGradient)"
                   name="Profit"
@@ -163,5 +199,5 @@ export function ProfitChart({ filter, profitTrajectory: providedTrajectory, isLo
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

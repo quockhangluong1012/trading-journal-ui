@@ -9,6 +9,7 @@ import {
   Bell,
   Brain,
   ClipboardList,
+  GitBranch,
   History,
   LayoutDashboard,
   LogOut,
@@ -72,7 +73,7 @@ export function Header() {
   }, [pathname]);
 
   return (
-    <header className="border-b border-border bg-card transition-colors duration-300">
+    <header className="sticky top-0 z-50 border-b border-border/40 bg-background/60 backdrop-blur-md transition-all duration-300 shadow-sm shadow-black/5 dark:shadow-none">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -95,10 +96,10 @@ export function Header() {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200",
+                    "relative flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition-all duration-300",
                     isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
+                      : "text-muted-foreground hover:bg-primary/10 hover:text-primary",
                   )}
                 >
                   <item.icon className="h-4 w-4" />
@@ -166,6 +167,12 @@ export function Header() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/setup" className="cursor-pointer">
+                        <GitBranch className="mr-2 h-4 w-4" />
+                        Setup
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/settings/pretrade-models" className="cursor-pointer">
                         <ClipboardList className="mr-2 h-4 w-4" />
@@ -249,6 +256,20 @@ export function Header() {
                             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                           </div>
                         </div>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/setup">
+                            <GitBranch className="h-4 w-4" />
+                            Setup
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/settings/pretrade-models">
+                            <ClipboardList className="h-4 w-4" />
+                            Pre-trade models
+                          </Link>
+                        </Button>
 
                         <Button variant="outline" className="w-full justify-start gap-2" onClick={logout}>
                           <LogOut className="h-4 w-4" />
