@@ -604,7 +604,25 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
           closedPositions = upsertOrderById(closedPositions, closed);
           const pnl = closed.pnl ?? 0;
           const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
-          toast.info(`${closed.side} Position closed. PnL: ${pnlText}`);
+          
+          let reason = "closed";
+          if (closed.exitPrice) {
+            if (closed.side === "Long") {
+              if (closed.stopLoss && closed.exitPrice <= closed.stopLoss) reason = "hit Stop Loss";
+              else if (closed.takeProfit && closed.exitPrice >= closed.takeProfit) reason = "hit Take Profit";
+            } else {
+              if (closed.stopLoss && closed.exitPrice >= closed.stopLoss) reason = "hit Stop Loss";
+              else if (closed.takeProfit && closed.exitPrice <= closed.takeProfit) reason = "hit Take Profit";
+            }
+          }
+
+          if (reason === "hit Stop Loss") {
+            toast.error(`${closed.side} Position ${reason}. PnL: ${pnlText}`);
+          } else if (reason === "hit Take Profit") {
+            toast.success(`${closed.side} Position ${reason}. PnL: ${pnlText}`);
+          } else {
+            toast.info(`${closed.side} Position ${reason}. PnL: ${pnlText}`);
+          }
         }
 
         return {
@@ -623,6 +641,11 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
       if (result.isSessionEnded || result.isLiquidated) {
         get().pausePlayback();
         await get().loadSession(sessionId);
+        if (result.isLiquidated) {
+          toast.error("Account Liquidated!");
+        } else if (result.isSessionEnded) {
+          toast.info("Backtest session ended.");
+        }
       }
 
       return result;

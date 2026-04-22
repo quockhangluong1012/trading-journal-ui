@@ -49,6 +49,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import { PerformanceHeatmap } from "@/components/analytics/performance-heatmap"
 import {
   AnalyticsFilter,
   FILTER_LABELS,
@@ -988,6 +989,18 @@ function AnalyticsContent() {
                 </CardHeader>
                 <CardContent>
                   <EquityCurveChart data={equityData} />
+                </CardContent>
+              </Card>
+
+              <Card className={SURFACE_CARD_CLASS}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg text-foreground">Performance Heatmap</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    Daily profit and loss over the last year
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <PerformanceHeatmap data={equityData} />
                 </CardContent>
               </Card>
 

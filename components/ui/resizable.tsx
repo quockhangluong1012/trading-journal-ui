@@ -17,10 +17,12 @@ function ResizablePanelGroup({
         'flex w-full data-[panel-group-direction=vertical]:flex-col',
         className,
       )}
-      style={{"height": "calc(100vh-140px)"}}
+      style={{
+        height: 'calc(100vh - 120px)',
+      }}
       {...props}
     />
-  )
+  );
 }
 
 function ResizablePanel({

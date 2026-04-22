@@ -88,6 +88,16 @@ export default function BacktestDashboard() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto max-w-6xl p-6">
+        <div className="mb-6 flex justify-center">
+          <div className="inline-flex items-center justify-center rounded-full bg-muted/50 p-1 text-muted-foreground backdrop-blur-md border border-border/50 shadow-inner">
+            <Link href="/" className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-2 text-sm font-medium ring-offset-background transition-all hover:bg-background/50 hover:text-foreground">
+              Live Execution
+            </Link>
+            <Link href="/backtest" className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-2 text-sm font-semibold ring-offset-background transition-all bg-background text-foreground shadow-sm border border-border/50">
+              Backtest Results
+            </Link>
+          </div>
+        </div>
         <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Backtesting</h1>
