@@ -84,6 +84,10 @@ import { OverviewMetricCard, SnapshotPill } from "@/components/trade/metric-card
 import { PriceLevelBar } from "@/components/trade/price-level-bar";
 import { TradeStatusAlert } from "@/components/trade/trade-status-alert";
 import { TradeDetailSkeleton } from "@/components/trade/trade-detail-skeleton";
+import { useAuth } from "@/lib/auth-context"
+import { usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
 
 export interface TradingZoneApi {
   id: number;
@@ -130,7 +134,16 @@ const getConfidenceLabel = (confidenceLevel: number): string => {
 };
 
 function TradeDetailContent({ id }: { id: string }) {
+  const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter();
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
   const { trades, updateTrade, deleteTrade, closeTrade } = useTrades();
   const [trade, setTrade] = useState<Trade | null>(null);
   const [isTradeLoading, setIsTradeLoading] = useState(true);
@@ -170,6 +183,8 @@ function TradeDetailContent({ id }: { id: string }) {
   const [selectedModelDetail, setSelectedModelDetail] = useState<ChecklistModelDetailApi | null>(null);
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
+
     setTrade(null);
     setIsTradeLoading(true);
     setTradeLoadError(null);
@@ -311,7 +326,7 @@ function TradeDetailContent({ id }: { id: string }) {
         setTradeLoadError("We couldn't load this trade right now.");
       })
       .finally(() => setIsTradeLoading(false));
-  }, [id]);
+  }, [id, isAuthLoading, user]);
 
   const currentPrice = trade
     ? mockCurrentPrices[trade.asset] || trade.entryPrice
@@ -390,6 +405,14 @@ function TradeDetailContent({ id }: { id: string }) {
       ) ?? null
     );
   }, [apiTradingZones, trade?.tradingSession]);
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading trade" description="Retrieving your trade details." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
+  }
 
   if (isTradeLoading) {
     return <TradeDetailSkeleton />;

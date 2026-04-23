@@ -66,6 +66,10 @@ import {
   type MonthlyReturn,
   type PerformanceSummary,
 } from "@/lib/analytics-api"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter, usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
 
 const fmt = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -699,6 +703,16 @@ function AnalyticsContent() {
   const [viewState, setViewState] = useState<AnalyticsViewState>(initialViewState)
   const requestIdRef = useRef(0)
 
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
   useEffect(() => {
     try {
       const storedRange = window.localStorage.getItem(ANALYTICS_RANGE_STORAGE_KEY)
@@ -820,10 +834,20 @@ function AnalyticsContent() {
   }, [])
 
   useEffect(() => {
-    void loadAnalytics(range)
-  }, [loadAnalytics, range])
+    if (!isAuthLoading && user) {
+      void loadAnalytics(range)
+    }
+  }, [loadAnalytics, range, isAuthLoading, user])
 
   const isInitialLoading = viewState.isLoading && viewState.lastUpdatedAt === null
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading analytics" description="Gathering your performance data." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
+  }
 
   if (isInitialLoading) {
     return (

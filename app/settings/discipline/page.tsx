@@ -10,6 +10,10 @@ import { Switch } from "@/components/ui/switch"
 import { getTradingProfile, updateTradingProfile } from "@/lib/discipline-api"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2 } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter, usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
 
 export default function DisciplineSettingsPage() {
   const { toast } = useToast()
@@ -20,7 +24,18 @@ export default function DisciplineSettingsPage() {
   const [maxLoss, setMaxLoss] = useState<string>("")
   const [maxConsecutive, setMaxConsecutive] = useState<string>("")
 
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+
   useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
+  useEffect(() => {
+    if (isAuthLoading || !user) return;
     getTradingProfile()
       .then(res => {
         if (res.data.isSuccess) {
@@ -54,6 +69,14 @@ export default function DisciplineSettingsPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading settings" description="Gathering your profile data." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
   }
 
   return (

@@ -66,6 +66,11 @@ import {
 } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/components/ui/use-toast"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter, usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
+
 
 const SURFACE_CARD_CLASS = "border-border/70 bg-card/95 shadow-sm"
 const JOURNAL_ARCHIVE_PAGE_SIZE = 10
@@ -1417,6 +1422,16 @@ function NewEntryForm({
 }
 
 function PsychologyContent() {
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
   const { trades } = useTrades()
   const [newEntryOpen, setNewEntryOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<PsychologyTabValue>("overview")
@@ -1498,6 +1513,8 @@ function PsychologyContent() {
   }
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
+
     api
       .get("/v1/emotions")
       .then((res) => res.data)
@@ -1510,7 +1527,7 @@ function PsychologyContent() {
 
     fetchJournals()
     fetchStats()
-  }, [])
+  }, [isAuthLoading, user])
 
   const sortedEntries = useMemo(
     () => filterJournalEntries(journalEntries, "all"),
@@ -1617,6 +1634,14 @@ function PsychologyContent() {
     setNewEntryOpen(false)
     fetchJournals()
     fetchStats()
+  }
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading psychology" description="Gathering your mental game data." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
   }
 
   return (

@@ -11,6 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useReviewWorkspace } from "@/hooks/use-review-workspace"
 import { ReviewPeriodType, formatPeriodLabel } from "@/lib/review-api"
 import { buildReviewNarrative, buildReviewPulse } from "@/lib/review-overview"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter, usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
+import { useEffect } from "react"
 
 function ReviewTabContent({ periodType }: { periodType: ReviewPeriodType }) {
   const workspace = useReviewWorkspace(periodType)
@@ -79,6 +84,24 @@ function ReviewTabContent({ periodType }: { periodType: ReviewPeriodType }) {
 
 // --- Main Page ---
 function ReviewContent() {
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading review" description="Gathering your review workspace." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Header />

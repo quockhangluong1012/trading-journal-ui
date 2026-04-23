@@ -20,13 +20,28 @@ import { Badge } from "@/components/ui/badge";
 import { Header } from "@/components/header";
 import * as signalR from "@microsoft/signalr";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter, usePathname } from "next/navigation";
+import { buildRedirectWithNext } from "@/lib/auth-redirect";
+import { AppShellLoader } from "@/components/app-shell-loader";
 
 export default function BacktestDashboard() {
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname));
+    }
+  }, [user, isAuthLoading, pathname, router]);
+
   const { sessions, sessionsLoading, loadSessions, deleteSession } = useBacktestStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const toastIdRef = useRef<string | number>("");
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
     loadSessions();
 
     const hubUrl = process.env.NEXT_PUBLIC_API_URL 
@@ -83,6 +98,14 @@ export default function BacktestDashboard() {
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading backtesting" description="Gathering your session details." />;
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
