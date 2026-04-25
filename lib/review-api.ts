@@ -91,6 +91,10 @@ export interface ReviewTrade {
   tradingZone?: string | null
   isRuleBroken: boolean
   ruleBreakReason?: string | null
+  notes?: string | null
+  emotionTags: string[]
+  technicalThemes: string[]
+  checklistItems: string[]
 }
 
 export interface PaginatedReviewTrades {
@@ -210,6 +214,36 @@ export async function fetchReviewSummaryStatus(
     `/v1/reviews/summary-status?periodType=${periodType}&periodStart=${periodStart}`
   )
   return response.data.value
+}
+
+export async function exportReviewReport(
+  periodType: ReviewPeriodType,
+  periodStart: string
+): Promise<void> {
+  const response = await api.get(
+    `/v1/reviews/export?periodType=${periodType}&periodStart=${periodStart}`,
+    { responseType: "blob" }
+  )
+
+  const contentDisposition = response.headers["content-disposition"] as string | undefined
+  let fileName = `trading-report_${periodStart}.csv`
+
+  if (contentDisposition) {
+    const match = /filename[^;=\n]*=(?:(?:"([^"]*)")|([^;\n]*))/.exec(contentDisposition)
+    if (match?.[1] || match?.[2]) {
+      fileName = (match[1] || match[2]).trim()
+    }
+  }
+
+  const blob = new Blob([response.data as BlobPart], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 export async function fetchReviewTrades(

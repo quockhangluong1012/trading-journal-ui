@@ -6,7 +6,7 @@ import { ReviewCommandCenter } from "@/components/review/review-command-center"
 import { ReviewMetricGrid } from "@/components/review/review-metric-grid"
 import { ReviewNotesPanel, ReviewPeriodDetailsCard } from "@/components/review/review-side-panels"
 import { ReviewSummaryCard } from "@/components/review/review-summary-card"
-import { ReviewTradeFeed } from "@/components/review/review-trade-feed"
+import { ReviewTradeJournal } from "@/components/review/review-trade-journal"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useReviewWorkspace } from "@/hooks/use-review-workspace"
 import { ReviewPeriodType, formatPeriodLabel } from "@/lib/review-api"
@@ -27,6 +27,7 @@ function ReviewTabContent({ periodType }: { periodType: ReviewPeriodType }) {
     <div className="space-y-6">
       <ReviewCommandCenter
         currentDate={workspace.currentDate}
+        isExporting={workspace.isExporting}
         isGeneratingSummary={workspace.isGeneratingSummary}
         isLoading={workspace.isLoading}
         isRefreshing={workspace.isRefreshing}
@@ -37,6 +38,9 @@ function ReviewTabContent({ periodType }: { periodType: ReviewPeriodType }) {
         pulseCards={pulseCards}
         review={workspace.review}
         syncWarning={workspace.syncWarning}
+        onExportReport={() => {
+          void workspace.exportReport()
+        }}
         onGenerateSummary={() => {
           void workspace.generateSummary()
         }}
@@ -48,8 +52,13 @@ function ReviewTabContent({ periodType }: { periodType: ReviewPeriodType }) {
 
       <ReviewMetricGrid isLoading={workspace.isLoading} review={workspace.review} />
 
+      {/* Two-column layout: Main content (journal + AI) | Sidebar (notes + details) */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
         <div className="space-y-6">
+          {/* Trade journal — the main focus of the redesign */}
+          <ReviewTradeJournal isLoading={workspace.isLoading} trades={workspace.trades} />
+
+          {/* AI summary below the trade journal */}
           <ReviewSummaryCard
             isGenerating={workspace.isGeneratingSummary}
             review={workspace.review}
@@ -57,8 +66,6 @@ function ReviewTabContent({ periodType }: { periodType: ReviewPeriodType }) {
               void workspace.generateSummary()
             }}
           />
-
-          <ReviewTradeFeed isLoading={workspace.isLoading} trades={workspace.trades} />
         </div>
 
         <div className="space-y-6">
@@ -109,14 +116,14 @@ function ReviewContent() {
         <div className="mb-6 space-y-1.5">
           <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-foreground">
             <ClipboardList className="h-6 w-6 text-primary" />
-            Review
+            Trade Review
           </h1>
           <p className="text-sm text-muted-foreground">
-            Run period reviews with fresher metrics, stronger AI trade evidence, and a cleaner workspace for notes and coaching.
+            Review your trading journal with full trade details, notes, emotions, and AI coaching insights. Export as PDF anytime.
           </p>
         </div>
 
-        <Tabs defaultValue="daily" className="space-y-6">
+        <Tabs defaultValue="weekly" className="space-y-6">
           <TabsList>
             <TabsTrigger value="daily" className="gap-1.5">Daily</TabsTrigger>
             <TabsTrigger value="weekly" className="gap-1.5">Weekly</TabsTrigger>

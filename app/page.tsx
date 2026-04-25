@@ -162,21 +162,6 @@ function DashboardContent() {
               void refresh()
             }}
             sessionControl={<ActiveSessionWidget />}
-            todaySetupBadge={todaySetup && todaySetupSummary ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsTodaySetupDialogOpen(true)}
-                className="h-auto max-w-full gap-2 rounded-full border-sky-500/25 bg-sky-500/10 px-3 py-1 text-[11px] font-medium text-sky-700 hover:bg-sky-500/15 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200"
-                title={todaySetup.name}
-              >
-                <GitBranch className="h-3.5 w-3.5 shrink-0" />
-                <span className="max-w-[18rem] truncate text-left">
-                  Today setup: {todaySetupSummary}
-                </span>
-              </Button>
-            ) : null}
           />
 
           <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />

@@ -116,7 +116,8 @@ const formatDisplayDate = (dateString?: string | null) => {
   }).format(date);
 };
 
-const getConfidenceLabel = (confidenceLevel: number): string => {
+const getConfidenceLabel = (confidenceLevel?: number): string => {
+  if (confidenceLevel === undefined) return "Not set";
   switch (confidenceLevel) {
     case 1:
       return "Very Low";
@@ -525,14 +526,15 @@ function TradeDetailContent({ id }: { id: string }) {
       value: trade.confidenceLevel ? `${trade.confidenceLevel}/5` : "Not set",
       helper: getConfidenceLabel(trade.confidenceLevel),
       icon: Brain,
-      tone:
+      tone: (
         trade.confidenceLevel && trade.confidenceLevel >= 4
           ? "positive"
           : trade.confidenceLevel && trade.confidenceLevel >= 2
             ? "accent"
             : trade.confidenceLevel
               ? "warning"
-              : "default",
+              : "default"
+      ) as "positive" | "accent" | "warning" | "default",
     },
   ];
   const headlineMetrics = [
@@ -560,7 +562,7 @@ function TradeDetailContent({ id }: { id: string }) {
             ? `Closed ${formatDisplayDate(trade.closedDate)}`
             : "Recorded once the trade is closed.",
       icon: isOpenTrade ? BarChart3 : CheckCircle2,
-      tone:
+      tone: (
         isOpenTrade && metrics && metrics.priceChangePercent >= 0
           ? "positive"
           : isOpenTrade
@@ -569,7 +571,8 @@ function TradeDetailContent({ id }: { id: string }) {
               ? trade.pnl >= 0
                 ? "positive"
                 : "negative"
-              : "accent",
+              : "accent"
+      ) as "positive" | "negative" | "accent",
     },
     {
       label: isOpenTrade ? "Live P&L" : "Realized P&L",
@@ -578,7 +581,7 @@ function TradeDetailContent({ id }: { id: string }) {
         ? "Tracking against the latest available price."
         : "Final result recorded when the trade was closed.",
       icon: displayedPnL >= 0 ? TrendingUp : TrendingDown,
-      tone: displayedPnL >= 0 ? "positive" : "negative",
+      tone: (displayedPnL >= 0 ? "positive" : "negative") as "positive" | "negative",
     },
     {
       label: "Average R:R",
@@ -587,12 +590,13 @@ function TradeDetailContent({ id }: { id: string }) {
         ? `T1 ${metrics.rrT1.toFixed(1)}R · T2 ${metrics.rrT2.toFixed(1)}R · T3 ${metrics.rrT3.toFixed(1)}R`
         : "Add targets and a stop to evaluate reward potential.",
       icon: Target,
-      tone:
+      tone: (
         metrics && metrics.averageRiskReward >= 2
           ? "positive"
           : metrics && metrics.averageRiskReward >= 1
             ? "warning"
-            : "negative",
+            : "negative"
+      ) as "positive" | "warning" | "negative",
     },
   ];
   const averageRiskRewardProgress = metrics

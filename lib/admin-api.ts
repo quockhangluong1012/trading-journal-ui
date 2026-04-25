@@ -56,11 +56,24 @@ export async function getStaffDetail(id: number) {
   return api.get<ApiResponse<StaffDto>>(`/v1/auth/staffs/${id}`);
 }
 
-export async function createStaff(data: any) {
+export interface CreateStaffRequest {
+  email: string;
+  password: string;
+  fullName: string;
+}
+
+export interface UpdateStaffRequest {
+  id: number;
+  email: string;
+  fullName: string;
+  isActive: boolean;
+}
+
+export async function createStaff(data: CreateStaffRequest) {
   return api.post<ApiResponse<number>>("/v1/auth/staffs", data);
 }
 
-export async function updateStaff(data: any) {
+export async function updateStaff(data: UpdateStaffRequest) {
   return api.put<ApiResponse<boolean>>(`/v1/auth/staffs/${data.id}`, data);
 }
 

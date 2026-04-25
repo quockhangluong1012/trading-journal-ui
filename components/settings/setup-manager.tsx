@@ -815,9 +815,10 @@ export function SetupManager() {
                           <h2 className="text-base font-semibold tracking-tight text-foreground">
                             {setup.name}
                           </h2>
-                          <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">
-                            {setup.description?.trim() || "No description yet. Open the setup to add the context and execution notes."}
-                          </p>
+                          <div 
+                            className="line-clamp-3 text-sm leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                            dangerouslySetInnerHTML={{ __html: setup.description?.trim() || "No description yet. Open the setup to add the context and execution notes." }}
+                          />
                         </div>
 
                         <Badge variant="outline" className="shrink-0 border-border/80 bg-muted/40 text-muted-foreground">
@@ -902,9 +903,10 @@ export function SetupManager() {
               <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                 {workspaceTitle}
               </h1>
-              <p className="max-w-4xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                {workspaceDescription}
-              </p>
+              <div 
+                className="max-w-4xl text-sm leading-relaxed text-muted-foreground sm:text-base [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                dangerouslySetInnerHTML={{ __html: workspaceDescription }}
+              />
             </div>
           </div>
 
@@ -1053,9 +1055,10 @@ export function SetupManager() {
 
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-foreground">Overview</p>
-                    <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-                      {description.trim() || "No overview saved yet for this setup."}
-                    </div>
+                    <div 
+                      className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                      dangerouslySetInnerHTML={{ __html: description.trim() || "No overview saved yet for this setup." }}
+                    />
                   </div>
                 </>
               ) : (
@@ -1173,9 +1176,10 @@ export function SetupManager() {
 
                       <div className="space-y-2">
                         <p className="text-sm font-medium text-foreground">Guidance</p>
-                        <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-relaxed text-muted-foreground">
-                          {activeNode.data.notes?.trim() || "No guidance yet. Add the reminders you want to see here when you switch into edit mode."}
-                        </div>
+                        <div 
+                          className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                          dangerouslySetInnerHTML={{ __html: activeNode.data.notes?.trim() || "No guidance yet. Add the reminders you want to see here when you switch into edit mode." }}
+                        />
                       </div>
                     </>
                   ) : (

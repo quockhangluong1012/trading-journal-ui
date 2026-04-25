@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu,
   Settings2,
+  Sparkles,
   TrendingUp,
   User,
 } from "lucide-react";
@@ -46,6 +47,7 @@ const navigation = [
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Backtest", href: "/backtest", icon: Activity },
   { name: "Review", href: "/review", icon: ClipboardList },
+  { name: "Coach", href: "/coach", icon: Sparkles },
   { name: "Admin", href: "/admin", icon: Settings2 },
 ];
 

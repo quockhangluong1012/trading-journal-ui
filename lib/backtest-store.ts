@@ -299,12 +299,12 @@ async function fetchSessionDetail(id: number): Promise<BacktestSession> {
 
 async function createSessionApi(req: CreateSessionRequest): Promise<number> {
   attachToken();
-  const res = await api.post<ApiResponse<any>>(`${BASE}/backtest-sessions`, req);
+  const res = await api.post<ApiResponse<number | { id: number }[] | { id: number }>>(`${BASE}/backtest-sessions`, req);
   let val = res.data.value;
   if (Array.isArray(val) && val.length > 0) {
     return val[0].id;
   }
-  if (val && typeof val === "object" && val.id) {
+  if (val && typeof val === "object" && "id" in val) {
     return val.id;
   }
   return val as number;

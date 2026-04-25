@@ -1700,9 +1700,11 @@ export function CreateTradePage({
 
             <div className="flex flex-col-reverse gap-3 sm:flex-row">
               <Button
+                key="back-button"
                 type="button"
                 variant="outline"
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault()
                   if (currentStep > 0) setCurrentStep(prev => prev - 1)
                   else router.push(returnTo)
                 }}
@@ -1712,14 +1714,18 @@ export function CreateTradePage({
               </Button>
               {currentStep < WIZARD_STEPS.length - 1 ? (
                 <Button 
+                  key="continue-button"
                   type="button" 
-                  onClick={() => setCurrentStep(prev => prev + 1)}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setCurrentStep(prev => prev + 1)
+                  }}
                   className="rounded-xl sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40"
                 >
                   Continue to Next Step
                 </Button>
               ) : (
-                <Button type="submit" disabled={isSubmitting} className="rounded-xl gap-2 sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40">
+                <Button key="submit-button" type="submit" disabled={isSubmitting} className="rounded-xl gap-2 sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40">
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
