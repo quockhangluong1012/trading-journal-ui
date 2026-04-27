@@ -36,7 +36,7 @@ function mapSessionFromApi(s: SessionApiResponseDto): UserSession {
     id: s.id?.toString() ?? "",
     startTime: s.fromTime ?? s.startTime ?? "",
     endTime: s.toTime ?? s.endTime ?? undefined,
-    status: s.status === 1 || s.status === "Closed" ? "Closed" : "Active",
+    status: s.status === 2 || s.status === "Closed" ? "Closed" : "Active",
     pnl: s.pnL ?? s.pnl ?? undefined,
     tradesCount: s.tradeCount ?? s.tradesCount ?? undefined,
     notes: s.note ?? s.notes ?? undefined,

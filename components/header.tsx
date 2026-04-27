@@ -16,6 +16,7 @@ import {
   Menu,
   Settings2,
   Sparkles,
+
   TrendingUp,
   User,
 } from "lucide-react";
@@ -44,10 +45,8 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Trade History", href: "/history", icon: History },
   { name: "Psychology", href: "/psychology", icon: Brain },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
+
   { name: "Backtest", href: "/backtest", icon: Activity },
-  { name: "Review", href: "/review", icon: ClipboardList },
-  { name: "Coach", href: "/coach", icon: Sparkles },
   { name: "Admin", href: "/admin", icon: Settings2 },
 ];
 
@@ -170,6 +169,24 @@ export function Header() {
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
+                      <Link href="/analytics" className="cursor-pointer">
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        Analytics
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/review" className="cursor-pointer">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Review
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/coach" className="cursor-pointer">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        AI Coach
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
                       <Link href="/setup" className="cursor-pointer">
                         <GitBranch className="mr-2 h-4 w-4" />
                         Setup
@@ -258,6 +275,27 @@ export function Header() {
                             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                           </div>
                         </div>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/analytics">
+                            <BarChart3 className="h-4 w-4" />
+                            Analytics
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/review">
+                            <ClipboardList className="h-4 w-4" />
+                            Review
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/coach">
+                            <Sparkles className="h-4 w-4" />
+                            AI Coach
+                          </Link>
+                        </Button>
 
                         <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
                           <Link href="/setup">

@@ -16,6 +16,7 @@ import { CalendarWidget } from "@/components/dashboard/calendar-widget"
 import { OpenPositionsTable } from "@/components/dashboard/open-positions-table"
 import { ActiveSessionWidget } from "@/components/session/active-session-widget"
 import { KillzonesWidget } from "@/components/dashboard/killzones-widget"
+import { MacroTimesWidget } from "@/components/dashboard/macro-times-widget"
 import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
@@ -166,7 +167,10 @@ function DashboardContent() {
 
           <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />
 
-          <KillzonesWidget />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <KillzonesWidget />
+            <MacroTimesWidget />
+          </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <ProfitChart filter={filter} profitTrajectory={profitTrajectory} isLoading={isDashboardLoading} />

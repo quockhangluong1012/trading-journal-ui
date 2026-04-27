@@ -21,6 +21,7 @@ interface AuthContextType {
   login: (userData: AuthUser) => void
   logout: () => void
   isLoading: boolean
+  isAuthLoading: boolean
 }
 
 // ========================
@@ -77,7 +78,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     router.push(loginRoute)
   }, [router, user?.isAdmin])
 
-  const value = useMemo(() => ({ user, login, logout, isLoading }), [user, login, logout, isLoading])
+  const value = useMemo(() => ({ user, login, logout, isLoading, isAuthLoading: isLoading }), [user, login, logout, isLoading])
 
   return (
     <AuthContext.Provider value={value}>

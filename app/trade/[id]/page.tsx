@@ -1081,700 +1081,148 @@ function TradeDetailContent({ id }: { id: string }) {
                     </CardContent>
                   </Card>
                 )}
+              </div>
 
-                {/* Target Prices Section */}
+              {/* Right Column - Context, Psychology, Tags */}
+              <div className="space-y-5">
+                {/* Target Prices */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base font-medium flex items-center gap-2">
-                        <Target className="h-4 w-4 text-success" />
-                        Target Prices
-                      </CardTitle>
-                    </div>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Target className="h-4 w-4 text-emerald-500" />
+                      Target Prices
+                    </CardTitle>
                     <CardDescription>
                       Review planned exits and adjust them without losing sight of the reward profile.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      {/* Tier 1 */}
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Tier 1
-                          </p>
-                          {metrics && (
-                            <Badge variant="outline" className="text-xs">
-                              {metrics.rrT1.toFixed(1)}R
-                            </Badge>
-                          )}
+                  <CardContent>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {[
+                        { label: "Conservative", tier: "TIER 1", value: trade.targetTier1, rr: metrics?.rrT1 },
+                        { label: "Moderate", tier: "TIER 2", value: trade.targetTier2, rr: metrics?.rrT2 },
+                        { label: "Aggressive", tier: "TIER 3", value: trade.targetTier3, rr: metrics?.rrT3 },
+                      ].map((target, idx) => target.value > 0 ? (
+                        <div key={idx} className="rounded-xl border border-border/50 bg-secondary/20 p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{target.tier}</span>
+                            {target.rr ? (
+                              <span className="text-[10px] font-bold text-foreground bg-background rounded px-1">{target.rr.toFixed(1)}R</span>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground mb-1">{target.label}</div>
+                          <div className="text-sm font-bold text-emerald-500">{formatCurrency(target.value)}</div>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Conservative
-                        </p>
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.targetTier1}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                targetTier1: e.target.value,
-                              }))
-                            }
-                            className="h-9"
-                          />
-                        ) : (
-                          <p className="text-xl font-semibold text-success">
-                            {trade.targetTier1
-                              ? formatCurrency(trade.targetTier1)
-                              : "-"}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Tier 2 */}
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Tier 2
-                          </p>
-                          {metrics && (
-                            <Badge variant="outline" className="text-xs">
-                              {metrics.rrT2.toFixed(1)}R
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Moderate
-                        </p>
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.targetTier2}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                targetTier2: e.target.value,
-                              }))
-                            }
-                            className="h-9"
-                          />
-                        ) : (
-                          <p className="text-xl font-semibold text-success">
-                            {trade.targetTier2
-                              ? formatCurrency(trade.targetTier2)
-                              : "-"}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Tier 3 */}
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Tier 3
-                          </p>
-                          {metrics && (
-                            <Badge variant="outline" className="text-xs">
-                              {metrics.rrT3.toFixed(1)}R
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Aggressive
-                        </p>
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.targetTier3}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                targetTier3: e.target.value,
-                              }))
-                            }
-                            className="h-9"
-                          />
-                        ) : (
-                          <p className="text-xl font-semibold text-success">
-                            {trade.targetTier3
-                              ? formatCurrency(trade.targetTier3)
-                              : "-"}
-                          </p>
-                        )}
-                      </div>
+                      ) : null)}
+                      {!trade.targetTier1 && !trade.targetTier2 && !trade.targetTier3 && (
+                        <div className="col-span-3 text-sm text-muted-foreground text-center py-2">No targets set.</div>
+                      )}
                     </div>
-
-                    {isEditing && (
-                      <div className="pt-2">
-                        <Label className="text-sm font-medium">Stop Loss</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={formData.stopLoss}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              stopLoss: e.target.value,
-                            }))
-                          }
-                          className="mt-1.5 h-9"
-                        />
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  {/* Trading Psychology */}
-                  {(isEditing ||
-                    trade.emotionTags?.length ||
-                    trade.confidenceLevel) && (
-                    <Card className="border-border/70 bg-card/90 shadow-sm">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-base font-medium flex items-center gap-2">
-                          <Brain className="h-4 w-4 text-accent" />
-                          Trading Psychology
-                        </CardTitle>
-                        <CardDescription>
-                          Capture the mental state and conviction behind the trade.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {/* Emotion Tags */}
-                        {(isEditing ||
-                          (trade.emotionTags &&
-                            trade.emotionTags.length > 0)) && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Emotions
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {isEditing
-                                ? apiTags.map((tag) => {
-                                    const isSelected =
-                                      formData.emotionTags.includes(
-                                        tag.id.toString(),
-                                      );
-                                    const category = getTagCategory(tag.name);
-                                    const colorMap = {
-                                      positive: isSelected
-                                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
-                                        : "bg-emerald-500/5 text-emerald-400/50 border-emerald-500/10",
-                                      negative: isSelected
-                                        ? "bg-red-500/15 text-red-400 border-red-500/25"
-                                        : "bg-red-500/5 text-red-400/50 border-red-500/10",
-                                      neutral: isSelected
-                                        ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
-                                        : "bg-blue-500/5 text-blue-400/50 border-blue-500/10",
-                                    };
-                                    return (
-                                      <button
-                                        key={tag.id}
-                                        onClick={() => {
-                                          setFormData((prev) => ({
-                                            ...prev,
-                                            emotionTags: isSelected
-                                              ? prev.emotionTags.filter(
-                                                  (id) =>
-                                                    id !== tag.id.toString(),
-                                                )
-                                              : [
-                                                  ...prev.emotionTags,
-                                                  tag.id.toString(),
-                                                ],
-                                          }));
-                                        }}
-                                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium cursor-pointer transition-colors hover:brightness-125 ${colorMap[category]}`}
-                                      >
-                                        {tag.name}
-                                      </button>
-                                    );
-                                  })
-                                : trade.emotionTags?.map((tagId) => {
-                                    const tag = apiTags.find(
-                                      (t) =>
-                                        t.id.toString() === tagId.toString(),
-                                    );
-                                    const label = tag
-                                      ? tag.name
-                                      : "Unknown Tag";
-                                    const category = getTagCategory(label);
-                                    const colorMap = {
-                                      positive:
-                                        "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-                                      negative:
-                                        "bg-red-500/15 text-red-400 border-red-500/25",
-                                      neutral:
-                                        "bg-blue-500/15 text-blue-400 border-blue-500/25",
-                                    };
-                                    return (
-                                      <span
-                                        key={tagId}
-                                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorMap[category]}`}
-                                      >
-                                        {label}
-                                      </span>
-                                    );
-                                  })}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Confidence Level */}
-                        {(isEditing || trade.confidenceLevel) && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Confidence Level
-                            </p>
-                            <div className="flex items-center gap-2">
-                              {[1, 2, 3, 4, 5].map((level) =>
-                                isEditing ? (
-                                  <button
-                                    key={level}
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        confidenceLevel: level,
-                                      }))
-                                    }
-                                    className={`h-4 w-4 rounded-full transition-colors cursor-pointer hover:bg-primary/80 ${
-                                      formData.confidenceLevel >= level
-                                        ? "bg-primary"
-                                        : "bg-secondary"
-                                    }`}
-                                  />
-                                ) : (
-                                  <div
-                                    key={level}
-                                    className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                                      trade.confidenceLevel! >= level
-                                        ? "bg-primary"
-                                        : "bg-secondary"
-                                    }`}
-                                  />
-                                ),
-                              )}
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                {isEditing ? (
-                                  <>
-                                    {formData.confidenceLevel === 1 &&
-                                      "Very Low"}
-                                    {formData.confidenceLevel === 2 && "Low"}
-                                    {formData.confidenceLevel === 3 &&
-                                      "Neutral"}
-                                    {formData.confidenceLevel === 4 && "High"}
-                                    {formData.confidenceLevel === 5 &&
-                                      "Very High"}
-                                    {!formData.confidenceLevel && "Not Set"}
-                                  </>
-                                ) : (
-                                  <>
-                                    {trade.confidenceLevel === 1 && "Very Low"}
-                                    {trade.confidenceLevel === 2 && "Low"}
-                                    {trade.confidenceLevel === 3 && "Neutral"}
-                                    {trade.confidenceLevel === 4 && "High"}
-                                    {trade.confidenceLevel === 5 && "Very High"}
-                                  </>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Trading Zones */}
-                  {(isEditing || trade.tradingSession) &&
-                    (() => {
-                      const session = apiTradingZones.find(
-                        (s) =>
-                          s.id.toString() ===
-                          (isEditing
-                            ? formData.tradingSession
-                            : trade.tradingSession),
-                      );
-
-                      return (
-                        <Card className="border-border/70 bg-card/90 shadow-sm">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base font-medium flex items-center gap-2">
-                              <Clock className="h-4 w-4 text-amber-400" />
-                              Trading Zone
-                            </CardTitle>
-                            <CardDescription>
-                              Keep the session context visible while reviewing the trade.
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            {isEditing ? (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <button
-                                  className={`text-left rounded-lg border px-3 py-2 text-sm transition-colors ${!formData.tradingSession ? "border-amber-500/50 bg-amber-500/10 text-amber-400" : "border-border hover:bg-secondary/50"}`}
-                                  onClick={() =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      tradingSession: "",
-                                    }))
-                                  }
-                                >
-                                  Not Set
-                                </button>
-                                {apiTradingZones.map((s) => (
-                                  <button
-                                    key={s.id}
-                                    className={`flex flex-col text-left rounded-lg border px-3 py-2 transition-colors ${formData.tradingSession === s.id.toString() ? "border-amber-500/50 bg-amber-500/10" : "border-border hover:bg-secondary/50"}`}
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        tradingSession: s.id.toString(),
-                                      }))
-                                    }
-                                  >
-                                    <span
-                                      className={`text-sm font-medium ${formData.tradingSession === s.id.toString() ? "text-amber-400" : ""}`}
-                                    >
-                                      {s.name}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {s.fromTime} - {s.toTime}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : session ? (
-                              <div className="inline-flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">
-                                <span className="text-sm font-medium text-amber-400">
-                                  {session.name}
-                                </span>
-                                <span className="text-xs text-amber-400/60">
-                                  {session.fromTime} - {session.toTime}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">
-                                Not set
-                              </span>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })()}
-                </div>
-
-                {/* Technical Analysis Tags */}
-                {(isEditing ||
-                  (trade.analysisTags && trade.analysisTags.length > 0)) && (
-                  <Card className="border-border/70 bg-card/90 shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base font-medium flex items-center gap-2">
-                        <Tags className="h-4 w-4 text-primary" />
-                        Technical Analysis
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {isEditing
-                            ? formData.analysisTags.length
-                            : trade.analysisTags!.length}{" "}
-                          Selected
-                        </Badge>
-                      </CardTitle>
-                      <CardDescription>
-                        Keep the structural and setup tags visible during review and editing.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-col gap-4">
-                        {isEditing && (
-                          <div>
-                            <div className="flex flex-wrap gap-2">
-                              {apiTechTags.map((tag) => {
-                                const isSelected = formData.analysisTags.includes(
-                                  tag.id.toString(),
-                                );
-                                return (
-                                  <button
-                                    key={tag.id}
-                                    type="button"
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        analysisTags: isSelected
-                                          ? prev.analysisTags.filter(
-                                              (t) => t !== tag.id.toString(),
-                                            )
-                                          : [
-                                              ...prev.analysisTags,
-                                              tag.id.toString(),
-                                            ],
-                                      }))
-                                    }
-                                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-                                      isSelected
-                                        ? "bg-primary/20 text-primary border-primary/40 ring-1 ring-primary/30"
-                                        : "bg-secondary/50 text-muted-foreground border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-                                    }`}
-                                    title={tag.description}
-                                  >
-                                    {tag.name} {tag.shortName && `(${tag.shortName})`}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-1.5">
-                          {!isEditing &&
-                            trade.analysisTags?.map((tagId) => {
-                              const matchedTag = apiTechTags.find(
-                                (t) => t.id.toString() === tagId,
-                              );
-                              const label = matchedTag
-                                ? matchedTag.name
-                                : `Tag #${tagId}`;
-                              return (
-                                <span
-                                  key={tagId}
-                                  title={getPlainTextFromRichText(matchedTag?.description || "") || label}
-                                  className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-                                >
-                                  {label}
-                                </span>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-
-              </div>
-
-              {/* Right Column - Snapshot & risk analysis */}
-              <div className="space-y-5">
+                {/* Trading Psychology */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-primary" />
-                      Trade Snapshot
+                      <Brain className="h-4 w-4 text-accent" />
+                      Trading Psychology
                     </CardTitle>
                     <CardDescription>
-                      Core context that matters when reviewing execution quality.
+                      Capture the mental state and conviction behind the trade.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Direction
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {getPositionTypeLabel(trade.position)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Status
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {getTradeStatusLabel(trade.status)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Confidence
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {getConfidenceLabel(trade.confidenceLevel)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Screenshots
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {(trade.screenshots?.length || 0).toString()} attached
-                        </p>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Emotions</p>
+                      <div className="flex flex-wrap gap-2">
+                        {trade.emotionTags && trade.emotionTags.length > 0 ? (
+                          trade.emotionTags.map(tagId => {
+                            const tag = apiTags.find(t => t.id.toString() === tagId);
+                            if (!tag) return null;
+                            const category = getTagCategory(tag.name);
+                            const colorClass = category === 'positive' ? 'bg-emerald-500/20 text-emerald-500' :
+                                               category === 'negative' ? 'bg-red-500/20 text-red-500' :
+                                               'bg-blue-500/20 text-blue-500';
+                            return (
+                              <Badge key={tagId} variant="outline" className={cn("border-none", colorClass)}>
+                                {tag.name}
+                              </Badge>
+                            );
+                          })
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Not set</span>
+                        )}
                       </div>
                     </div>
-
-                    {selectedTradingZone ? (
-                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-400/80">
-                          Trading Zone
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-amber-400">
-                          {selectedTradingZone.name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {selectedTradingZone.fromTime} - {selectedTradingZone.toTime}
-                          {selectedTradingZone.description
-                            ? ` · ${getPlainTextFromRichText(selectedTradingZone.description)}`
-                            : ""}
-                        </p>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Confidence Level</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map(level => (
+                            <div key={level} className={cn("h-2 w-2 rounded-full", (trade.confidenceLevel || 0) >= level ? "bg-primary" : "bg-secondary")} />
+                          ))}
+                        </div>
+                        <span className="text-sm font-medium text-muted-foreground">{getConfidenceLabel(trade.confidenceLevel)}</span>
                       </div>
-                    ) : null}
+                    </div>
                   </CardContent>
                 </Card>
 
-                {/* Risk/Reward Analysis */}
-                <Card className="border-border/70 bg-card/90 shadow-sm mb-6">
+                {/* Trading Zone */}
+                <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Percent className="h-4 w-4 text-accent" />
-                      Risk Analysis
+                      <Clock className="h-4 w-4 text-amber-400" />
+                      Trading Zone
                     </CardTitle>
                     <CardDescription>
-                      Evaluate whether the setup justified the risk you planned to take.
+                      Keep the session context visible while reviewing the trade.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-muted-foreground">
-                          Risk per unit
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          {metrics ? formatCurrency(metrics.riskPerUnit) : "-"}
-                        </span>
+                  <CardContent>
+                    {selectedTradingZone ? (
+                      <div className="inline-flex flex-col items-start rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+                        <span className="text-sm font-medium text-amber-500">{selectedTradingZone.name}</span>
+                        <span className="text-xs text-amber-500/70">{selectedTradingZone.fromTime} - {selectedTradingZone.toTime}</span>
                       </div>
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-muted-foreground">
-                          R:R Tier 1
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          1:{metrics?.rrT1.toFixed(2) || "-"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-muted-foreground">
-                          R:R Tier 2
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          1:{metrics?.rrT2.toFixed(2) || "-"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-muted-foreground">
-                          R:R Tier 3
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          1:{metrics?.rrT3.toFixed(2) || "-"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Risk Quality Indicator */}
-                    <Separator />
-                    <div className="pt-2">
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Average Risk/Reward
-                      </p>
-                      <div className="flex items-center gap-3">
-                        {metrics && (
-                          <>
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary/70">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  metrics.averageRiskReward >= 2
-                                    ? "bg-success"
-                                    : metrics.averageRiskReward >= 1
-                                      ? "bg-warning"
-                                      : "bg-destructive"
-                                }`}
-                                style={{ width: `${averageRiskRewardProgress}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium">
-                              {metrics.averageRiskReward.toFixed(2)}
-                              R
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {metrics && metrics.averageRiskReward >= 2
-                          ? "Excellent risk/reward ratio"
-                          : metrics && metrics.averageRiskReward >= 1
-                            ? "Acceptable risk/reward ratio"
-                            : "Consider improving targets"}
-                      </p>
-                    </div>
-
-                    {/* Risk Guardrails merged into Risk Analysis */}
-                    {trade.riskGuardrails && (
-                      <>
-                        <Separator />
-                        <div className="pt-1">
-                          <p className="text-sm font-medium flex items-center gap-2 mb-3">
-                            <Gauge className="h-4 w-4 text-destructive" />
-                            Risk Guardrails
-                          </p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {trade.riskGuardrails.accountEquity && (
-                              <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Account Equity
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-foreground">
-                                  $
-                                  {trade.riskGuardrails.accountEquity.toLocaleString()}
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.riskPercentage && (
-                              <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Risk per Trade
-                                </p>
-                                <p
-                                  className={`mt-0.5 text-sm font-bold ${trade.riskGuardrails.riskPercentage > 2 ? "text-red-400" : "text-foreground"}`}
-                                >
-                                  {trade.riskGuardrails.riskPercentage}%
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.maxDailyLoss && (
-                              <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Max Daily Loss
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-foreground">
-                                  $
-                                  {trade.riskGuardrails.maxDailyLoss.toLocaleString()}
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.positionSize && (
-                              <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Position Size
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-primary">
-                                  {trade.riskGuardrails.positionSize.toLocaleString()}{" "}
-                                  units
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.takeProfit && (
-                              <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Take Profit
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-emerald-400">
-                                  $
-                                  {trade.riskGuardrails.takeProfit.toLocaleString()}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No zone selected</span>
                     )}
+                  </CardContent>
+                </Card>
+
+                {/* Technical Analysis */}
+                <Card className="border-border/70 bg-card/90 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Tags className="h-4 w-4 text-primary" />
+                      Technical Analysis
+                      {trade.analysisTags && trade.analysisTags.length > 0 && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          {trade.analysisTags.length} Selected
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      Keep the structural and setup tags visible during review and editing.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {trade.analysisTags && trade.analysisTags.length > 0 ? (
+                        trade.analysisTags.map(tagId => {
+                          const tag = apiTechTags.find(t => t.id.toString() === tagId);
+                          return tag ? (
+                            <Badge key={tagId} variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20">
+                              {tag.name}
+                            </Badge>
+                          ) : null;
+                        })
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No tags selected</span>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
