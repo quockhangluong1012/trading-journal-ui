@@ -13,14 +13,17 @@ import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
 import { CalendarWidget } from "@/components/dashboard/calendar-widget"
+import { EconomicCalendarWidget } from "@/components/scanner/economic-calendar-widget"
 import { OpenPositionsTable } from "@/components/dashboard/open-positions-table"
 import { ActiveSessionWidget } from "@/components/session/active-session-widget"
 import { KillzonesWidget } from "@/components/dashboard/killzones-widget"
+import { MacroTimesWidget } from "@/components/dashboard/macro-times-widget"
 import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
 import { useTodaySetup } from "@/hooks/use-today-setup"
+import Link from "next/link";
 
 const timeFilterOptions = [
   { label: "1D", value: DashboardFilter.OneDay },
@@ -133,6 +136,16 @@ function DashboardContent() {
       <div className="relative z-10 flex min-h-screen flex-col">
         <Header />
         <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-6 flex justify-center">
+          <div className="inline-flex items-center justify-center rounded-full bg-muted/50 p-1 text-muted-foreground backdrop-blur-md border border-border/50 shadow-inner">
+            <Link href="/" className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-2 text-sm font-semibold ring-offset-background transition-all bg-background text-foreground shadow-sm border border-border/50">
+              Live Execution
+            </Link>
+            <Link href="/backtest" className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-2 text-sm font-medium ring-offset-background transition-all hover:bg-background/50 hover:text-foreground">
+              Backtest Results
+            </Link>
+          </div>
+        </div>
         <div className="space-y-6">
           <DashboardCommandCenter
             filter={filter}
@@ -151,26 +164,14 @@ function DashboardContent() {
               void refresh()
             }}
             sessionControl={<ActiveSessionWidget />}
-            todaySetupBadge={todaySetup && todaySetupSummary ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsTodaySetupDialogOpen(true)}
-                className="h-auto max-w-full gap-2 rounded-full border-sky-500/25 bg-sky-500/10 px-3 py-1 text-[11px] font-medium text-sky-700 hover:bg-sky-500/15 hover:text-sky-800 dark:text-sky-300 dark:hover:text-sky-200"
-                title={todaySetup.name}
-              >
-                <GitBranch className="h-3.5 w-3.5 shrink-0" />
-                <span className="max-w-[18rem] truncate text-left">
-                  Today setup: {todaySetupSummary}
-                </span>
-              </Button>
-            ) : null}
           />
 
           <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />
 
-          <KillzonesWidget />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <KillzonesWidget />
+            <MacroTimesWidget />
+          </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
             <ProfitChart filter={filter} profitTrajectory={profitTrajectory} isLoading={isDashboardLoading} />
@@ -180,6 +181,10 @@ function DashboardContent() {
           <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
 
           <CalendarWidget filter={filter} />
+          
+          <div className="w-full">
+            <EconomicCalendarWidget />
+          </div>
         </div>
       </main>
 

@@ -11,9 +11,11 @@ import {
   getPeriodBounds,
   saveReview,
   toISODateString,
+  formatPeriodLabel,
   type ReviewData,
   type ReviewTrade,
 } from "@/lib/review-api"
+import { generateReviewPdf } from "@/lib/review-pdf-export"
 
 interface ReviewWorkspaceState {
   review: ReviewData | null
@@ -36,6 +38,7 @@ const SUMMARY_POLL_INTERVAL_MS = 3000
 export interface UseReviewWorkspaceResult {
   bounds: { start: Date; end: Date }
   currentDate: Date
+  isExporting: boolean
   isGeneratingSummary: boolean
   isLoading: boolean
   isRefreshing: boolean
@@ -47,6 +50,7 @@ export interface UseReviewWorkspaceResult {
   review: ReviewData | null
   syncWarning: string | null
   trades: ReviewTrade[]
+  exportReport: () => Promise<void>
   generateSummary: () => Promise<void>
   handleNotesChange: (value: string) => void
   refresh: (options?: RefreshOptions) => Promise<void>
@@ -63,6 +67,7 @@ export function useReviewWorkspace(periodType: ReviewPeriodType): UseReviewWorks
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadedPeriodKeyRef = useRef("")
   const notesDirtyRef = useRef(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const [currentDate, setCurrentDate] = useState(() => new Date())
   const [state, setState] = useState<ReviewWorkspaceState>({
@@ -325,6 +330,38 @@ export function useReviewWorkspace(periodType: ReviewPeriodType): UseReviewWorks
     }
   }, [periodEnd, periodKey, periodStart, periodType, toast])
 
+  const handleExportReport = useCallback(async () => {
+    if (!state.review || state.trades.length === 0) {
+      toast({
+        title: "Nothing to export",
+        description: "There are no closed trades in this period yet.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsExporting(true)
+
+    try {
+      const label = formatPeriodLabel(periodType, currentDate)
+      await generateReviewPdf(state.review, state.trades, label, state.notes)
+
+      toast({
+        title: "Report exported",
+        description: "Your trading report PDF has been downloaded.",
+      })
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Export failed",
+        description: "Could not generate the PDF report. Try again in a moment.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }, [currentDate, periodType, state.notes, state.review, state.trades, toast])
+
   const pollSummaryStatus = useCallback(() => {
     stopPolling()
     const pollingPeriodKey = periodKey
@@ -403,6 +440,7 @@ export function useReviewWorkspace(periodType: ReviewPeriodType): UseReviewWorks
   return {
     bounds,
     currentDate,
+    isExporting,
     isGeneratingSummary: Boolean(state.review?.aiSummaryGenerating),
     isLoading: state.isLoading,
     isRefreshing: state.isRefreshing,
@@ -414,6 +452,7 @@ export function useReviewWorkspace(periodType: ReviewPeriodType): UseReviewWorks
     review: state.review,
     syncWarning: state.syncWarning,
     trades: state.trades,
+    exportReport: handleExportReport,
     generateSummary,
     handleNotesChange,
     refresh,

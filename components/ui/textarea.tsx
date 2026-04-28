@@ -235,10 +235,10 @@ function Textarea({
           ...editorConfig,
           placeholder,
         }}
-        onReady={(editor) => {
+        onReady={(editor: any) => {
           editorRef.current = editor
         }}
-        onChange={(_event, editor) => {
+        onChange={(_event: any, editor: any) => {
           handleValueChange(editor.getData())
         }}
         onBlur={handleEditorBlur}

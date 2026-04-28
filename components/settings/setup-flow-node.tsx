@@ -57,9 +57,10 @@ export function SetupFlowNodeComponent({ data, selected }: NodeProps<SetupFlowNo
 
         <div>
           <p className="text-sm font-semibold text-foreground">{data.title}</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {data.notes?.trim() ? data.notes : "No guidance yet. Add the conditions or reminders you want to see here."}
-          </p>
+          <div 
+            className="mt-1 text-xs leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+            dangerouslySetInnerHTML={{ __html: data.notes?.trim() ? data.notes : "No guidance yet. Add the conditions or reminders you want to see here." }}
+          />
         </div>
       </div>
 

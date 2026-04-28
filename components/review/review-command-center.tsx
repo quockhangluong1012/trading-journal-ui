@@ -3,6 +3,7 @@
 import { type ReactNode } from "react"
 import {
   Brain,
+  Download,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -26,6 +27,7 @@ const toneClasses: Record<ReviewTone, string> = {
 
 interface ReviewCommandCenterProps {
   currentDate: Date
+  isExporting: boolean
   isGeneratingSummary: boolean
   isLoading: boolean
   isRefreshing: boolean
@@ -36,6 +38,7 @@ interface ReviewCommandCenterProps {
   pulseCards: ReviewPulse[]
   review: ReviewData | null
   syncWarning?: string | null
+  onExportReport: () => void
   onGenerateSummary: () => void
   onNavigate: (date: Date) => void
   onRefresh: () => void
@@ -86,6 +89,7 @@ function buildSignalBadges(review: ReviewData | null): Array<{ icon: ReactNode; 
 
 export function ReviewCommandCenter({
   currentDate,
+  isExporting,
   isGeneratingSummary,
   isLoading,
   isRefreshing,
@@ -96,6 +100,7 @@ export function ReviewCommandCenter({
   pulseCards,
   review,
   syncWarning,
+  onExportReport,
   onGenerateSummary,
   onNavigate,
   onRefresh,
@@ -130,10 +135,10 @@ export function ReviewCommandCenter({
   const summaryActionLabel = isGeneratingSummary
     ? "Generating"
     : review?.aiSummary
-      ? "Regenerate AI summary"
+      ? "Regenerate summary"
       : canGenerateSummary
         ? "Generate AI summary"
-        : "Awaiting first close"
+        : "Awaiting close"
 
   return (
     <section className="overflow-hidden rounded-3xl border border-border/70 bg-linear-to-br from-background via-background to-primary/5 shadow-sm">
@@ -199,14 +204,14 @@ export function ReviewCommandCenter({
               onNavigate={onNavigate}
             />
 
-            <Button size="sm" className="gap-2" onClick={onGenerateSummary} disabled={isGeneratingSummary || !canGenerateSummary}>
-              {isGeneratingSummary ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {summaryActionLabel}
-            </Button>
-
-            <Button variant="outline" size="sm" className="gap-2" onClick={onRefresh} disabled={isRefreshing}>
+            {/* <Button variant="outline" size="sm" className="gap-2" onClick={onRefresh} disabled={isRefreshing}>
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
               Refresh
+            </Button> */}
+
+            <Button variant="outline" size="sm" className="gap-2" onClick={onExportReport} disabled={isExporting || isLoading || (review?.totalTrades ?? 0) === 0}>
+              {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {isExporting ? "Exporting" : "Export PDF"}
             </Button>
           </div>
 
@@ -264,6 +269,20 @@ export function ReviewCommandCenter({
               </div>
             </div>
           ) : null}
+
+          {!isLoading && !isEmptyState && pulseCards.length > 0 ? (
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {pulseCards.map((card) => (
+                <div key={card.label} className={`rounded-2xl border p-4 shadow-sm ${toneClasses[card.tone]}`}>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] opacity-80">
+                    {card.label}
+                  </p>
+                  <p className="mt-3 text-2xl font-semibold tracking-tight">{card.value}</p>
+                  <p className="mt-2 text-xs leading-relaxed opacity-80">{card.detail}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-border/70 bg-background/85 p-5 shadow-sm backdrop-blur-sm">
@@ -299,18 +318,6 @@ export function ReviewCommandCenter({
                 ))}
               </div>
             ) : null}
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {pulseCards.map((card) => (
-                <div key={card.label} className={`rounded-2xl border p-4 shadow-sm ${toneClasses[card.tone]}`}>
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] opacity-80">
-                    {card.label}
-                  </p>
-                  <p className="mt-3 text-2xl font-semibold tracking-tight">{card.value}</p>
-                  <p className="mt-2 text-xs leading-relaxed opacity-80">{card.detail}</p>
-                </div>
-              ))}
-            </div>
 
             <div className="rounded-2xl border border-border/70 bg-background/70 p-4">
               <div className="flex items-center justify-between gap-3 text-sm">

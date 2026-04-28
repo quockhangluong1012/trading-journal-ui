@@ -147,9 +147,6 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                 type="button"
                 onClick={() => {
                   setSide("Short");
-                  if (orderType !== "Market") {
-                    form.setValue("entryPrice", currentPrice, { shouldValidate: true });
-                  }
                 }}
                 className={`rounded-2xl border px-4 py-3 text-left transition-all ${side === "Short"
                   ? "border-rose-500/40 bg-rose-500/10 text-rose-500 shadow-sm"
@@ -164,9 +161,6 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                 type="button"
                 onClick={() => {
                   setSide("Long");
-                  if (orderType !== "Market") {
-                    form.setValue("entryPrice", currentPrice, { shouldValidate: true });
-                  }
                 }}
                 className={`rounded-2xl border px-4 py-3 text-right transition-all ${side === "Long"
                   ? "border-[#2962FF]/40 bg-[#2962FF]/10 text-[#2962FF] shadow-sm"
@@ -208,7 +202,7 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                         {...field}
                         disabled={orderType === "Market"}
                         value={
-                          orderType === "Market" ? marketPriceText : field.value
+                          orderType === "Market" ? marketPriceText : (field.value ?? "")
                         }
                         onChange={(e) => field.onChange(e.target.value)}
                       />
@@ -237,6 +231,7 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                         step="1"
                         className="h-11 border-0 bg-transparent pl-3 pr-30.5 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
                         {...field}
+                        value={field.value ?? ""}
                         onChange={(e) => field.onChange(e.target.value)}
                       />
                       <div className="absolute right-0 flex h-full items-center px-3 text-muted-foreground">
@@ -296,6 +291,7 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                               step="0.001"
                               className="h-11 border-0 bg-transparent pl-3 pr-22.5 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
                               {...field}
+                              value={field.value ?? ""}
                               onChange={(e) => field.onChange(e.target.value)}
                             />
                             <div className="absolute right-0 flex h-full items-center px-3 text-muted-foreground">
@@ -336,6 +332,7 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                               step="0.001"
                               className="h-11 border-0 bg-transparent pl-3 pr-22.5 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
                               {...field}
+                              value={field.value ?? ""}
                               onChange={(e) => field.onChange(e.target.value)}
                             />
                             <div className="absolute right-0 flex h-full items-center px-3 text-muted-foreground">

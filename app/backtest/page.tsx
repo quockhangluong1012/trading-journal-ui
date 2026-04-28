@@ -20,13 +20,28 @@ import { Badge } from "@/components/ui/badge";
 import { Header } from "@/components/header";
 import * as signalR from "@microsoft/signalr";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth-context";
+import { useRouter, usePathname } from "next/navigation";
+import { buildRedirectWithNext } from "@/lib/auth-redirect";
+import { AppShellLoader } from "@/components/app-shell-loader";
 
 export default function BacktestDashboard() {
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname));
+    }
+  }, [user, isAuthLoading, pathname, router]);
+
   const { sessions, sessionsLoading, loadSessions, deleteSession } = useBacktestStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const toastIdRef = useRef<string | number>("");
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
     loadSessions();
 
     const hubUrl = process.env.NEXT_PUBLIC_API_URL 
@@ -84,10 +99,28 @@ export default function BacktestDashboard() {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
 
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading backtesting" description="Gathering your session details." />;
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <main className="container mx-auto max-w-6xl p-6">
+        <div className="mb-6 flex justify-center">
+          <div className="inline-flex items-center justify-center rounded-full bg-muted/50 p-1 text-muted-foreground backdrop-blur-md border border-border/50 shadow-inner">
+            <Link href="/" className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-2 text-sm font-medium ring-offset-background transition-all hover:bg-background/50 hover:text-foreground">
+              Live Execution
+            </Link>
+            <Link href="/backtest" className="inline-flex items-center justify-center whitespace-nowrap rounded-full px-6 py-2 text-sm font-semibold ring-offset-background transition-all bg-background text-foreground shadow-sm border border-border/50">
+              Backtest Results
+            </Link>
+          </div>
+        </div>
         <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Backtesting</h1>

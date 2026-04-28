@@ -40,12 +40,17 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
       return;
     }
 
-    if (orderType === "Limit" && values.entryPrice) {
-      if (side === "Long" && Number(values.entryPrice) >= currentPrice) {
+    if (orderType === "Limit") {
+      const entryValue = Number(values.entryPrice);
+      if (!values.entryPrice || isNaN(entryValue)) {
+        toast.error("Entry price is required for limit orders.");
+        return;
+      }
+      if (side === "Long" && entryValue >= currentPrice) {
         toast.error("Limit Buy price must be below current market price.");
         return;
       }
-      if (side === "Short" && Number(values.entryPrice) <= currentPrice) {
+      if (side === "Short" && entryValue <= currentPrice) {
         toast.error("Limit Sell price must be above current market price.");
         return;
       }

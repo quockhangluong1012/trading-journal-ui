@@ -90,8 +90,20 @@ export function ReviewSummaryCard({ isGenerating, review, onGenerateSummary }: R
             </CardDescription>
           </div>
 
-          <Button variant="outline" className="gap-2 self-start" onClick={onGenerateSummary} disabled={isGenerating}>
-            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          <Button
+            className={`gap-2 self-start transition-all duration-300 ${
+              !isGenerating
+                ? "bg-linear-to-r from-primary to-primary/80 hover:from-primary hover:to-primary border-0 shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30"
+                : ""
+            }`}
+            onClick={onGenerateSummary}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 text-amber-300" />
+            )}
             {hasSummary ? "Regenerate" : "Generate"}
           </Button>
         </div>

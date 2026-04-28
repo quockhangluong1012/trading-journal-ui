@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { Clock } from "lucide-react"
+import { toast } from "sonner"
 
 type Killzone = {
   id: string
@@ -54,14 +55,53 @@ const KILLZONES: Killzone[] = [
 export function KillzonesWidget() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
+  const [notifiedKillzoneId, setNotifiedKillzoneId] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
+    
+    // Request notification permission if not already granted or denied
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission()
+    }
+    
     const interval = setInterval(() => {
       setCurrentTime(new Date())
     }, 1000) // Update every second
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+
+    const currentHour = currentTime.getHours() + currentTime.getMinutes() / 60
+    const activeKillzone = KILLZONES.find(
+      (kz) => currentHour >= kz.startHour && currentHour < kz.endHour
+    )
+
+    if (activeKillzone) {
+      if (notifiedKillzoneId !== activeKillzone.id) {
+        // Trigger toast notification
+        toast.info(`${activeKillzone.name} is now active!`, {
+          description: `Time entered the ${activeKillzone.name}.`,
+          duration: 5000,
+        })
+        
+        // Trigger browser notification if permitted
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          new Notification(`${activeKillzone.name} Active`, {
+            body: `Time entered the ${activeKillzone.name}.`,
+          })
+        }
+        
+        setNotifiedKillzoneId(activeKillzone.id)
+      }
+    } else {
+      if (notifiedKillzoneId !== null) {
+        setNotifiedKillzoneId(null)
+      }
+    }
+  }, [currentTime, notifiedKillzoneId, mounted])
 
   if (!mounted) return null
 

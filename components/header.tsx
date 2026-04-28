@@ -14,7 +14,10 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Radar,
   Settings2,
+  Sparkles,
+
   TrendingUp,
   User,
 } from "lucide-react";
@@ -22,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { NotificationPanel } from "./notifications/notification-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,9 +47,9 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Trade History", href: "/history", icon: History },
   { name: "Psychology", href: "/psychology", icon: Brain },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
+
   { name: "Backtest", href: "/backtest", icon: Activity },
-  { name: "Review", href: "/review", icon: ClipboardList },
+  { name: "Scanner", href: "/scanner", icon: Radar },
   { name: "Admin", href: "/admin", icon: Settings2 },
 ];
 
@@ -112,33 +116,7 @@ export function Header() {
           <div className="flex items-center gap-2">
             {user ? (
               <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="relative flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-secondary hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label="Notifications"
-                    >
-                      <Bell className="h-5 w-5" />
-                      <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80">
-                    <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <div className="flex flex-col max-h-75 overflow-y-auto">
-                      <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-default">
-                        <p className="text-sm font-medium">Welcome to Trading Journey</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">Start tracking your trades and improve your trading psychology using our tools.</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">2 hours ago</p>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-default">
-                        <p className="text-sm font-medium">New Strategy Template</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">Check out the new smart money concepts strategy template in your strategies tab.</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">1 day ago</p>
-                      </DropdownMenuItem>
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <NotificationPanel />
 
                 <div className="ml-1 hidden h-6 w-px bg-border sm:block" />
 
@@ -167,6 +145,24 @@ export function Header() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/analytics" className="cursor-pointer">
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        Analytics
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/review" className="cursor-pointer">
+                        <ClipboardList className="mr-2 h-4 w-4" />
+                        Review
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/coach" className="cursor-pointer">
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        AI Coach
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/setup" className="cursor-pointer">
                         <GitBranch className="mr-2 h-4 w-4" />
@@ -256,6 +252,27 @@ export function Header() {
                             <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                           </div>
                         </div>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/analytics">
+                            <BarChart3 className="h-4 w-4" />
+                            Analytics
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/review">
+                            <ClipboardList className="h-4 w-4" />
+                            Review
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/coach">
+                            <Sparkles className="h-4 w-4" />
+                            AI Coach
+                          </Link>
+                        </Button>
 
                         <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
                           <Link href="/setup">

@@ -59,11 +59,25 @@ import { useToast } from "@/hooks/use-toast"
 import { AxiosResponse } from "axios"
 import { EmotionTag, Trade, TradeHistory } from "../types/trade"
 import { EmotionType } from "@/lib/enum/EmotionType"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter, usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
 
 type SortField = "date" | "pnl" | "asset"
 type SortDirection = "asc" | "desc"
 
 function HistoryContent() {
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
   const { userSessions } = useTrades()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
@@ -118,13 +132,15 @@ function HistoryContent() {
   }, [dateFrom, dateTo, page, positionFilter, searchQuery, statusFilter, toast])
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
     const timer = setTimeout(() => {
       fetchTrades()
     }, 300)
     return () => clearTimeout(timer)
-  }, [fetchTrades])
+  }, [fetchTrades, isAuthLoading, user])
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
     api.get<ApiResponse<EmotionTagApi[]>>("/v1/emotions")
       .then((response: AxiosResponse<ApiResponse<EmotionTagApi[]>>) => {
         let data = response.data;
@@ -137,7 +153,7 @@ function HistoryContent() {
           description: "Trade emotions could not be loaded for the history view.",
         })
       })
-  }, [toast])
+  }, [toast, isAuthLoading, user])
 
   const filteredAndSortedTrades = useMemo(() => {
     let filtered = [...apiTrades]
@@ -233,6 +249,14 @@ function HistoryContent() {
       default:
         return "All"
     }
+  }
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading history" description="Retrieving your trades." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
   }
 
   return (

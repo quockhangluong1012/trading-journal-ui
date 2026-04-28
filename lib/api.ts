@@ -160,6 +160,8 @@ api.interceptors.response.use(
 );
 
 
+// ─── Shared API Types ─────────────────────────────────────────────────
+
 export interface RiskGuardrailsDto {
   accountEquity?: number;
   riskPercentage?: number;
@@ -221,19 +223,32 @@ export interface AuthResponse {
   isAdmin?: boolean;
 }
 
-export async function loginUser(data: any) {
+// ─── Auth Request DTOs ────────────────────────────────────────────────
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  fullName: string;
+}
+
+export async function loginUser(data: LoginRequest) {
   return api.post<ApiResponse<AuthResponse>>("/v1/auth/login", data);
 }
 
-export async function loginStaff(data: any) {
+export async function loginStaff(data: LoginRequest) {
   return api.post<ApiResponse<AuthResponse & { isAdmin: boolean }>>("/v1/auth/staff-login", data);
 }
 
-export async function registerUser(data: any) {
+export async function registerUser(data: RegisterRequest) {
   return api.post<ApiResponse<number>>("/v1/auth/register", data);
 }
 
-// Backtesting API
+// ─── Backtesting API ──────────────────────────────────────────────────
 export interface HistoricalDataFileInfo {
   asset: string;
   startDate: string;
@@ -267,16 +282,68 @@ export async function createBacktest(data: CreateBacktestRequest) {
   return api.post<ApiResponse<number>>("/v1/backtests", data);
 }
 
+// ─── Backtest Response DTOs ───────────────────────────────────────────
+
+export interface BacktestSessionDto {
+  id: number;
+  strategyId: number;
+  name: string;
+  notes: string | null;
+  startDate: string;
+  endDate: string;
+  initialCapital: number;
+  status: number;
+  totalTrades: number;
+  winRate: number;
+  totalPnl: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  createdDate: string;
+}
+
+export interface BacktestTradeDto {
+  id: number;
+  asset: string;
+  position: number;
+  entryPrice: number;
+  exitPrice: number;
+  entryDate: string;
+  exitDate: string;
+  pnl: number;
+  stopLoss: number;
+  takeProfit: number;
+}
+
+export interface BacktestRunResultDto {
+  id: number;
+  initialCapital: number;
+  totalTrades: number;
+  winRate: number;
+  totalPnl: number;
+  profitFactor: number;
+  maxDrawdown: number;
+  maxDrawdownPct: number;
+  sharpeRatio: number;
+  avgWin: number;
+  avgLoss: number;
+  largestWin: number;
+  largestLoss: number;
+  winCount: number;
+  lossCount: number;
+  trades: BacktestTradeDto[];
+}
+
 export async function getBacktests(strategyId?: number) {
-  return api.get<ApiResponse<any[]>>(`/v1/backtests${strategyId ? `?StrategyId=${strategyId}` : ""}`);
+  return api.get<ApiResponse<BacktestSessionDto[]>>(`/v1/backtests${strategyId ? `?StrategyId=${strategyId}` : ""}`);
 }
 
 export async function getBacktestDetail(id: number) {
-  return api.get<ApiResponse<any>>(`/v1/backtests/${id}`);
+  return api.get<ApiResponse<BacktestSessionDto>>(`/v1/backtests/${id}`);
 }
 
 export async function runBacktest(id: number) {
-  return api.post<ApiResponse<any>>(`/v1/backtests/${id}/run`);
+  return api.post<ApiResponse<BacktestRunResultDto>>(`/v1/backtests/${id}/run`);
 }
 
 export async function deleteBacktest(id: number) {

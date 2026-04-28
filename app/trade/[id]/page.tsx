@@ -80,6 +80,14 @@ import { api, ApiResponse } from "@/lib/api";
 import { getPlainTextFromRichText } from "@/lib/rich-text";
 import { AxiosResponse } from "axios";
 import { cn, getPositionTypeLabel, getTradeStatusLabel } from "@/lib/utils";
+import { OverviewMetricCard, SnapshotPill } from "@/components/trade/metric-cards";
+import { PriceLevelBar } from "@/components/trade/price-level-bar";
+import { TradeStatusAlert } from "@/components/trade/trade-status-alert";
+import { TradeDetailSkeleton } from "@/components/trade/trade-detail-skeleton";
+import { useAuth } from "@/lib/auth-context"
+import { usePathname } from "next/navigation"
+import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { AppShellLoader } from "@/components/app-shell-loader"
 
 export interface TradingZoneApi {
   id: number;
@@ -96,43 +104,20 @@ export interface TechnicalAnalysisTagApi {
   description: string;
 }
 
-type MetricTone = "default" | "positive" | "negative" | "accent" | "warning";
-
-interface OverviewMetricCardProps {
-  label: string;
-  value: string;
-  helper?: string;
-  icon: ElementType;
-  tone?: MetricTone;
-  className?: string;
-}
-
-interface SnapshotPillProps {
-  icon: ElementType;
-  label: string;
-  value: string;
-  className?: string;
-}
-
-function formatDisplayDate(value?: string | null): string {
-  if (!value) {
-    return "-";
-  }
-
-  const parsedDate = new Date(value);
-
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "-";
-  }
-
-  return parsedDate.toLocaleDateString("en-US", {
+const formatDisplayDate = (dateString?: string | null) => {
+  if (!dateString) return "N/A";
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  });
-}
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+};
 
-function getConfidenceLabel(confidenceLevel?: number | null): string {
+const getConfidenceLabel = (confidenceLevel?: number): string => {
+  if (confidenceLevel === undefined) return "Not set";
   switch (confidenceLevel) {
     case 1:
       return "Very Low";
@@ -147,563 +132,19 @@ function getConfidenceLabel(confidenceLevel?: number | null): string {
     default:
       return "Not set";
   }
-}
-
-function OverviewMetricCard({
-  label,
-  value,
-  helper,
-  icon: Icon,
-  tone = "default",
-  className,
-}: OverviewMetricCardProps) {
-  const toneStyles: Record<MetricTone, { container: string; iconWrap: string; icon: string }> = {
-    default: {
-      container: "border-border/70 bg-background/80",
-      iconWrap: "border-border/60 bg-secondary/70",
-      icon: "text-foreground",
-    },
-    positive: {
-      container: "border-success/20 bg-success/5",
-      iconWrap: "border-success/20 bg-success/10",
-      icon: "text-success",
-    },
-    negative: {
-      container: "border-destructive/20 bg-destructive/5",
-      iconWrap: "border-destructive/20 bg-destructive/10",
-      icon: "text-destructive",
-    },
-    accent: {
-      container: "border-accent/20 bg-accent/5",
-      iconWrap: "border-accent/20 bg-accent/10",
-      icon: "text-accent",
-    },
-    warning: {
-      container: "border-warning/20 bg-warning/5",
-      iconWrap: "border-warning/20 bg-warning/10",
-      icon: "text-warning",
-    },
-  };
-
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border p-4 shadow-sm backdrop-blur-sm",
-        toneStyles[tone].container,
-        className,
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            {label}
-          </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground tabular-nums">
-            {value}
-          </p>
-          {helper ? (
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              {helper}
-            </p>
-          ) : null}
-        </div>
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
-            toneStyles[tone].iconWrap,
-          )}
-        >
-          <Icon className={cn("h-4 w-4", toneStyles[tone].icon)} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SnapshotPill({
-  icon: Icon,
-  label,
-  value,
-  className,
-}: SnapshotPillProps) {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-2 text-xs shadow-sm",
-        className,
-      )}
-    >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className="min-w-0 truncate font-medium text-foreground">{value}</span>
-    </div>
-  );
-}
-
-function TradeDetailSkeleton() {
-  return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-        <Skeleton className="mb-5 h-5 w-32 rounded-full" />
-
-        <div className="mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-card/80 p-5 shadow-sm">
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Skeleton className="h-6 w-20 rounded-full" />
-                  <Skeleton className="h-6 w-16 rounded-full" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-48 max-w-full rounded-xl" />
-                  <Skeleton className="h-4 w-80 max-w-full rounded-full" />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Skeleton className="h-9 w-32 rounded-full" />
-                  <Skeleton className="h-9 w-36 rounded-full" />
-                  <Skeleton className="h-9 w-40 rounded-full" />
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Skeleton className="h-10 w-24 rounded-xl" />
-                <Skeleton className="h-10 w-28 rounded-xl" />
-                <Skeleton className="h-10 w-24 rounded-xl" />
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <Skeleton className="h-32 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-              <Skeleton className="h-32 rounded-2xl" />
-            </div>
-          </div>
-        </div>
-
-        <Skeleton className="mb-5 h-20 rounded-2xl" />
-        <Skeleton className="mb-5 h-12 w-full max-w-md rounded-2xl" />
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4 mb-5">
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-          <div className="space-y-5">
-            <Skeleton className="h-56 rounded-2xl" />
-            <Skeleton className="h-80 rounded-2xl" />
-            <Skeleton className="h-72 rounded-2xl" />
-          </div>
-          <div className="space-y-5">
-            <Skeleton className="h-56 rounded-2xl" />
-            <Skeleton className="h-112 rounded-2xl" />
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// Price Level Progress Visualization Component
-function PriceLevelBar({
-  trade,
-  currentPrice,
-}: {
-  trade: Trade;
-  currentPrice: number;
-}) {
-  const isLong = trade.position === PositionType.Long;
-  const hasTargetTier1 = trade.targetTier1 > 0;
-  const hasTargetTier2 = (trade.targetTier2 ?? 0) > 0;
-  const hasTargetTier3 = (trade.targetTier3 ?? 0) > 0;
-
-  // Calculate positions relative to a range
-  const prices = [
-    trade.stopLoss,
-    trade.entryPrice,
-    trade.targetTier1,
-    trade.targetTier2,
-    trade.targetTier3,
-    currentPrice,
-  ].filter((p) => p > 0);
-
-  const minPrice = Math.min(...prices) * 0.98;
-  const maxPrice = Math.max(...prices) * 1.02;
-  const range = maxPrice - minPrice;
-
-  const getPosition = (price: number) => ((price - minPrice) / range) * 100;
-
-  const entryPos = getPosition(trade.entryPrice);
-  const currentPos = getPosition(currentPrice);
-  const stopPos = getPosition(trade.stopLoss);
-  const t1Pos = hasTargetTier1 ? getPosition(trade.targetTier1) : null;
-  const t2Pos = hasTargetTier2 ? getPosition(trade.targetTier2!) : null;
-  const t3Pos = hasTargetTier3 ? getPosition(trade.targetTier3!) : null;
-
-  // Determine if targets are hit
-  const t1Hit = hasTargetTier1 &&
-    (isLong
-      ? currentPrice >= trade.targetTier1
-      : currentPrice <= trade.targetTier1);
-  const t2Hit = hasTargetTier2 &&
-    (isLong
-      ? currentPrice >= trade.targetTier2!
-      : currentPrice <= trade.targetTier2!);
-  const t3Hit = hasTargetTier3 &&
-    (isLong
-      ? currentPrice >= trade.targetTier3!
-      : currentPrice <= trade.targetTier3!);
-  const stopHit = isLong
-    ? currentPrice <= trade.stopLoss
-    : currentPrice >= trade.stopLoss;
-
-  return (
-    <div className="space-y-4">
-      <div className="relative h-12 rounded-lg bg-secondary/50">
-        {/* Progress fill from entry to current */}
-        <div
-          className={`absolute top-0 h-full rounded-lg transition-all ${
-            (isLong && currentPrice >= trade.entryPrice) ||
-            (!isLong && currentPrice <= trade.entryPrice)
-              ? "bg-success/20"
-              : "bg-destructive/20"
-          }`}
-          style={{
-            left: `${Math.min(entryPos, currentPos)}%`,
-            width: `${Math.abs(currentPos - entryPos)}%`,
-          }}
-        />
-
-        {/* Stop Loss marker */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                className={`absolute top-0 h-full w-1 ${stopHit ? "bg-destructive" : "bg-destructive/60"}`}
-                style={{ left: `${stopPos}%` }}
-              >
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2">
-                  <Shield
-                    className={`h-4 w-4 ${stopHit ? "text-destructive" : "text-destructive/60"}`}
-                  />
-                </div>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Stop Loss: ${trade.stopLoss.toLocaleString()}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Entry marker */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                className="absolute top-0 h-full w-1 bg-foreground"
-                style={{ left: `${entryPos}%` }}
-              >
-                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-muted-foreground">
-                  Entry
-                </div>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Entry: ${trade.entryPrice.toLocaleString()}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        {/* Target markers */}
-        {t1Pos !== null && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  className={`absolute top-0 h-full w-1 ${t1Hit ? "bg-success" : "bg-success/40"}`}
-                  style={{ left: `${t1Pos}%` }}
-                >
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2">
-                    <Target
-                      className={`h-4 w-4 ${t1Hit ? "text-success" : "text-success/40"}`}
-                    />
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>T1: ${trade.targetTier1.toLocaleString()}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-        {t2Pos !== null && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  className={`absolute top-0 h-full w-1 ${t2Hit ? "bg-success" : "bg-success/40"}`}
-                  style={{ left: `${t2Pos}%` }}
-                >
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2">
-                    <Target
-                      className={`h-4 w-4 ${t2Hit ? "text-success" : "text-success/40"}`}
-                    />
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>T2: ${trade.targetTier2.toLocaleString()}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-        {t3Pos !== null && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  className={`absolute top-0 h-full w-1 ${t3Hit ? "bg-success" : "bg-success/40"}`}
-                  style={{ left: `${t3Pos}%` }}
-                >
-                  <div className="absolute -top-6 left-1/2 -translate-x-1/2">
-                    <Target
-                      className={`h-4 w-4 ${t3Hit ? "text-success" : "text-success/40"}`}
-                    />
-                  </div>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>T3: ${trade.targetTier3.toLocaleString()}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-        {/* Current price indicator */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                className="absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-accent border-2 border-background flex items-center justify-center cursor-pointer transition-transform hover:scale-110"
-                style={{
-                  left: `${currentPos}%`,
-                  transform: `translateX(-50%) translateY(-50%)`,
-                }}
-              >
-                <DollarSign className="h-3 w-3 text-accent-foreground" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Current: ${currentPrice.toLocaleString()}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-
-      {/* Legend */}
-      <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          <Shield className="h-3 w-3 text-destructive" />
-          <span>Stop Loss</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-0.5 bg-foreground" />
-          <span>Entry</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Target className="h-3 w-3 text-success" />
-          <span>Targets</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-full bg-accent" />
-          <span>Current</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Status Alert Component
-function TradeStatusAlert({
-  trade,
-  currentPrice,
-}: {
-  trade: Trade;
-  currentPrice: number;
-}) {
-  const isLong = trade.position === PositionType.Long;
-  const hasTargetTier1 = trade.targetTier1 > 0;
-  const hasTargetTier2 = (trade.targetTier2 ?? 0) > 0;
-  const hasTargetTier3 = (trade.targetTier3 ?? 0) > 0;
-  const priceChangePercent =
-    ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100;
-  const adjustedPercent = isLong ? priceChangePercent : -priceChangePercent;
-
-  // Determine alerts
-  const isNearStopLoss = isLong
-    ? currentPrice <= trade.stopLoss * 1.05 && currentPrice > trade.stopLoss
-    : currentPrice >= trade.stopLoss * 0.95 && currentPrice < trade.stopLoss;
-  const hitStopLoss = isLong
-    ? currentPrice <= trade.stopLoss
-    : currentPrice >= trade.stopLoss;
-  const hitT1 = hasTargetTier1 &&
-    (isLong
-      ? currentPrice >= trade.targetTier1
-      : currentPrice <= trade.targetTier1);
-  const hitT2 = hasTargetTier2 &&
-    (isLong
-      ? currentPrice >= trade.targetTier2!
-      : currentPrice <= trade.targetTier2!);
-  const hitT3 = hasTargetTier3 &&
-    (isLong
-      ? currentPrice >= trade.targetTier3!
-      : currentPrice <= trade.targetTier3!);
-
-  if (trade.status === TradeStatus.Closed) {
-    return (
-      <div
-        className={`rounded-lg p-4 ${(trade.pnl || 0) >= 0 ? "bg-success/10 border border-success/20" : "bg-destructive/10 border border-destructive/20"}`}
-      >
-        <div className="flex items-center gap-3">
-          {(trade.pnl || 0) >= 0 ? (
-            <CheckCircle2 className="h-5 w-5 text-success" />
-          ) : (
-            <XCircle className="h-5 w-5 text-destructive" />
-          )}
-          <div>
-            <p
-              className={`font-medium ${(trade.pnl || 0) >= 0 ? "text-success" : "text-destructive"}`}
-            >
-              Trade Closed - {(trade.pnl || 0) >= 0 ? "Profit" : "Loss"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Closed on{" "}
-              {new Date(trade.closedDate || "").toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (hitStopLoss) {
-    return (
-      <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-destructive" />
-          <div>
-            <p className="font-medium text-destructive">Stop Loss Hit</p>
-            <p className="text-sm text-muted-foreground">
-              Consider closing this position to limit losses
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isNearStopLoss) {
-    return (
-      <div className="rounded-lg bg-warning/10 border border-warning/20 p-4">
-        <div className="flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-warning" />
-          <div>
-            <p className="font-medium text-warning">Approaching Stop Loss</p>
-            <p className="text-sm text-muted-foreground">
-              Price is within 5% of your stop loss level
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (hitT3) {
-    return (
-      <div className="rounded-lg bg-success/10 border border-success/20 p-4">
-        <div className="flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-success" />
-          <div>
-            <p className="font-medium text-success">All Targets Hit</p>
-            <p className="text-sm text-muted-foreground">
-              Tier 3 target reached - consider taking profits
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (hitT2) {
-    return (
-      <div className="rounded-lg bg-success/10 border border-success/20 p-4">
-        <div className="flex items-center gap-3">
-          <Target className="h-5 w-5 text-success" />
-          <div>
-            <p className="font-medium text-success">Tier 2 Target Hit</p>
-            <p className="text-sm text-muted-foreground">
-              Consider partial profit taking or moving stop to breakeven
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (hitT1) {
-    return (
-      <div className="rounded-lg bg-success/10 border border-success/20 p-4">
-        <div className="flex items-center gap-3">
-          <Target className="h-5 w-5 text-success" />
-          <div>
-            <p className="font-medium text-success">Tier 1 Target Hit</p>
-            <p className="text-sm text-muted-foreground">
-              First target reached - trade is in profit
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`rounded-lg p-4 ${adjustedPercent >= 0 ? "bg-success/5 border border-success/10" : "bg-destructive/5 border border-destructive/10"}`}
-    >
-      <div className="flex items-center gap-3">
-        {adjustedPercent >= 0 ? (
-          <TrendingUp className="h-5 w-5 text-success" />
-        ) : (
-          <TrendingDown className="h-5 w-5 text-destructive" />
-        )}
-        <div>
-          <p
-            className={`font-medium ${adjustedPercent >= 0 ? "text-success" : "text-destructive"}`}
-          >
-            {adjustedPercent >= 0 ? "In Profit" : "In Loss"} (
-            {adjustedPercent >= 0 ? "+" : ""}
-            {adjustedPercent.toFixed(2)}%)
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Position is active and tracking
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
+};
 
 function TradeDetailContent({ id }: { id: string }) {
+  const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter();
+  const pathname = usePathname()
+
+  useEffect(() => {
+    if (!isAuthLoading && !user) {
+      router.replace(buildRedirectWithNext("/login", pathname))
+    }
+  }, [user, isAuthLoading, pathname, router])
+
   const { trades, updateTrade, deleteTrade, closeTrade } = useTrades();
   const [trade, setTrade] = useState<Trade | null>(null);
   const [isTradeLoading, setIsTradeLoading] = useState(true);
@@ -743,6 +184,8 @@ function TradeDetailContent({ id }: { id: string }) {
   const [selectedModelDetail, setSelectedModelDetail] = useState<ChecklistModelDetailApi | null>(null);
 
   useEffect(() => {
+    if (isAuthLoading || !user) return;
+
     setTrade(null);
     setIsTradeLoading(true);
     setTradeLoadError(null);
@@ -884,7 +327,7 @@ function TradeDetailContent({ id }: { id: string }) {
         setTradeLoadError("We couldn't load this trade right now.");
       })
       .finally(() => setIsTradeLoading(false));
-  }, [id]);
+  }, [id, isAuthLoading, user]);
 
   const currentPrice = trade
     ? mockCurrentPrices[trade.asset] || trade.entryPrice
@@ -963,6 +406,14 @@ function TradeDetailContent({ id }: { id: string }) {
       ) ?? null
     );
   }, [apiTradingZones, trade?.tradingSession]);
+
+  if (isAuthLoading) {
+    return <AppShellLoader title="Loading trade" description="Retrieving your trade details." />
+  }
+
+  if (!user) {
+    return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
+  }
 
   if (isTradeLoading) {
     return <TradeDetailSkeleton />;
@@ -1075,14 +526,15 @@ function TradeDetailContent({ id }: { id: string }) {
       value: trade.confidenceLevel ? `${trade.confidenceLevel}/5` : "Not set",
       helper: getConfidenceLabel(trade.confidenceLevel),
       icon: Brain,
-      tone:
+      tone: (
         trade.confidenceLevel && trade.confidenceLevel >= 4
           ? "positive"
           : trade.confidenceLevel && trade.confidenceLevel >= 2
             ? "accent"
             : trade.confidenceLevel
               ? "warning"
-              : "default",
+              : "default"
+      ) as "positive" | "accent" | "warning" | "default",
     },
   ];
   const headlineMetrics = [
@@ -1110,7 +562,7 @@ function TradeDetailContent({ id }: { id: string }) {
             ? `Closed ${formatDisplayDate(trade.closedDate)}`
             : "Recorded once the trade is closed.",
       icon: isOpenTrade ? BarChart3 : CheckCircle2,
-      tone:
+      tone: (
         isOpenTrade && metrics && metrics.priceChangePercent >= 0
           ? "positive"
           : isOpenTrade
@@ -1119,7 +571,8 @@ function TradeDetailContent({ id }: { id: string }) {
               ? trade.pnl >= 0
                 ? "positive"
                 : "negative"
-              : "accent",
+              : "accent"
+      ) as "positive" | "negative" | "accent",
     },
     {
       label: isOpenTrade ? "Live P&L" : "Realized P&L",
@@ -1128,7 +581,7 @@ function TradeDetailContent({ id }: { id: string }) {
         ? "Tracking against the latest available price."
         : "Final result recorded when the trade was closed.",
       icon: displayedPnL >= 0 ? TrendingUp : TrendingDown,
-      tone: displayedPnL >= 0 ? "positive" : "negative",
+      tone: (displayedPnL >= 0 ? "positive" : "negative") as "positive" | "negative",
     },
     {
       label: "Average R:R",
@@ -1137,12 +590,13 @@ function TradeDetailContent({ id }: { id: string }) {
         ? `T1 ${metrics.rrT1.toFixed(1)}R · T2 ${metrics.rrT2.toFixed(1)}R · T3 ${metrics.rrT3.toFixed(1)}R`
         : "Add targets and a stop to evaluate reward potential.",
       icon: Target,
-      tone:
+      tone: (
         metrics && metrics.averageRiskReward >= 2
           ? "positive"
           : metrics && metrics.averageRiskReward >= 1
             ? "warning"
-            : "negative",
+            : "negative"
+      ) as "positive" | "warning" | "negative",
     },
   ];
   const averageRiskRewardProgress = metrics
@@ -1570,6 +1024,46 @@ function TradeDetailContent({ id }: { id: string }) {
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
               {/* Left Column - Price, analysis, and notes */}
               <div className="space-y-5">
+                {/* Trade Notes - Prominent Section */}
+                <Card className="border-primary/20 bg-card shadow-sm relative overflow-hidden">
+                  <CardHeader className="border-b border-primary/10 bg-primary/5 pb-4 relative z-10">
+                    <CardTitle className="flex items-center gap-2 text-xl font-bold text-primary pt-5">
+                      <FileText className="h-6 w-6" />
+                      Trade Notes
+                    </CardTitle>
+                    <CardDescription className="text-sm">
+                      The core narrative of your trade. Document your rationale, execution thoughts, and market context here.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="relative z-10 pt-6">
+                    {isEditing ? (
+                      <div className="space-y-3">
+                        <Textarea
+                          value={formData.notes}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              notes: e.target.value,
+                            }))
+                          }
+                          rows={12}
+                          placeholder="Add your trade rationale, market conditions, or any other notes..."
+                          className="min-h-[240px] resize-none border-primary/20 bg-background/50 p-4 text-base focus-visible:ring-primary/30"
+                        />
+                      </div>
+                    ) : (
+                      <div className="min-h-[240px] rounded-xl bg-secondary/20 p-6 border border-border/50">
+                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">
+                          {getPlainTextFromRichText(trade.notes || "") || (
+                            <span className="font-normal italic text-muted-foreground">
+                              No notes added for this trade. Taking detailed notes is the key to improving your edge.
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
                 {/* Price Level Visualization */}
                 {trade.status === TradeStatus.Open && (
                   <Card className="border-border/70 bg-card/90 shadow-sm">
@@ -1587,737 +1081,148 @@ function TradeDetailContent({ id }: { id: string }) {
                     </CardContent>
                   </Card>
                 )}
+              </div>
 
-                {/* Target Prices Section */}
+              {/* Right Column - Context, Psychology, Tags */}
+              <div className="space-y-5">
+                {/* Target Prices */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base font-medium flex items-center gap-2">
-                        <Target className="h-4 w-4 text-success" />
-                        Target Prices
-                      </CardTitle>
-                    </div>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Target className="h-4 w-4 text-emerald-500" />
+                      Target Prices
+                    </CardTitle>
                     <CardDescription>
                       Review planned exits and adjust them without losing sight of the reward profile.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      {/* Tier 1 */}
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Tier 1
-                          </p>
-                          {metrics && (
-                            <Badge variant="outline" className="text-xs">
-                              {metrics.rrT1.toFixed(1)}R
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Conservative
-                        </p>
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.targetTier1}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                targetTier1: e.target.value,
-                              }))
-                            }
-                            className="h-9"
-                          />
-                        ) : (
-                          <p className="text-xl font-semibold text-success">
-                            {trade.targetTier1
-                              ? formatCurrency(trade.targetTier1)
-                              : "-"}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Tier 2 */}
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Tier 2
-                          </p>
-                          {metrics && (
-                            <Badge variant="outline" className="text-xs">
-                              {metrics.rrT2.toFixed(1)}R
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Moderate
-                        </p>
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.targetTier2}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                targetTier2: e.target.value,
-                              }))
-                            }
-                            className="h-9"
-                          />
-                        ) : (
-                          <p className="text-xl font-semibold text-success">
-                            {trade.targetTier2
-                              ? formatCurrency(trade.targetTier2)
-                              : "-"}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Tier 3 */}
-                      <div className="rounded-lg border border-border bg-secondary/30 p-4 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            Tier 3
-                          </p>
-                          {metrics && (
-                            <Badge variant="outline" className="text-xs">
-                              {metrics.rrT3.toFixed(1)}R
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Aggressive
-                        </p>
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={formData.targetTier3}
-                            onChange={(e) =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                targetTier3: e.target.value,
-                              }))
-                            }
-                            className="h-9"
-                          />
-                        ) : (
-                          <p className="text-xl font-semibold text-success">
-                            {trade.targetTier3
-                              ? formatCurrency(trade.targetTier3)
-                              : "-"}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {isEditing && (
-                      <div className="pt-2">
-                        <Label className="text-sm font-medium">Stop Loss</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={formData.stopLoss}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              stopLoss: e.target.value,
-                            }))
-                          }
-                          className="mt-1.5 h-9"
-                        />
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  {/* Trading Psychology */}
-                  {(isEditing ||
-                    trade.emotionTags?.length ||
-                    trade.confidenceLevel) && (
-                    <Card className="border-border/70 bg-card/90 shadow-sm">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-base font-medium flex items-center gap-2">
-                          <Brain className="h-4 w-4 text-accent" />
-                          Trading Psychology
-                        </CardTitle>
-                        <CardDescription>
-                          Capture the mental state and conviction behind the trade.
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {/* Emotion Tags */}
-                        {(isEditing ||
-                          (trade.emotionTags &&
-                            trade.emotionTags.length > 0)) && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Emotions
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {isEditing
-                                ? apiTags.map((tag) => {
-                                    const isSelected =
-                                      formData.emotionTags.includes(
-                                        tag.id.toString(),
-                                      );
-                                    const category = getTagCategory(tag.name);
-                                    const colorMap = {
-                                      positive: isSelected
-                                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
-                                        : "bg-emerald-500/5 text-emerald-400/50 border-emerald-500/10",
-                                      negative: isSelected
-                                        ? "bg-red-500/15 text-red-400 border-red-500/25"
-                                        : "bg-red-500/5 text-red-400/50 border-red-500/10",
-                                      neutral: isSelected
-                                        ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
-                                        : "bg-blue-500/5 text-blue-400/50 border-blue-500/10",
-                                    };
-                                    return (
-                                      <button
-                                        key={tag.id}
-                                        onClick={() => {
-                                          setFormData((prev) => ({
-                                            ...prev,
-                                            emotionTags: isSelected
-                                              ? prev.emotionTags.filter(
-                                                  (id) =>
-                                                    id !== tag.id.toString(),
-                                                )
-                                              : [
-                                                  ...prev.emotionTags,
-                                                  tag.id.toString(),
-                                                ],
-                                          }));
-                                        }}
-                                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium cursor-pointer transition-colors hover:brightness-125 ${colorMap[category]}`}
-                                      >
-                                        {tag.name}
-                                      </button>
-                                    );
-                                  })
-                                : trade.emotionTags?.map((tagId) => {
-                                    const tag = apiTags.find(
-                                      (t) =>
-                                        t.id.toString() === tagId.toString(),
-                                    );
-                                    const label = tag
-                                      ? tag.name
-                                      : "Unknown Tag";
-                                    const category = getTagCategory(label);
-                                    const colorMap = {
-                                      positive:
-                                        "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-                                      negative:
-                                        "bg-red-500/15 text-red-400 border-red-500/25",
-                                      neutral:
-                                        "bg-blue-500/15 text-blue-400 border-blue-500/25",
-                                    };
-                                    return (
-                                      <span
-                                        key={tagId}
-                                        className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${colorMap[category]}`}
-                                      >
-                                        {label}
-                                      </span>
-                                    );
-                                  })}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Confidence Level */}
-                        {(isEditing || trade.confidenceLevel) && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Confidence Level
-                            </p>
-                            <div className="flex items-center gap-2">
-                              {[1, 2, 3, 4, 5].map((level) =>
-                                isEditing ? (
-                                  <button
-                                    key={level}
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        confidenceLevel: level,
-                                      }))
-                                    }
-                                    className={`h-4 w-4 rounded-full transition-colors cursor-pointer hover:bg-primary/80 ${
-                                      formData.confidenceLevel >= level
-                                        ? "bg-primary"
-                                        : "bg-secondary"
-                                    }`}
-                                  />
-                                ) : (
-                                  <div
-                                    key={level}
-                                    className={`h-2.5 w-2.5 rounded-full transition-colors ${
-                                      trade.confidenceLevel! >= level
-                                        ? "bg-primary"
-                                        : "bg-secondary"
-                                    }`}
-                                  />
-                                ),
-                              )}
-                              <span className="ml-1 text-xs text-muted-foreground">
-                                {isEditing ? (
-                                  <>
-                                    {formData.confidenceLevel === 1 &&
-                                      "Very Low"}
-                                    {formData.confidenceLevel === 2 && "Low"}
-                                    {formData.confidenceLevel === 3 &&
-                                      "Neutral"}
-                                    {formData.confidenceLevel === 4 && "High"}
-                                    {formData.confidenceLevel === 5 &&
-                                      "Very High"}
-                                    {!formData.confidenceLevel && "Not Set"}
-                                  </>
-                                ) : (
-                                  <>
-                                    {trade.confidenceLevel === 1 && "Very Low"}
-                                    {trade.confidenceLevel === 2 && "Low"}
-                                    {trade.confidenceLevel === 3 && "Neutral"}
-                                    {trade.confidenceLevel === 4 && "High"}
-                                    {trade.confidenceLevel === 5 && "Very High"}
-                                  </>
-                                )}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-
-                  {/* Trading Zones */}
-                  {(isEditing || trade.tradingSession) &&
-                    (() => {
-                      const session = apiTradingZones.find(
-                        (s) =>
-                          s.id.toString() ===
-                          (isEditing
-                            ? formData.tradingSession
-                            : trade.tradingSession),
-                      );
-
-                      return (
-                        <Card className="border-border/70 bg-card/90 shadow-sm">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="text-base font-medium flex items-center gap-2">
-                              <Clock className="h-4 w-4 text-amber-400" />
-                              Trading Zone
-                            </CardTitle>
-                            <CardDescription>
-                              Keep the session context visible while reviewing the trade.
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            {isEditing ? (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                <button
-                                  className={`text-left rounded-lg border px-3 py-2 text-sm transition-colors ${!formData.tradingSession ? "border-amber-500/50 bg-amber-500/10 text-amber-400" : "border-border hover:bg-secondary/50"}`}
-                                  onClick={() =>
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      tradingSession: "",
-                                    }))
-                                  }
-                                >
-                                  Not Set
-                                </button>
-                                {apiTradingZones.map((s) => (
-                                  <button
-                                    key={s.id}
-                                    className={`flex flex-col text-left rounded-lg border px-3 py-2 transition-colors ${formData.tradingSession === s.id.toString() ? "border-amber-500/50 bg-amber-500/10" : "border-border hover:bg-secondary/50"}`}
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        tradingSession: s.id.toString(),
-                                      }))
-                                    }
-                                  >
-                                    <span
-                                      className={`text-sm font-medium ${formData.tradingSession === s.id.toString() ? "text-amber-400" : ""}`}
-                                    >
-                                      {s.name}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">
-                                      {s.fromTime} - {s.toTime}
-                                    </span>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : session ? (
-                              <div className="inline-flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2">
-                                <span className="text-sm font-medium text-amber-400">
-                                  {session.name}
-                                </span>
-                                <span className="text-xs text-amber-400/60">
-                                  {session.fromTime} - {session.toTime}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-sm text-muted-foreground">
-                                Not set
-                              </span>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    })()}
-                </div>
-
-                {/* Technical Analysis Tags */}
-                {(isEditing ||
-                  (trade.analysisTags && trade.analysisTags.length > 0)) && (
-                  <Card className="border-border/70 bg-card/90 shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base font-medium flex items-center gap-2">
-                        <Tags className="h-4 w-4 text-primary" />
-                        Technical Analysis
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {isEditing
-                            ? formData.analysisTags.length
-                            : trade.analysisTags!.length}{" "}
-                          Selected
-                        </Badge>
-                      </CardTitle>
-                      <CardDescription>
-                        Keep the structural and setup tags visible during review and editing.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex flex-col gap-4">
-                        {isEditing && (
-                          <div>
-                            <div className="flex flex-wrap gap-2">
-                              {apiTechTags.map((tag) => {
-                                const isSelected = formData.analysisTags.includes(
-                                  tag.id.toString(),
-                                );
-                                return (
-                                  <button
-                                    key={tag.id}
-                                    type="button"
-                                    onClick={() =>
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        analysisTags: isSelected
-                                          ? prev.analysisTags.filter(
-                                              (t) => t !== tag.id.toString(),
-                                            )
-                                          : [
-                                              ...prev.analysisTags,
-                                              tag.id.toString(),
-                                            ],
-                                      }))
-                                    }
-                                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-all ${
-                                      isSelected
-                                        ? "bg-primary/20 text-primary border-primary/40 ring-1 ring-primary/30"
-                                        : "bg-secondary/50 text-muted-foreground border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-                                    }`}
-                                    title={tag.description}
-                                  >
-                                    {tag.name} {tag.shortName && `(${tag.shortName})`}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex flex-wrap gap-1.5">
-                          {!isEditing &&
-                            trade.analysisTags?.map((tagId) => {
-                              const matchedTag = apiTechTags.find(
-                                (t) => t.id.toString() === tagId,
-                              );
-                              const label = matchedTag
-                                ? matchedTag.name
-                                : `Tag #${tagId}`;
-                              return (
-                                <span
-                                  key={tagId}
-                                  title={getPlainTextFromRichText(matchedTag?.description || "") || label}
-                                  className="inline-flex rounded-md border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary"
-                                >
-                                  {label}
-                                </span>
-                              );
-                            })}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Trade Notes */}
-                <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-accent" />
-                      Trade Notes
-                    </CardTitle>
-                    <CardDescription>
-                      Preserve rationale, market context, and any manual observations tied to this setup.
-                    </CardDescription>
-                  </CardHeader>
                   <CardContent>
-                    {isEditing ? (
-                      <Textarea
-                        value={formData.notes}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            notes: e.target.value,
-                          }))
-                        }
-                        rows={6}
-                        placeholder="Add your trade rationale, market conditions, or any other notes..."
-                        className="resize-none"
-                      />
-                    ) : (
-                      <div className="rounded-lg bg-secondary/30 p-3">
-                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                          {getPlainTextFromRichText(trade.notes || "") || (
-                            <span className="text-muted-foreground italic">
-                              No notes added for this trade
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    )}
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {[
+                        { label: "Conservative", tier: "TIER 1", value: trade.targetTier1, rr: metrics?.rrT1 },
+                        { label: "Moderate", tier: "TIER 2", value: trade.targetTier2, rr: metrics?.rrT2 },
+                        { label: "Aggressive", tier: "TIER 3", value: trade.targetTier3, rr: metrics?.rrT3 },
+                      ].map((target, idx) => target.value > 0 ? (
+                        <div key={idx} className="rounded-xl border border-border/50 bg-secondary/20 p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{target.tier}</span>
+                            {target.rr ? (
+                              <span className="text-[10px] font-bold text-foreground bg-background rounded px-1">{target.rr.toFixed(1)}R</span>
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-muted-foreground mb-1">{target.label}</div>
+                          <div className="text-sm font-bold text-emerald-500">{formatCurrency(target.value)}</div>
+                        </div>
+                      ) : null)}
+                      {!trade.targetTier1 && !trade.targetTier2 && !trade.targetTier3 && (
+                        <div className="col-span-3 text-sm text-muted-foreground text-center py-2">No targets set.</div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
-              </div>
 
-              {/* Right Column - Snapshot & risk analysis */}
-              <div className="space-y-5">
+                {/* Trading Psychology */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-primary" />
-                      Trade Snapshot
+                      <Brain className="h-4 w-4 text-accent" />
+                      Trading Psychology
                     </CardTitle>
                     <CardDescription>
-                      Core context that matters when reviewing execution quality.
+                      Capture the mental state and conviction behind the trade.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Direction
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {getPositionTypeLabel(trade.position)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Status
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {getTradeStatusLabel(trade.status)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Confidence
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {getConfidenceLabel(trade.confidenceLevel)}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-border/70 bg-secondary/20 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                          Screenshots
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-foreground">
-                          {(trade.screenshots?.length || 0).toString()} attached
-                        </p>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Emotions</p>
+                      <div className="flex flex-wrap gap-2">
+                        {trade.emotionTags && trade.emotionTags.length > 0 ? (
+                          trade.emotionTags.map(tagId => {
+                            const tag = apiTags.find(t => t.id.toString() === tagId);
+                            if (!tag) return null;
+                            const category = getTagCategory(tag.name);
+                            const colorClass = category === 'positive' ? 'bg-emerald-500/20 text-emerald-500' :
+                                               category === 'negative' ? 'bg-red-500/20 text-red-500' :
+                                               'bg-blue-500/20 text-blue-500';
+                            return (
+                              <Badge key={tagId} variant="outline" className={cn("border-none", colorClass)}>
+                                {tag.name}
+                              </Badge>
+                            );
+                          })
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Not set</span>
+                        )}
                       </div>
                     </div>
-
-                    {selectedTradingZone ? (
-                      <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-400/80">
-                          Trading Zone
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-amber-400">
-                          {selectedTradingZone.name}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {selectedTradingZone.fromTime} - {selectedTradingZone.toTime}
-                          {selectedTradingZone.description
-                            ? ` · ${getPlainTextFromRichText(selectedTradingZone.description)}`
-                            : ""}
-                        </p>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Confidence Level</p>
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map(level => (
+                            <div key={level} className={cn("h-2 w-2 rounded-full", (trade.confidenceLevel || 0) >= level ? "bg-primary" : "bg-secondary")} />
+                          ))}
+                        </div>
+                        <span className="text-sm font-medium text-muted-foreground">{getConfidenceLabel(trade.confidenceLevel)}</span>
                       </div>
-                    ) : null}
+                    </div>
                   </CardContent>
                 </Card>
 
-                {/* Risk/Reward Analysis */}
-                <Card className="border-border/70 bg-card/90 shadow-sm mb-6">
+                {/* Trading Zone */}
+                <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Percent className="h-4 w-4 text-accent" />
-                      Risk Analysis
+                      <Clock className="h-4 w-4 text-amber-400" />
+                      Trading Zone
                     </CardTitle>
                     <CardDescription>
-                      Evaluate whether the setup justified the risk you planned to take.
+                      Keep the session context visible while reviewing the trade.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-muted-foreground">
-                          Risk per unit
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          {metrics ? formatCurrency(metrics.riskPerUnit) : "-"}
-                        </span>
+                  <CardContent>
+                    {selectedTradingZone ? (
+                      <div className="inline-flex flex-col items-start rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
+                        <span className="text-sm font-medium text-amber-500">{selectedTradingZone.name}</span>
+                        <span className="text-xs text-amber-500/70">{selectedTradingZone.fromTime} - {selectedTradingZone.toTime}</span>
                       </div>
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-muted-foreground">
-                          R:R Tier 1
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          1:{metrics?.rrT1.toFixed(2) || "-"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2 border-b border-border">
-                        <span className="text-sm text-muted-foreground">
-                          R:R Tier 2
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          1:{metrics?.rrT2.toFixed(2) || "-"}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-sm text-muted-foreground">
-                          R:R Tier 3
-                        </span>
-                        <span className="text-sm font-medium text-foreground">
-                          1:{metrics?.rrT3.toFixed(2) || "-"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Risk Quality Indicator */}
-                    <Separator />
-                    <div className="pt-2">
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Average Risk/Reward
-                      </p>
-                      <div className="flex items-center gap-3">
-                        {metrics && (
-                          <>
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary/70">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  metrics.averageRiskReward >= 2
-                                    ? "bg-success"
-                                    : metrics.averageRiskReward >= 1
-                                      ? "bg-warning"
-                                      : "bg-destructive"
-                                }`}
-                                style={{ width: `${averageRiskRewardProgress}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium">
-                              {metrics.averageRiskReward.toFixed(2)}
-                              R
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {metrics && metrics.averageRiskReward >= 2
-                          ? "Excellent risk/reward ratio"
-                          : metrics && metrics.averageRiskReward >= 1
-                            ? "Acceptable risk/reward ratio"
-                            : "Consider improving targets"}
-                      </p>
-                    </div>
-
-                    {/* Risk Guardrails merged into Risk Analysis */}
-                    {trade.riskGuardrails && (
-                      <>
-                        <Separator />
-                        <div className="pt-1">
-                          <p className="text-sm font-medium flex items-center gap-2 mb-3">
-                            <Gauge className="h-4 w-4 text-destructive" />
-                            Risk Guardrails
-                          </p>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            {trade.riskGuardrails.accountEquity && (
-                              <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Account Equity
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-foreground">
-                                  $
-                                  {trade.riskGuardrails.accountEquity.toLocaleString()}
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.riskPercentage && (
-                              <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Risk per Trade
-                                </p>
-                                <p
-                                  className={`mt-0.5 text-sm font-bold ${trade.riskGuardrails.riskPercentage > 2 ? "text-red-400" : "text-foreground"}`}
-                                >
-                                  {trade.riskGuardrails.riskPercentage}%
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.maxDailyLoss && (
-                              <div className="rounded-md border border-border bg-secondary/20 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Max Daily Loss
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-foreground">
-                                  $
-                                  {trade.riskGuardrails.maxDailyLoss.toLocaleString()}
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.positionSize && (
-                              <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Position Size
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-primary">
-                                  {trade.riskGuardrails.positionSize.toLocaleString()}{" "}
-                                  units
-                                </p>
-                              </div>
-                            )}
-                            {trade.riskGuardrails.takeProfit && (
-                              <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                                  Take Profit
-                                </p>
-                                <p className="mt-0.5 text-sm font-bold text-emerald-400">
-                                  $
-                                  {trade.riskGuardrails.takeProfit.toLocaleString()}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">No zone selected</span>
                     )}
+                  </CardContent>
+                </Card>
+
+                {/* Technical Analysis */}
+                <Card className="border-border/70 bg-card/90 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Tags className="h-4 w-4 text-primary" />
+                      Technical Analysis
+                      {trade.analysisTags && trade.analysisTags.length > 0 && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          {trade.analysisTags.length} Selected
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      Keep the structural and setup tags visible during review and editing.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {trade.analysisTags && trade.analysisTags.length > 0 ? (
+                        trade.analysisTags.map(tagId => {
+                          const tag = apiTechTags.find(t => t.id.toString() === tagId);
+                          return tag ? (
+                            <Badge key={tagId} variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20">
+                              {tag.name}
+                            </Badge>
+                          ) : null;
+                        })
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No tags selected</span>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
