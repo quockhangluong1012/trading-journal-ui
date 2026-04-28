@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Radar,
   Settings2,
   Sparkles,
 
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { NotificationPanel } from "./notifications/notification-panel";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -47,6 +49,7 @@ const navigation = [
   { name: "Psychology", href: "/psychology", icon: Brain },
 
   { name: "Backtest", href: "/backtest", icon: Activity },
+  { name: "Scanner", href: "/scanner", icon: Radar },
   { name: "Admin", href: "/admin", icon: Settings2 },
 ];
 
@@ -113,33 +116,7 @@ export function Header() {
           <div className="flex items-center gap-2">
             {user ? (
               <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="relative flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-secondary hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label="Notifications"
-                    >
-                      <Bell className="h-5 w-5" />
-                      <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80">
-                    <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <div className="flex flex-col max-h-75 overflow-y-auto">
-                      <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-default">
-                        <p className="text-sm font-medium">Welcome to Trading Journey</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">Start tracking your trades and improve your trading psychology using our tools.</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">2 hours ago</p>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="flex flex-col items-start gap-1 p-3 cursor-default">
-                        <p className="text-sm font-medium">New Strategy Template</p>
-                        <p className="text-xs text-muted-foreground line-clamp-2">Check out the new smart money concepts strategy template in your strategies tab.</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">1 day ago</p>
-                      </DropdownMenuItem>
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <NotificationPanel />
 
                 <div className="ml-1 hidden h-6 w-px bg-border sm:block" />
 

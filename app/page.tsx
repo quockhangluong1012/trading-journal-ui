@@ -13,6 +13,7 @@ import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
 import { CalendarWidget } from "@/components/dashboard/calendar-widget"
+import { EconomicCalendarWidget } from "@/components/scanner/economic-calendar-widget"
 import { OpenPositionsTable } from "@/components/dashboard/open-positions-table"
 import { ActiveSessionWidget } from "@/components/session/active-session-widget"
 import { KillzonesWidget } from "@/components/dashboard/killzones-widget"
@@ -180,6 +181,10 @@ function DashboardContent() {
           <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
 
           <CalendarWidget filter={filter} />
+          
+          <div className="w-full">
+            <EconomicCalendarWidget />
+          </div>
         </div>
       </main>
 
