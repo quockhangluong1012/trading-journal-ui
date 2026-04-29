@@ -35,10 +35,10 @@ export function EconomicNewsBanner() {
                     {warning.currency} ({warning.country})
                   </span>
                   {warning.forecast != null && (
-                    <span>Forecast: {warning.forecast}</span>
+                    <span>Forecast: {warning.forecast}{warning.unit && warning.unit !== 'null' ? warning.unit : ''}</span>
                   )}
                   {warning.previous != null && (
-                    <span>Prev: {warning.previous}</span>
+                    <span>Prev: {warning.previous}{warning.unit && warning.unit !== 'null' ? warning.unit : ''}</span>
                   )}
                 </div>
               </div>
@@ -75,10 +75,10 @@ export function EconomicNewsBanner() {
                     {release.currency} ({release.country})
                   </span>
                   {release.forecast != null && (
-                    <span>Forecast: {release.forecast}</span>
+                    <span>Forecast: {release.forecast}{release.unit && release.unit !== 'null' ? release.unit : ''}</span>
                   )}
                   {release.previous != null && (
-                    <span>Prev: {release.previous}</span>
+                    <span>Prev: {release.previous}{release.unit && release.unit !== 'null' ? release.unit : ''}</span>
                   )}
                 </div>
               </div>

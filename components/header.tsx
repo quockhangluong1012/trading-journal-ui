@@ -7,6 +7,7 @@ import {
   Activity,
   BarChart3,
   Bell,
+  BookOpen,
   Brain,
   ClipboardList,
   GitBranch,
@@ -47,7 +48,7 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Trade History", href: "/history", icon: History },
   { name: "Psychology", href: "/psychology", icon: Brain },
-
+  { name: "Lessons", href: "/lessons", icon: BookOpen },
   { name: "Backtest", href: "/backtest", icon: Activity },
   { name: "Scanner", href: "/scanner", icon: Radar },
   { name: "Admin", href: "/admin", icon: Settings2 },

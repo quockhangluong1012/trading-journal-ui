@@ -159,6 +159,7 @@ function TradeDetailContent({ id }: { id: string }) {
   const [manualPnl, setManualPnl] = useState("");
   const [tradingResult, setTradingResult] = useState("");
   const [hitStopLoss, setHitStopLoss] = useState(false);
+  const [exitDate, setExitDate] = useState("");
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const { toast } = useToast();
   const [formData, setFormData] = useState({
@@ -173,6 +174,7 @@ function TradeDetailContent({ id }: { id: string }) {
     tradingSession: "",
     screenshots: [] as { url: string }[],
     pretradeChecklist: [] as string[],
+    pnl: "",
   });
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([]);
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>(
@@ -317,6 +319,7 @@ function TradeDetailContent({ id }: { id: string }) {
             tradingSession: mappedTrade.tradingSession || "",
             screenshots: mappedTrade.screenshots || [],
             pretradeChecklist: mappedTrade.pretradeChecklist || [],
+            pnl: mappedTrade.pnl !== undefined && mappedTrade.pnl !== null ? mappedTrade.pnl.toString() : "",
           });
         } else {
           setTrade(null);
@@ -623,7 +626,7 @@ function TradeDetailContent({ id }: { id: string }) {
         date: trade.date,
         status: trade.status,
         exitPrice: trade.exitPrice || null,
-        pnl: trade.pnl || null,
+        pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
         closedDate: trade.closedDate || null,
         screenshots:
           formData.screenshots.length > 0
@@ -688,6 +691,7 @@ function TradeDetailContent({ id }: { id: string }) {
               tradingSession: formData.tradingSession,
               screenshots: formData.screenshots,
               pretradeChecklist: formData.pretradeChecklist,
+              pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
             }
           : prev,
       );
@@ -705,6 +709,7 @@ function TradeDetailContent({ id }: { id: string }) {
         tradingSession: formData.tradingSession,
         screenshots: formData.screenshots,
         pretradeChecklist: formData.pretradeChecklist,
+        pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
       });
 
       setIsEditing(false);
@@ -757,7 +762,8 @@ function TradeDetailContent({ id }: { id: string }) {
           exitPrice: exitPriceNum,
           pnl: pnlNum,
           tradingResult: tradingResult,
-          hitStopLoss: hitStopLoss
+          hitStopLoss: hitStopLoss,
+          closedDate: exitDate ? new Date(exitDate).toISOString() : undefined
         };
         
         const res = await api.post<ApiResponse<boolean>>(
@@ -1078,6 +1084,33 @@ function TradeDetailContent({ id }: { id: string }) {
                     </CardHeader>
                     <CardContent className="pt-8 pb-4">
                       <PriceLevelBar trade={trade} currentPrice={currentPrice} />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Trade Outcome - Editable P&L (if closed and editing) */}
+                {isEditing && trade.status === TradeStatus.Closed && (
+                  <Card className="border-border/70 bg-card/90 shadow-sm">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base font-medium flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-emerald-500" />
+                        Edit Trade Outcome
+                      </CardTitle>
+                      <CardDescription>
+                        Update your Realized P&L for this closed trade.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-4 pb-6">
+                      <div className="space-y-2">
+                        <Label>Realized P&L</Label>
+                        <Input 
+                          type="number" 
+                          step="0.01"
+                          value={formData.pnl} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, pnl: e.target.value }))}
+                          placeholder="e.g. 150.00"
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -1648,6 +1681,15 @@ function TradeDetailContent({ id }: { id: string }) {
                   placeholder="0.00"
                   value={manualPnl}
                   onChange={(e) => setManualPnl(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exitDate">Exit Date</Label>
+                <Input
+                  id="exitDate"
+                  type="datetime-local"
+                  value={exitDate}
+                  onChange={(e) => setExitDate(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
