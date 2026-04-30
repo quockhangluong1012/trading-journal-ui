@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { ClipboardList, Wand2 } from "lucide-react"
 import { Header } from "@/components/header"
@@ -82,6 +82,14 @@ function WizardContent() {
   )
 }
 
+function WizardContentFallback() {
+  return <AppShellLoader title="Loading wizard" description="Preparing your review wizard." />
+}
+
 export default function ReviewWizardPage() {
-  return <WizardContent />
+  return (
+    <Suspense fallback={<WizardContentFallback />}>
+      <WizardContent />
+    </Suspense>
+  )
 }
