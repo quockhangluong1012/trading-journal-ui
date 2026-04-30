@@ -175,6 +175,7 @@ function TradeDetailContent({ id }: { id: string }) {
     screenshots: [] as { url: string }[],
     pretradeChecklist: [] as string[],
     pnl: "",
+    aiSummary: "",
   });
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([]);
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>(
@@ -304,6 +305,7 @@ function TradeDetailContent({ id }: { id: string }) {
                 }
               : undefined,
             tradeSummary: returnedValue.tradeSummary,
+            aiSummary: returnedValue.aiSummary,
           };
           setTrade(mappedTrade);
           // Setup form default data for editing
@@ -320,6 +322,7 @@ function TradeDetailContent({ id }: { id: string }) {
             screenshots: mappedTrade.screenshots || [],
             pretradeChecklist: mappedTrade.pretradeChecklist || [],
             pnl: mappedTrade.pnl !== undefined && mappedTrade.pnl !== null ? mappedTrade.pnl.toString() : "",
+            aiSummary: mappedTrade.aiSummary || "",
           });
         } else {
           setTrade(null);
@@ -659,6 +662,7 @@ function TradeDetailContent({ id }: { id: string }) {
               positionSize: trade.riskGuardrails.positionSize || null,
             }
           : null,
+        aiSummary: formData.aiSummary,
       };
 
       const res = await api.put<ApiResponse<boolean>>(
@@ -692,6 +696,7 @@ function TradeDetailContent({ id }: { id: string }) {
               screenshots: formData.screenshots,
               pretradeChecklist: formData.pretradeChecklist,
               pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
+              aiSummary: formData.aiSummary,
             }
           : prev,
       );
@@ -710,6 +715,7 @@ function TradeDetailContent({ id }: { id: string }) {
         screenshots: formData.screenshots,
         pretradeChecklist: formData.pretradeChecklist,
         pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
+        aiSummary: formData.aiSummary,
       });
 
       setIsEditing(false);
@@ -1001,7 +1007,7 @@ function TradeDetailContent({ id }: { id: string }) {
         </div>
 
         <Tabs defaultValue="detail" className="space-y-5">
-          <TabsList className="grid w-full max-w-md grid-cols-2 rounded-2xl border border-border/70 bg-card/80 p-1 shadow-sm">
+          <TabsList className="grid w-full max-w-lg grid-cols-3 rounded-2xl border border-border/70 bg-card/80 p-1 shadow-sm">
             <TabsTrigger
               value="detail"
               className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1015,6 +1021,13 @@ function TradeDetailContent({ id }: { id: string }) {
             >
               <FileText className="h-4 w-4" />
               Trade Summary
+            </TabsTrigger>
+            <TabsTrigger
+              value="ai_summary"
+              className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
+            >
+              <Brain className="h-4 w-4" />
+              AI Summary
             </TabsTrigger>
           </TabsList>
 
@@ -1635,6 +1648,47 @@ function TradeDetailContent({ id }: { id: string }) {
                 </p>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="ai_summary" className="space-y-4 outline-none">
+            <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-accent" />
+                  AI Summary
+                </CardTitle>
+                <CardDescription>
+                  Enter AI-generated insights or summary for this trade.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isEditing ? (
+                  <Textarea
+                    value={formData.aiSummary}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        aiSummary: e.target.value,
+                      }))
+                    }
+                    placeholder="Input AI summary here..."
+                    className="min-h-[240px] resize-none border-primary/20 bg-background/50 p-4 text-base focus-visible:ring-primary/30"
+                  />
+                ) : (
+                  <div className="rounded-lg bg-secondary/30 p-4 min-h-[100px]">
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                      {trade.aiSummary ? (
+                        getPlainTextFromRichText(trade.aiSummary)
+                      ) : (
+                        <span className="font-normal italic text-muted-foreground">
+                          No AI summary available.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
 

@@ -29,7 +29,7 @@ import {
 } from "@/lib/analytics-overview"
 import { cn } from "@/lib/utils"
 
-export type AnalyticsTabValue = "overview" | "performance" | "breakdown" | "insights"
+export type AnalyticsTabValue = "overview" | "performance" | "breakdown" | "setups" | "calendar" | "insights"
 
 interface RangeOption {
   label: string

@@ -82,6 +82,7 @@ export interface Trade {
     positionSize?: number
   }
   tradeSummary?: TradeSummary
+  aiSummary?: string
 }
 
 export interface TradeSummary {

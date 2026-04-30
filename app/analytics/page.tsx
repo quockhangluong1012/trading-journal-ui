@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Award, Calendar, CheckCircle2, Clock, Layers, Lightbulb, PieChart as PieChartIcon, Shield, Target, TrendingDown, TrendingUp, Zap } from "lucide-react"
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Award, Calendar, CheckCircle2, Clock, Crosshair, Layers, Lightbulb, Newspaper, PieChart as PieChartIcon, Shield, Target, TrendingDown, TrendingUp, Zap } from "lucide-react"
 import { AnalyticsCommandCenter, type AnalyticsTabValue } from "@/components/analytics/analytics-command-center"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,8 +10,11 @@ import { PerformanceHeatmap } from "@/components/analytics/performance-heatmap"
 import { MetricCard, AnalyticsPageSkeleton, fmt, pct, ANALYTICS_SURFACE_CLASS } from "@/components/analytics/metric-card"
 import { EquityCurveChart, MonthlyReturnsChart, DrawdownChart, WinLossDistribution, DayOfWeekChart, PerformanceRadar } from "@/components/analytics/analytics-charts"
 import { AssetPerformanceChart, InsightsPanel, LongShortSplit, SessionBreakdownPlaceholder, ExportButton } from "@/components/analytics/analytics-panels"
-import { AnalyticsFilter, FILTER_LABELS, fetchAssetBreakdown, fetchDayOfWeekBreakdown, fetchEquityCurve, fetchInsights, fetchMonthlyReturns, fetchPerformanceSummary,
-  type AssetBreakdown as AssetBreakdownType, type DayOfWeekBreakdown as DayBreakdownType, type EquityPoint, type Insight, type MonthlyReturn, type PerformanceSummary,
+import { SetupPerformanceDashboard } from "@/components/analytics/setup-performance-dashboard"
+import { TradeEventCorrelation } from "@/components/analytics/trade-event-correlation"
+import { EquityCurveWithEvents } from "@/components/analytics/equity-curve-with-events"
+import { AnalyticsFilter, FILTER_LABELS, fetchAssetBreakdown, fetchDayOfWeekBreakdown, fetchEquityCurve, fetchInsights, fetchMonthlyReturns, fetchPerformanceSummary, fetchSetupPerformance,
+  type AssetBreakdown as AssetBreakdownType, type DayOfWeekBreakdown as DayBreakdownType, type EquityPoint, type Insight, type MonthlyReturn, type PerformanceSummary, type SetupPerformance,
 } from "@/lib/analytics-api"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, usePathname } from "next/navigation"
@@ -19,7 +22,7 @@ import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { AppShellLoader } from "@/components/app-shell-loader"
 
 const TIME_RANGES = [{ label: "1W" }, { label: "1M" }, { label: "3M" }, { label: "6M" }, { label: "All" }] as const
-const ANALYTICS_TABS = ["overview", "performance", "breakdown", "insights"] as const
+const ANALYTICS_TABS = ["overview", "performance", "breakdown", "setups", "calendar", "insights"] as const
 const ANALYTICS_RANGE_STORAGE_KEY = "trading-journal-analytics-range"
 const ANALYTICS_TAB_STORAGE_KEY = "trading-journal-analytics-tab"
 
@@ -27,7 +30,7 @@ type AnalyticsRangeLabel = (typeof TIME_RANGES)[number]["label"]
 
 interface AnalyticsViewState {
   analytics: PerformanceSummary; monthlyData: MonthlyReturn[]; assetData: AssetBreakdownType[]; dayData: DayBreakdownType[]
-  equityData: EquityPoint[]; insightsData: Insight[]; isLoading: boolean; isRefreshing: boolean; lastUpdatedAt: Date | null; syncWarning: string | null
+  equityData: EquityPoint[]; insightsData: Insight[]; setupData: SetupPerformance[]; isLoading: boolean; isRefreshing: boolean; lastUpdatedAt: Date | null; syncWarning: string | null
 }
 
 function isAnalyticsRangeLabel(v: string | null): v is AnalyticsRangeLabel { return TIME_RANGES.some((r) => r.label === v) }
@@ -40,7 +43,7 @@ const emptyAnalytics: PerformanceSummary = {
 }
 
 const initialViewState: AnalyticsViewState = {
-  analytics: emptyAnalytics, monthlyData: [], assetData: [], dayData: [], equityData: [], insightsData: [],
+  analytics: emptyAnalytics, monthlyData: [], assetData: [], dayData: [], equityData: [], insightsData: [], setupData: [],
   isLoading: true, isRefreshing: false, lastUpdatedAt: null, syncWarning: null,
 }
 
@@ -72,9 +75,9 @@ function AnalyticsContent() {
     const currentRequestId = requestIdRef.current
     setViewState((p) => ({ ...p, isLoading: p.lastUpdatedAt === null, isRefreshing: p.lastUpdatedAt !== null, syncWarning: null }))
     const filter = FILTER_LABELS[nextRange] ?? AnalyticsFilter.AllTime
-    const [perf, monthly, asset, day, equity, insights] = await Promise.allSettled([
+    const [perf, monthly, asset, day, equity, insights, setups] = await Promise.allSettled([
       fetchPerformanceSummary(filter), fetchMonthlyReturns(filter), fetchAssetBreakdown(filter),
-      fetchDayOfWeekBreakdown(filter), fetchEquityCurve(filter), fetchInsights(filter),
+      fetchDayOfWeekBreakdown(filter), fetchEquityCurve(filter), fetchInsights(filter), fetchSetupPerformance(filter),
     ])
     if (currentRequestId !== requestIdRef.current) return
     const failed: string[] = []
@@ -86,8 +89,9 @@ function AnalyticsContent() {
       if (day.status === "fulfilled") n.dayData = day.value; else failed.push("day-of-week")
       if (equity.status === "fulfilled") n.equityData = equity.value; else failed.push("equity curve")
       if (insights.status === "fulfilled") n.insightsData = insights.value; else failed.push("insights")
+      if (setups.status === "fulfilled") n.setupData = setups.value; else failed.push("setup performance")
       n.syncWarning = failed.length > 0 ? `Some data could not be refreshed: ${failed.join(", ")}.` : null
-      n.lastUpdatedAt = failed.length === 6 ? p.lastUpdatedAt : new Date()
+      n.lastUpdatedAt = failed.length === 7 ? p.lastUpdatedAt : new Date()
       return n
     })
   }, [])
@@ -100,7 +104,7 @@ function AnalyticsContent() {
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
   if (isInitialLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><AnalyticsPageSkeleton /></main></div>
 
-  const { analytics, monthlyData, assetData, dayData, equityData, insightsData, isRefreshing, lastUpdatedAt, syncWarning } = viewState
+  const { analytics, monthlyData, assetData, dayData, equityData, insightsData, setupData, isRefreshing, lastUpdatedAt, syncWarning } = viewState
   const SC = ANALYTICS_SURFACE_CLASS
 
   return (
@@ -116,10 +120,12 @@ function AnalyticsContent() {
             onSelectTab={setActiveTab} />
 
           <Tabs value={activeTab} onValueChange={(v) => { if (isAnalyticsTabValue(v)) setActiveTab(v) }} className="space-y-6">
-            <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1 lg:grid-cols-4">
+            <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1 lg:grid-cols-6">
               <TabsTrigger value="overview" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm"><Layers className="h-3.5 w-3.5" />Overview</TabsTrigger>
               <TabsTrigger value="performance" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm"><TrendingUp className="h-3.5 w-3.5" />Performance</TabsTrigger>
               <TabsTrigger value="breakdown" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm"><PieChartIcon className="h-3.5 w-3.5" />Breakdown</TabsTrigger>
+              <TabsTrigger value="setups" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm"><Crosshair className="h-3.5 w-3.5" />Setups</TabsTrigger>
+              <TabsTrigger value="calendar" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm"><Newspaper className="h-3.5 w-3.5" />Calendar</TabsTrigger>
               <TabsTrigger value="insights" className="gap-1.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm"><Lightbulb className="h-3.5 w-3.5" />Insights</TabsTrigger>
             </TabsList>
 
@@ -171,6 +177,21 @@ function AnalyticsContent() {
                 <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Clock className="h-4 w-4 text-amber-400" />Performance by session</CardTitle><CardDescription className="text-muted-foreground">Results across trading zones and killzones</CardDescription></CardHeader><CardContent><SessionBreakdownPlaceholder /></CardContent></Card>
               </div>
               <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Calendar className="h-4 w-4 text-accent" />Performance by day of week</CardTitle><CardDescription className="text-muted-foreground">Identify your strongest and weakest trading days</CardDescription></CardHeader><CardContent><DayOfWeekChart data={dayData} /></CardContent></Card>
+            </TabsContent>
+
+            <TabsContent value="setups" className="space-y-6">
+              <SetupPerformanceDashboard data={setupData} isLoading={false} />
+            </TabsContent>
+
+            <TabsContent value="calendar" className="space-y-6">
+              <Card className={SC}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-lg text-foreground"><Newspaper className="h-4 w-4 text-amber-400" />Equity Curve with News Events</CardTitle>
+                  <CardDescription className="text-muted-foreground">High-impact economic events overlaid on your equity curve to reveal news impact</CardDescription>
+                </CardHeader>
+                <CardContent><EquityCurveWithEvents /></CardContent>
+              </Card>
+              <TradeEventCorrelation />
             </TabsContent>
 
             <TabsContent value="insights" className="space-y-6">

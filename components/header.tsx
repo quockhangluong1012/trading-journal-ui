@@ -10,6 +10,7 @@ import {
   BookOpen,
   Brain,
   ClipboardList,
+  FileText,
   GitBranch,
   History,
   LayoutDashboard,
@@ -17,7 +18,9 @@ import {
   Menu,
   Radar,
   Settings2,
+  Shield,
   Sparkles,
+  Wand2,
 
   TrendingUp,
   User,
@@ -51,6 +54,7 @@ const navigation = [
   { name: "Lessons", href: "/lessons", icon: BookOpen },
   { name: "Backtest", href: "/backtest", icon: Activity },
   { name: "Scanner", href: "/scanner", icon: Radar },
+  { name: "Risk", href: "/risk", icon: Shield },
   { name: "Admin", href: "/admin", icon: Settings2 },
 ];
 
@@ -153,9 +157,27 @@ export function Header() {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
+                      <Link href="/playbook" className="cursor-pointer">
+                        <BookOpen className="mr-2 h-4 w-4" />
+                        Playbook
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/risk" className="cursor-pointer">
+                        <Shield className="mr-2 h-4 w-4" />
+                        Risk Management
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
                       <Link href="/review" className="cursor-pointer">
                         <ClipboardList className="mr-2 h-4 w-4" />
                         Review
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/review/wizard" className="cursor-pointer">
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        Review Wizard
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
@@ -168,6 +190,12 @@ export function Header() {
                       <Link href="/setup" className="cursor-pointer">
                         <GitBranch className="mr-2 h-4 w-4" />
                         Setup
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/trade/templates" className="cursor-pointer">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Templates
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
@@ -262,9 +290,30 @@ export function Header() {
                         </Button>
 
                         <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/playbook">
+                            <BookOpen className="h-4 w-4" />
+                            Playbook
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/risk">
+                            <Shield className="h-4 w-4" />
+                            Risk Management
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
                           <Link href="/review">
                             <ClipboardList className="h-4 w-4" />
                             Review
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/review/wizard">
+                            <Wand2 className="h-4 w-4" />
+                            Review Wizard
                           </Link>
                         </Button>
 
@@ -279,6 +328,13 @@ export function Header() {
                           <Link href="/setup">
                             <GitBranch className="h-4 w-4" />
                             Setup
+                          </Link>
+                        </Button>
+
+                        <Button asChild variant="outline" className="mb-3 w-full justify-start gap-2">
+                          <Link href="/trade/templates">
+                            <FileText className="h-4 w-4" />
+                            Templates
                           </Link>
                         </Button>
 
