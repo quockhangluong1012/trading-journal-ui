@@ -7,6 +7,7 @@ import { WatchlistManager } from "@/components/scanner/watchlist-manager";
 import { ScannerControl } from "@/components/scanner/scanner-control";
 import { AlertFeed } from "@/components/scanner/alert-feed";
 import { EconomicNewsBanner } from "@/components/scanner/economic-news-banner";
+import { PreTradeCheckWidget } from "@/components/scanner/pre-trade-check-widget";
 import { Radar } from "lucide-react";
 import { Header } from "@/components/header";
 
@@ -60,6 +61,7 @@ export default function ScannerPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="space-y-6 lg:col-span-1">
               <ScannerControl />
+              <PreTradeCheckWidget />
               <div className="h-[400px]">
                 <WatchlistManager />
               </div>

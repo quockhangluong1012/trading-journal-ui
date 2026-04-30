@@ -135,6 +135,22 @@ export const scannerApi = {
     const response = await api.get(`/v1/scanner/economic-calendar/upcoming-high-impact?lookAheadMinutes=${lookAheadMinutes}`);
     return response.data?.value ?? response.data;
   },
+
+  getPreTradeCheck: async (symbol?: string): Promise<PreTradeCheckDto> => {
+    const params = symbol ? `?symbol=${encodeURIComponent(symbol)}` : '';
+    const response = await api.get(`/v1/scanner/economic-calendar/pre-trade-check${params}`);
+    return response.data?.value ?? response.data;
+  },
+
+  getTradeEventCorrelation: async (proximityMinutes: number = 30): Promise<TradeEventCorrelationDto> => {
+    const response = await api.get(`/v1/scanner/economic-calendar/trade-correlation?proximityMinutes=${proximityMinutes}`);
+    return response.data?.value ?? response.data;
+  },
+
+  getEquityCurveWithEvents: async (): Promise<EquityCurveWithEventsDto> => {
+    const response = await api.get(`/v1/scanner/economic-calendar/equity-overlay`);
+    return response.data?.value ?? response.data;
+  },
 };
 
 // Economic Calendar Interfaces
@@ -170,3 +186,82 @@ export interface UpcomingHighImpactDto {
   minutesUntilNext: number | null;
   events: EconomicEventDto[];
 }
+
+// Pre-Trade Check
+export interface PreTradeCheckDto {
+  isSafeToTrade: boolean;
+  safetyLevel: "Green" | "Yellow" | "Red";
+  message: string;
+  upcomingDangerEvents: EconomicEventDto[];
+  recentReleases: EconomicEventDto[];
+  minutesUntilNextHighImpact: number | null;
+  recommendedWaitMinutes: number;
+}
+
+// Trade-Event Correlation
+export interface EventTypeCorrelationDto {
+  eventName: string;
+  tradeCount: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgPnl: number;
+  totalPnl: number;
+}
+
+export interface CurrencyCorrelationDto {
+  currency: string;
+  tradeCount: number;
+  winRate: number;
+  avgPnl: number;
+  totalPnl: number;
+}
+
+export interface ProximityBucketDto {
+  label: string;
+  minutesFromEvent: number;
+  tradeCount: number;
+  winRate: number;
+  avgPnl: number;
+}
+
+export interface TradeEventCorrelationDto {
+  totalTradesAnalyzed: number;
+  tradesNearEvents: number;
+  tradesAwayFromEvents: number;
+  winRateNearEvents: number;
+  winRateAwayFromEvents: number;
+  avgPnlNearEvents: number;
+  avgPnlAwayFromEvents: number;
+  totalPnlNearEvents: number;
+  totalPnlAwayFromEvents: number;
+  eventTypeBreakdown: EventTypeCorrelationDto[];
+  currencyBreakdown: CurrencyCorrelationDto[];
+  proximityBreakdown: ProximityBucketDto[];
+  summary: string;
+}
+
+// Equity Curve with Events
+export interface EventMarkerDto {
+  eventName: string;
+  currency: string;
+  impact: string;
+  eventDateUtc: string;
+  actual: number | null;
+  forecast: number | null;
+  previous: number | null;
+}
+
+export interface EquityEventOverlayPointDto {
+  date: string;
+  profit: number;
+  eventMarkers: EventMarkerDto[];
+}
+
+export interface EquityCurveWithEventsDto {
+  equityPoints: EquityEventOverlayPointDto[];
+  allHighImpactEvents: EventMarkerDto[];
+  totalTrades: number;
+  highImpactEventsInPeriod: number;
+}
+

@@ -69,13 +69,13 @@ export function EconomicCalendarWidget() {
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-        {events.map((event) => {
+        {events.map((event, index) => {
           const isPastEvent = isPast(new Date(event.eventDateUtc));
           const isUpcoming = event.isUpcoming;
           
           return (
             <div 
-              key={event.id}
+              key={`${event.id}-${index}`}
               className={`flex items-start gap-3 p-4 rounded-xl border transition-all hover:shadow-md ${
                 isUpcoming ? 'bg-primary/5 border-primary/30 ring-1 ring-primary/20' : 'bg-card border-border hover:bg-accent/30'
               } ${isPastEvent ? 'opacity-60' : ''}`}
@@ -106,7 +106,7 @@ export function EconomicCalendarWidget() {
                       <span className={`font-semibold mt-0.5 ${
                         event.forecast != null && event.actual > event.forecast ? 'text-green-600 dark:text-green-400' :
                         event.forecast != null && event.actual < event.forecast ? 'text-red-600 dark:text-red-400' : 'text-foreground'
-                      }`}>{event.actual}{event.unit}</span>
+                      }`}>{event.actual}{event.unit && event.unit !== 'null' ? event.unit : ''}</span>
                     ) : (
                       <span className="font-medium mt-0.5 text-muted-foreground">--</span>
                     )}
@@ -115,14 +115,14 @@ export function EconomicCalendarWidget() {
                   <div className="flex flex-col bg-muted/30 rounded p-1.5 border border-border/50 text-center">
                     <span className="text-[10px] text-muted-foreground uppercase">Forecast</span>
                     <span className="font-medium mt-0.5 text-foreground">
-                      {event.forecast != null ? `${event.forecast}${event.unit}` : '--'}
+                      {event.forecast != null ? `${event.forecast}${event.unit && event.unit !== 'null' ? event.unit : ''}` : '--'}
                     </span>
                   </div>
                   
                   <div className="flex flex-col bg-muted/30 rounded p-1.5 border border-border/50 text-center">
                     <span className="text-[10px] text-muted-foreground uppercase">Previous</span>
                     <span className="font-medium mt-0.5 text-foreground">
-                      {event.previous != null ? `${event.previous}${event.unit}` : '--'}
+                      {event.previous != null ? `${event.previous}${event.unit && event.unit !== 'null' ? event.unit : ''}` : '--'}
                     </span>
                   </div>
                 </div>

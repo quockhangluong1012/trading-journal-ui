@@ -98,3 +98,28 @@ export async function fetchInsights(filter: AnalyticsFilter): Promise<Insight[]>
   const response = await api.get<ApiResponse<Insight[]>>(`/v1/analytics/insights?filter=${filter}`)
   return response.data.value
 }
+
+export interface SetupPerformance {
+  setupId: number
+  setupName: string
+  totalTrades: number
+  wins: number
+  losses: number
+  winRate: number
+  totalPnl: number
+  avgPnl: number
+  avgWin: number
+  avgLoss: number
+  profitFactor: number
+  expectancy: number
+  largestWin: number
+  largestLoss: number
+  avgRiskReward: number
+  avgHoldingDays: number
+  grade: string
+}
+
+export async function fetchSetupPerformance(filter: AnalyticsFilter): Promise<SetupPerformance[]> {
+  const response = await api.get<ApiResponse<SetupPerformance[]>>(`/v1/analytics/setup-performance?filter=${filter}`)
+  return response.data.value
+}
