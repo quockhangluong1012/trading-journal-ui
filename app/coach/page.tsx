@@ -16,8 +16,8 @@ import { AppShellLoader } from "@/components/app-shell-loader";
 const STARTER_PROMPTS = [
   { icon: TrendingUp, label: "Review my performance", prompt: "Can you review my recent trading performance and highlight what I'm doing well and what needs improvement?" },
   { icon: Brain, label: "Analyze my psychology", prompt: "Based on my psychology journal entries and emotion patterns, what mental game insights can you share?" },
-  { icon: Target, label: "Risk management check", prompt: "How is my risk management looking? Am I sizing positions well and managing drawdowns effectively?" },
-  { icon: Lightbulb, label: "Pre-session prep", prompt: "Help me prepare for my next trading session. What should I focus on based on my recent patterns?" },
+  { icon: Target, label: "ICT concept review", prompt: "Analyze my recent trades through the lens of ICT concepts. Am I correctly identifying Order Blocks, Fair Value Gaps, and market structure? Which ICT concepts are working best for me?" },
+  { icon: Lightbulb, label: "Killzone & AMD coaching", prompt: "Based on my killzone performance data, which sessions am I most profitable in? Help me optimize my Power of 3 (AMD) entries and identify my best trading windows." },
 ];
 
 function CoachContent() {

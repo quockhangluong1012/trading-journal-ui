@@ -36,6 +36,7 @@ import {
   Gauge,
   AlertTriangle,
   Loader2,
+  Layers,
 } from "lucide-react"
 import {
   EmotionTagApi,
@@ -52,6 +53,7 @@ import { api, ApiResponse } from "@/lib/api"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 import { AxiosResponse } from "axios"
+import { IctContextFields, IctPreTradeChecklist } from "@/components/trade/ict-trade-fields"
 import {
   buildCreateTradePayload,
   calculateTradeRiskMetrics,
@@ -276,6 +278,13 @@ export function CreateTradePage({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [currentStep, setCurrentStep] = useState(0)
 
+  // ICT Methodology state
+  const [ictPowerOf3, setIctPowerOf3] = useState<number | null>(null)
+  const [ictDailyBias, setIctDailyBias] = useState<number | null>(null)
+  const [ictMarketStructure, setIctMarketStructure] = useState<number | null>(null)
+  const [ictPremiumDiscount, setIctPremiumDiscount] = useState<number | null>(null)
+  const [ictChecklist, setIctChecklist] = useState<string[]>([])
+
   const WIZARD_STEPS = [
     { id: "setup", label: "Setup" },
     { id: "context", label: "Context & Psych" },
@@ -492,6 +501,10 @@ export function CreateTradePage({
         checkedItems,
         tradingSession,
         activeSessionId: activeSession?.id ?? null,
+        ictPowerOf3: ictPowerOf3,
+        ictDailyBias: ictDailyBias,
+        ictMarketStructure: ictMarketStructure,
+        ictPremiumDiscount: ictPremiumDiscount,
       })
 
       const response = await api.post<ApiResponse<number>>("/v1/trade-histories", payload)
@@ -1467,6 +1480,33 @@ export function CreateTradePage({
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                     Use this to compare conviction against the eventual outcome in your review workflow.
                   </p>
+                </div>
+              </div>
+            </TradeFormSection>
+
+            {/* ICT Methodology Section */}
+            <TradeFormSection
+              title="ICT Methodology"
+              description="Annotate your trade with ICT concepts — Power of 3 (AMD), market structure, and zone classification."
+              icon={<Layers className="h-4 w-4 text-cyan-400" />}
+            >
+              <div className="space-y-6">
+                <IctContextFields
+                  powerOf3Phase={ictPowerOf3}
+                  dailyBias={ictDailyBias}
+                  marketStructure={ictMarketStructure}
+                  premiumDiscount={ictPremiumDiscount}
+                  onPowerOf3Change={setIctPowerOf3}
+                  onDailyBiasChange={setIctDailyBias}
+                  onMarketStructureChange={setIctMarketStructure}
+                  onPremiumDiscountChange={setIctPremiumDiscount}
+                />
+
+                <div className="border-t border-border/40 pt-4">
+                  <IctPreTradeChecklist
+                    checkedItems={ictChecklist}
+                    onToggle={(id) => setIctChecklist((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
+                  />
                 </div>
               </div>
             </TradeFormSection>

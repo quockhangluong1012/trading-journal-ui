@@ -9,7 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PerformanceHeatmap } from "@/components/analytics/performance-heatmap"
 import { MetricCard, AnalyticsPageSkeleton, fmt, pct, ANALYTICS_SURFACE_CLASS } from "@/components/analytics/metric-card"
 import { EquityCurveChart, MonthlyReturnsChart, DrawdownChart, WinLossDistribution, DayOfWeekChart, PerformanceRadar } from "@/components/analytics/analytics-charts"
-import { AssetPerformanceChart, InsightsPanel, LongShortSplit, SessionBreakdownPlaceholder, ExportButton } from "@/components/analytics/analytics-panels"
+import { AssetPerformanceChart, InsightsPanel, LongShortSplit, ExportButton } from "@/components/analytics/analytics-panels"
+import { KillzonePerformanceDashboard } from "@/components/analytics/killzone-performance"
+import { ConceptPerformanceDashboard } from "@/components/analytics/concept-performance"
 import { SetupPerformanceDashboard } from "@/components/analytics/setup-performance-dashboard"
 import { TradeEventCorrelation } from "@/components/analytics/trade-event-correlation"
 import { EquityCurveWithEvents } from "@/components/analytics/equity-curve-with-events"
@@ -172,11 +174,12 @@ function AnalyticsContent() {
             </TabsContent>
 
             <TabsContent value="breakdown" className="space-y-6">
+              <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Clock className="h-4 w-4 text-amber-400" />Killzone Performance</CardTitle><CardDescription className="text-muted-foreground">Performance breakdown across ICT killzones — identify your best trading sessions</CardDescription></CardHeader><CardContent><KillzonePerformanceDashboard filter={FILTER_LABELS[range] ?? AnalyticsFilter.AllTime} /></CardContent></Card>
+              <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Layers className="h-4 w-4 text-cyan-400" />ICT Concept Performance</CardTitle><CardDescription className="text-muted-foreground">Win rate and P&L breakdown by ICT concepts (OB, FVG, BOS, etc.)</CardDescription></CardHeader><CardContent><ConceptPerformanceDashboard filter={FILTER_LABELS[range] ?? AnalyticsFilter.AllTime} /></CardContent></Card>
               <div className="grid gap-6 lg:grid-cols-2">
                 <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><PieChartIcon className="h-4 w-4 text-primary" />Performance by asset</CardTitle><CardDescription className="text-muted-foreground">P&L and win rate per instrument</CardDescription></CardHeader><CardContent><AssetPerformanceChart data={assetData} /></CardContent></Card>
-                <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Clock className="h-4 w-4 text-amber-400" />Performance by session</CardTitle><CardDescription className="text-muted-foreground">Results across trading zones and killzones</CardDescription></CardHeader><CardContent><SessionBreakdownPlaceholder /></CardContent></Card>
+                <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Calendar className="h-4 w-4 text-accent" />Performance by day of week</CardTitle><CardDescription className="text-muted-foreground">Identify your strongest and weakest trading days</CardDescription></CardHeader><CardContent><DayOfWeekChart data={dayData} /></CardContent></Card>
               </div>
-              <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Calendar className="h-4 w-4 text-accent" />Performance by day of week</CardTitle><CardDescription className="text-muted-foreground">Identify your strongest and weakest trading days</CardDescription></CardHeader><CardContent><DayOfWeekChart data={dayData} /></CardContent></Card>
             </TabsContent>
 
             <TabsContent value="setups" className="space-y-6">

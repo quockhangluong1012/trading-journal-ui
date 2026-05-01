@@ -123,3 +123,68 @@ export async function fetchSetupPerformance(filter: AnalyticsFilter): Promise<Se
   const response = await api.get<ApiResponse<SetupPerformance[]>>(`/v1/analytics/setup-performance?filter=${filter}`)
   return response.data.value
 }
+
+// ── Killzone Performance ──
+
+export interface KillzonePerformance {
+  zoneId: number
+  zoneName: string
+  timeWindow: string
+  totalTrades: number
+  wins: number
+  losses: number
+  winRate: number
+  totalPnl: number
+  avgPnl: number
+  avgWin: number
+  avgLoss: number
+  profitFactor: number
+  expectancy: number
+  avgRiskReward: number
+  bestDay: string
+  grade: string
+}
+
+export interface DayZoneHeatmapCell {
+  day: string
+  zone: string
+  count: number
+  pnl: number
+  winRate: number
+}
+
+export interface KillzonePerformanceResponse {
+  zones: KillzonePerformance[]
+  heatmap: DayZoneHeatmapCell[]
+}
+
+export async function fetchKillzonePerformance(filter: AnalyticsFilter): Promise<KillzonePerformanceResponse> {
+  const response = await api.get<ApiResponse<KillzonePerformanceResponse>>(`/v1/analytics/killzone-performance?filter=${filter}`)
+  return response.data.value
+}
+
+// ── ICT Concept Performance ──
+
+export interface ConceptMetric {
+  conceptId: number
+  conceptName: string
+  totalTrades: number
+  wins: number
+  losses: number
+  winRate: number
+  totalPnl: number
+  avgPnl: number
+  profitFactor: number
+  expectancy: number
+  avgRiskReward: number
+  grade: string
+}
+
+export interface ConceptPerformanceResponse {
+  concepts: ConceptMetric[]
+}
+
+export async function fetchConceptPerformance(filter: AnalyticsFilter): Promise<ConceptPerformanceResponse> {
+  const response = await api.get<ApiResponse<ConceptPerformanceResponse>>(`/v1/analytics/concept-performance?filter=${filter}`)
+  return response.data.value
+}
