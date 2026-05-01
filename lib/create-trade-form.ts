@@ -68,6 +68,10 @@ export interface CreateTradePayload {
   tradeHistoryChecklists: number[] | null
   tradingZoneId: number | null
   tradingSessionId: number | null
+  powerOf3Phase: number | null
+  dailyBias: number | null
+  marketStructure: number | null
+  premiumDiscount: number | null
 }
 
 interface BuildCreateTradePayloadOptions {
@@ -79,6 +83,10 @@ interface BuildCreateTradePayloadOptions {
   checkedItems: string[]
   tradingSession: string
   activeSessionId?: string | null
+  ictPowerOf3?: number | null
+  ictDailyBias?: number | null
+  ictMarketStructure?: number | null
+  ictPremiumDiscount?: number | null
 }
 
 const parseOptionalNumber = (value: string): number | null => {
@@ -219,6 +227,10 @@ export const buildCreateTradePayload = ({
   tradeHistoryChecklists: parseStringIdList(checkedItems),
   tradingZoneId: parseOptionalInteger(tradingSession),
   tradingSessionId: parseOptionalInteger(activeSessionId),
+  powerOf3Phase: options.ictPowerOf3 ?? null,
+  dailyBias: options.ictDailyBias ?? null,
+  marketStructure: options.ictMarketStructure ?? null,
+  premiumDiscount: options.ictPremiumDiscount ?? null,
 })
 
 export const sanitizeTradeReturnPath = (
