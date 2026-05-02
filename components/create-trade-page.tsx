@@ -64,6 +64,7 @@ import {
   type TradeFormData,
   validateCreateTradeScreenshot,
 } from "@/lib/create-trade-form"
+import { getTemplateById } from "@/lib/template-api"
 
 export interface TradingZoneApi {
   id: number
@@ -88,6 +89,16 @@ export interface TechnicalAnalysisTagApi {
 
 interface CreateTradePageProps {
   returnTo?: string
+  templateId?: number
+  queryOverrides?: {
+    asset?: string
+    position?: string
+    entry?: string
+    sl?: string
+    t1?: string
+    zone?: string
+    confidence?: string
+  }
   onSuccess?: () => void
 }
 
@@ -253,6 +264,8 @@ function TradeSummaryStat({
 
 export function CreateTradePage({
   returnTo = DEFAULT_CREATE_TRADE_RETURN_PATH,
+  templateId,
+  queryOverrides,
   onSuccess,
 }: CreateTradePageProps) {
   const router = useRouter()
@@ -262,9 +275,9 @@ export function CreateTradePage({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [screenshots, setScreenshots] = useState<UploadedTradeScreenshot[]>([])
   const [selectedEmotions, setSelectedEmotions] = useState<string[]>([])
-  const [confidenceLevel, setConfidenceLevel] = useState<number>(0)
+  const [confidenceLevel, setConfidenceLevel] = useState<number>(queryOverrides?.confidence ? Number(queryOverrides.confidence) : 0)
   const [analysisTags, setAnalysisTags] = useState<string[]>([])
-  const [tradingSession, setTradingSession] = useState("")
+  const [tradingSession, setTradingSession] = useState(queryOverrides?.zone || "")
   const [checkedItems, setCheckedItems] = useState<string[]>([])
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([])
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>([])
@@ -274,7 +287,15 @@ export function CreateTradePage({
   const [selectedModelId, setSelectedModelId] = useState<string>("")
   const [selectedModelDetail, setSelectedModelDetail] =
     useState<ChecklistModelDetailApi | null>(null)
-  const [formData, setFormData] = useState<TradeFormData>(getInitialTradeFormData)
+  const [formData, setFormData] = useState<TradeFormData>(() => {
+    const initial = getInitialTradeFormData()
+    if (queryOverrides?.asset) initial.asset = queryOverrides.asset
+    if (queryOverrides?.position) initial.position = Number(queryOverrides.position) as PositionType
+    if (queryOverrides?.entry) initial.entryPrice = queryOverrides.entry
+    if (queryOverrides?.sl) initial.stopLoss = queryOverrides.sl
+    if (queryOverrides?.t1) initial.targetTier1 = queryOverrides.t1
+    return initial
+  })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [currentStep, setCurrentStep] = useState(0)
 
@@ -292,6 +313,53 @@ export function CreateTradePage({
   ]
 
   const checklistDetailRequestRef = useRef(0)
+
+  // Effect to load template
+  useEffect(() => {
+    if (!templateId) return
+    let isActive = true
+    const loadTemplate = async () => {
+      try {
+        const res = await getTemplateById(templateId)
+        if (!isActive) return
+        if (res.data.isSuccess && res.data.value) {
+          const tpl = res.data.value
+          setFormData((prev) => ({
+            ...prev,
+            asset: queryOverrides?.asset || tpl.asset || prev.asset,
+            position: queryOverrides?.position ? (Number(queryOverrides.position) as PositionType) : (tpl.position != null ? (tpl.position as PositionType) : prev.position),
+            stopLoss: queryOverrides?.sl || (tpl.defaultStopLoss != null ? String(tpl.defaultStopLoss) : prev.stopLoss),
+            targetTier1: queryOverrides?.t1 || (tpl.defaultTargetTier1 != null ? String(tpl.defaultTargetTier1) : prev.targetTier1),
+            targetTier2: tpl.defaultTargetTier2 != null ? String(tpl.defaultTargetTier2) : prev.targetTier2,
+            targetTier3: tpl.defaultTargetTier3 != null ? String(tpl.defaultTargetTier3) : prev.targetTier3,
+            notes: tpl.defaultNotes || prev.notes,
+          }))
+          if (!queryOverrides?.zone && tpl.tradingZoneId != null) {
+            setTradingSession(String(tpl.tradingZoneId))
+          }
+          if (!queryOverrides?.confidence && tpl.defaultConfidenceLevel != null) {
+            setConfidenceLevel(tpl.defaultConfidenceLevel)
+          }
+          if (tpl.defaultEmotionTagIds && tpl.defaultEmotionTagIds.length > 0) {
+             setSelectedEmotions(tpl.defaultEmotionTagIds.map(String))
+          }
+          if (tpl.defaultTechnicalAnalysisTagIds && tpl.defaultTechnicalAnalysisTagIds.length > 0) {
+             setAnalysisTags(tpl.defaultTechnicalAnalysisTagIds.map(String))
+          }
+          if (tpl.tradingSetupId != null) {
+            setSelectedModelId(String(tpl.tradingSetupId))
+          }
+          if (tpl.defaultChecklistIds && tpl.defaultChecklistIds.length > 0) {
+            setCheckedItems(tpl.defaultChecklistIds.map(String))
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load template", err)
+      }
+    }
+    void loadTemplate()
+    return () => { isActive = false }
+  }, [templateId, queryOverrides])
 
   useEffect(() => {
     let isActive = true
