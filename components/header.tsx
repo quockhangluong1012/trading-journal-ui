@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Activity,
   BarChart3,
   Bell,
   BookOpen,
@@ -52,7 +51,6 @@ const navigation = [
   { name: "Trade History", href: "/history", icon: History },
   { name: "Psychology", href: "/psychology", icon: Brain },
   { name: "Lessons", href: "/lessons", icon: BookOpen },
-  { name: "Backtest", href: "/backtest", icon: Activity },
   { name: "Scanner", href: "/scanner", icon: Radar },
   { name: "Risk", href: "/risk", icon: Shield },
   { name: "Admin", href: "/admin", icon: Settings2 },

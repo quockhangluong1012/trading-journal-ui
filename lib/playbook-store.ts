@@ -167,7 +167,7 @@ export const sampleStrategies: PlaybookStrategy[] = [
     id: "strat-1",
     name: "SMC Order Block Scalping",
     description: "Identifies order blocks on the 15m timeframe and enters on retest with tight stops. Targets 2R minimum.",
-    type: "backtest",
+    type: "forward",
     status: "completed",
     createdAt: "2024-11-15",
     asset: "BTC/USD",
@@ -209,7 +209,7 @@ export const sampleStrategies: PlaybookStrategy[] = [
     id: "strat-2",
     name: "Fibonacci Golden Pocket Swing",
     description: "Swing trading strategy using Fibonacci retracement golden pocket (0.618-0.65) zone entries on the 4H timeframe.",
-    type: "backtest",
+    type: "forward",
     status: "completed",
     createdAt: "2024-12-01",
     asset: "ETH/USD",
@@ -419,7 +419,7 @@ export const builtInTemplates: StrategyTemplate[] = [
 ]
 
 // --- Impact Estimator ---
-// Estimates how parameter changes affect key metrics WITHOUT running a full backtest
+// Estimates how parameter changes affect key metrics WITHOUT running a full simulation
 
 export interface ImpactEstimate {
   estimatedWinRate: number
@@ -513,8 +513,8 @@ export function estimateImpact(config: Omit<PlaybookStrategy, "id" | "createdAt"
 
 // --- Engine helpers ---
 
-export function runBacktest(strategy: PlaybookStrategy): PlaybookResults {
-  // Simulated backtest engine - generates realistic results based on strategy parameters
+export function runSimulation(strategy: PlaybookStrategy): PlaybookResults {
+  // Simulated engine - generates realistic results based on strategy parameters
   const months =
     (new Date(strategy.dateRange.end).getTime() - new Date(strategy.dateRange.start).getTime()) /
     (1000 * 60 * 60 * 24 * 30)
@@ -571,10 +571,10 @@ export function runBacktest(strategy: PlaybookStrategy): PlaybookResults {
   }
 }
 
-// --- Progressive Backtest Engine ---
+// --- Progressive Simulation Engine ---
 // Generates partial results at each tick so the UI can stream live updates
 
-export interface BacktestProgress {
+export interface SimulationProgress {
   progress: number // 0-100
   tradesProcessed: number
   totalTrades: number
@@ -585,13 +585,13 @@ export interface BacktestProgress {
   phase: "initializing" | "processing" | "finalizing" | "complete"
 }
 
-export function runProgressiveBacktest(
+export function runProgressiveSimulation(
   strategy: PlaybookStrategy,
-  onProgress: (progress: BacktestProgress) => void,
+  onProgress: (progress: SimulationProgress) => void,
   onComplete: (results: PlaybookResults) => void,
   totalDuration: number = 3000 // total ms for the simulation
 ): () => void {
-  const finalResults = runBacktest(strategy)
+  const finalResults = runSimulation(strategy)
   const totalTrades = finalResults.totalTrades
   const totalTicks = 20
   const tickInterval = totalDuration / totalTicks
@@ -618,7 +618,7 @@ export function runProgressiveBacktest(
     const curveSliceLen = Math.max(1, Math.round((tick / totalTicks) * finalResults.equityCurve.length))
     const equitySoFar = finalResults.equityCurve.slice(0, curveSliceLen)
 
-    const phase: BacktestProgress["phase"] =
+    const phase: SimulationProgress["phase"] =
       pct < 10 ? "initializing" : pct < 95 ? "processing" : pct < 100 ? "finalizing" : "complete"
 
     onProgress({

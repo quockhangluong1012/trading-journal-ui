@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-This document outlines the technical architecture, technology stack, and structural conventions of the `trading-journal-ui` application. The application is a modern, responsive, and real-time frontend built to interface with the Trading Journal Backend, providing traders with tools for trade logging, backtesting, real-time market scanning, psychological tracking, and analytics.
+This document outlines the technical architecture, technology stack, and structural conventions of the `trading-journal-ui` application. The application is a modern, responsive, and real-time frontend built to interface with the Trading Journal Backend, providing traders with tools for trade logging, real-time market scanning, psychological tracking, and analytics.
 
 ## 2. Technology Stack
 
@@ -40,7 +40,7 @@ trading-journal-ui/
 ├── app/                  # Next.js App Router root (Pages, Layouts, Routing)
 │   ├── admin/            # Administrative dashboard and user management
 │   ├── analytics/        # Performance metrics and charting
-│   ├── backtest/         # Trading simulation and backtest sessions
+
 │   ├── history/          # Historical trade logs
 │   ├── review/           # Trade review workflows and PDF exports
 │   ├── scanner/          # Real-time algorithmic market scanner
@@ -75,7 +75,7 @@ The application utilizes a **Client-Side Auth Guard** pattern to secure routes.
 Global state is divided into bounded contexts (slices) to prevent unnecessary re-renders and maintain organization:
 *   **`useSessionStore`:** Manages user profile and preferences.
 *   **`scanner-store`:** Manages real-time scanner configurations, active watchlists, and algorithmic pattern detections.
-*   **`trade-store` & `backtest-store`:** Manages live execution context and simulated backtest session states respectively.
+*   **`trade-store`:** Manages live trade execution context.
 *   **`notification-store`:** Buffers and dispatches toast notifications from SignalR events.
 
 ### 4.4. Real-Time Infrastructure
@@ -93,8 +93,7 @@ The frontend establishes persistent WebSocket connections to the backend using S
 
 1.  **Scanner:** Provides real-time algorithmic tracking of assets. Features dynamic watchlists, timeframe confluence configuration, and integration with Economic Calendars.
 2.  **Trades & Setups:** Allows granular logging of entries/exits, R-multiple calculations, and tagging trades to predefined strategies (Setups). Includes a rich-text integrated "Trading Playbook".
-3.  **Backtesting:** A simulation environment that streams historical market data (via Yahoo Finance API mock/playback), allowing users to practice execution against past market conditions.
-4.  **Analytics & Review:** Consolidates data into performance heatmaps, win-rate distributions, and psychological discipline scoring. Supports exporting reviews to PDF via `jspdf`.
+3.  **Analytics & Review:** Consolidates data into performance heatmaps, win-rate distributions, and psychological discipline scoring. Supports exporting reviews to PDF via `jspdf`.
 
 ## 7. Build and Deployment
 

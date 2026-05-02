@@ -333,14 +333,14 @@ export default function LoginPage() {
           </h1>
           <p className="max-w-sm text-pretty text-primary-foreground/70 leading-relaxed">
             A comprehensive trading journal to track, analyze, and improve your
-            performance with real-time insights and strategy backtesting.
+            performance with real-time insights and advanced analytics.
           </p>
 
           {/* Feature highlights */}
           <div className="flex flex-col gap-3 mt-2">
             {[
               "Real-time portfolio analytics",
-              "Strategy backtesting playbook",
+              "AI-powered trade coaching",
               "Psychology and discipline tracking",
             ].map((feature) => (
               <div key={feature} className="flex items-center gap-2.5 text-sm text-primary-foreground/80">
