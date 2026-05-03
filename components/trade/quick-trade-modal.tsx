@@ -187,11 +187,14 @@ export function QuickTradeModal({ open, onOpenChange, prefillTemplate }: QuickTr
   const handleFullForm = () => {
     // Navigate to full form, passing template data via query
     const params = new URLSearchParams()
+    if (selectedTemplateId) params.set("templateId", selectedTemplateId)
     if (asset) params.set("asset", asset)
     if (position) params.set("position", position)
     if (entryPrice) params.set("entry", entryPrice)
     if (stopLoss) params.set("sl", stopLoss)
     if (targetTier1) params.set("t1", targetTier1)
+    if (tradingZoneId) params.set("zone", tradingZoneId)
+    if (confidenceLevel) params.set("confidence", confidenceLevel)
     handleClose(false)
     router.push(`/trade/new${params.toString() ? `?${params.toString()}` : ""}`)
   }

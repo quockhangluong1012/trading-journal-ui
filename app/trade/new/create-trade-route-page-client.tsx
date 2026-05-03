@@ -15,6 +15,17 @@ export function CreateTradeRoutePageClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const returnTo = sanitizeTradeReturnPath(searchParams.get("next"))
+  const templateIdStr = searchParams.get("templateId")
+  const templateId = templateIdStr ? Number.parseInt(templateIdStr, 10) : undefined
+  const queryOverrides = {
+    asset: searchParams.get("asset") || undefined,
+    position: searchParams.get("position") || undefined,
+    entry: searchParams.get("entry") || undefined,
+    sl: searchParams.get("sl") || undefined,
+    t1: searchParams.get("t1") || undefined,
+    zone: searchParams.get("zone") || undefined,
+    confidence: searchParams.get("confidence") || undefined,
+  }
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -44,7 +55,11 @@ export function CreateTradeRoutePageClient() {
     <div className="min-h-screen bg-background">
       <Header />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <CreateTradePageContent returnTo={returnTo} />
+        <CreateTradePageContent 
+          returnTo={returnTo} 
+          templateId={templateId} 
+          queryOverrides={queryOverrides} 
+        />
       </main>
     </div>
   )

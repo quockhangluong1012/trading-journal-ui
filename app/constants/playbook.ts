@@ -1,4 +1,4 @@
-export type PlaybookType = "backtest" | "forward"
+export type PlaybookType = "forward"
 export type PlaybookStatus = "draft" | "running" | "completed"
 export type StopLossType = "fixed" | "atr" | "percent"
 export type TakeProfitType = "fixed" | "rr-ratio" | "percent"

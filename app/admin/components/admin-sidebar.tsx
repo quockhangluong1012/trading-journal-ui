@@ -8,8 +8,7 @@ import {
   Heart, 
   BarChart3, 
   Clock, 
-  LayoutDashboard,
-  Database
+  LayoutDashboard
 } from "lucide-react";
 
 export function AdminSidebar() {
@@ -21,7 +20,6 @@ export function AdminSidebar() {
     { name: "Emotion Tags", href: "/admin/emotions", icon: Heart },
     { name: "Technical Analysis", href: "/admin/technical-analysis", icon: BarChart3 },
     { name: "Trading Zones", href: "/admin/trading-zones", icon: Clock },
-    { name: "Backtest Assets", href: "/admin/assets", icon: Database },
   ];
 
   return (
