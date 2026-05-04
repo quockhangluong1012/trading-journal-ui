@@ -41,21 +41,21 @@ interface ApiResponse<T> {
 // ── API Functions ────────────────────────────────────────────────────
 
 export async function getKarmaSummary(): Promise<KarmaSummary> {
-  const res = await api.get<ApiResponse<KarmaSummary>>("/api/v1/karma/summary");
+  const res = await api.get<ApiResponse<KarmaSummary>>("/v1/karma/summary");
   return res.data.value;
 }
 
 export async function getKarmaHistory(days: number = 30): Promise<KarmaEvent[]> {
-  const res = await api.get<ApiResponse<KarmaEvent[]>>(`/api/v1/karma/history?days=${days}`);
+  const res = await api.get<ApiResponse<KarmaEvent[]>>(`/v1/karma/history?days=${days}`);
   return res.data.value;
 }
 
 export async function getAchievements(): Promise<Achievement[]> {
-  const res = await api.get<ApiResponse<Achievement[]>>("/api/v1/karma/achievements");
+  const res = await api.get<ApiResponse<Achievement[]>>("/v1/karma/achievements");
   return res.data.value;
 }
 
 export async function recalculateKarma(): Promise<KarmaSummary> {
-  const res = await api.post<ApiResponse<KarmaSummary>>("/api/v1/karma/recalculate");
+  const res = await api.post<ApiResponse<KarmaSummary>>("/v1/karma/recalculate");
   return res.data.value;
 }

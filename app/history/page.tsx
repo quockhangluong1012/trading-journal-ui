@@ -111,18 +111,17 @@ function HistoryContent() {
   const fetchTrades = useCallback(async () => {
     try {
       setIsLoading(true)
-      const payload = {
-        asset: searchQuery,
-        position: positionFilter === PositionType.All ? null : positionFilter,
-        status: statusFilter === TradeStatus.All ? null : statusFilter,
-        fromDate: dateFrom || null,
-        toDate: dateTo || null,
-        page: page,
-        pageSize: pageSize
-      }
-      const response = await api.post<ApiPaginatedResponse<TradeHistory>>(
-        "/v1/trade-histories/search",
-        payload,
+      const queryParams = new URLSearchParams()
+      if (searchQuery) queryParams.set("asset", searchQuery)
+      if (positionFilter !== PositionType.All) queryParams.set("position", String(positionFilter))
+      if (statusFilter !== TradeStatus.All) queryParams.set("status", String(statusFilter))
+      if (dateFrom) queryParams.set("fromDate", dateFrom)
+      if (dateTo) queryParams.set("toDate", dateTo)
+      queryParams.set("page", String(page))
+      queryParams.set("pageSize", String(pageSize))
+
+      const response = await api.get<ApiPaginatedResponse<TradeHistory>>(
+        `/v1/trade-histories?${queryParams.toString()}`
       );
       if (response.data?.isSuccess) {
         const dataValue = response.data.value || {}

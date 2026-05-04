@@ -14,6 +14,9 @@ import {
   History,
   Lock,
   CheckCircle2,
+  Shield,
+  Swords,
+  Gem,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,9 +47,24 @@ const LEVEL_CONFIG: Record<number, { icon: typeof Star; color: string; bg: strin
   5: { icon: Zap, color: "text-amber-400", bg: "bg-amber-500/10", gradient: "from-amber-600 to-amber-400" },
   6: { icon: Zap, color: "text-orange-400", bg: "bg-orange-500/10", gradient: "from-orange-600 to-orange-400" },
   7: { icon: Award, color: "text-rose-400", bg: "bg-rose-500/10", gradient: "from-rose-600 to-rose-400" },
-  8: { icon: Crown, color: "text-fuchsia-400", bg: "bg-fuchsia-500/10", gradient: "from-fuchsia-600 to-fuchsia-400" },
+  8: { icon: Award, color: "text-fuchsia-400", bg: "bg-fuchsia-500/10", gradient: "from-fuchsia-600 to-fuchsia-400" },
   9: { icon: Crown, color: "text-cyan-300", bg: "bg-cyan-500/10", gradient: "from-cyan-500 to-cyan-300" },
   10: { icon: Crown, color: "text-yellow-300", bg: "bg-yellow-500/10", gradient: "from-yellow-500 to-yellow-300" },
+  11: { icon: Shield, color: "text-teal-400", bg: "bg-teal-500/10", gradient: "from-teal-600 to-teal-400" },
+  12: { icon: Shield, color: "text-sky-400", bg: "bg-sky-500/10", gradient: "from-sky-600 to-sky-400" },
+  13: { icon: Shield, color: "text-lime-400", bg: "bg-lime-500/10", gradient: "from-lime-600 to-lime-400" },
+  14: { icon: Swords, color: "text-pink-400", bg: "bg-pink-500/10", gradient: "from-pink-600 to-pink-400" },
+  15: { icon: Swords, color: "text-indigo-400", bg: "bg-indigo-500/10", gradient: "from-indigo-600 to-indigo-400" },
+  16: { icon: Swords, color: "text-emerald-300", bg: "bg-emerald-400/10", gradient: "from-emerald-500 to-emerald-300" },
+  17: { icon: Gem, color: "text-violet-300", bg: "bg-violet-400/10", gradient: "from-violet-500 to-violet-300" },
+  18: { icon: Gem, color: "text-blue-300", bg: "bg-blue-400/10", gradient: "from-blue-500 to-blue-300" },
+  19: { icon: Gem, color: "text-rose-300", bg: "bg-rose-400/10", gradient: "from-rose-500 to-rose-300" },
+  20: { icon: Gem, color: "text-amber-300", bg: "bg-amber-400/10", gradient: "from-amber-500 to-amber-300" },
+  21: { icon: Crown, color: "text-fuchsia-300", bg: "bg-fuchsia-400/10", gradient: "from-fuchsia-500 to-fuchsia-300" },
+  22: { icon: Crown, color: "text-cyan-200", bg: "bg-cyan-400/10", gradient: "from-cyan-400 to-cyan-200" },
+  23: { icon: Crown, color: "text-orange-300", bg: "bg-orange-400/10", gradient: "from-orange-500 to-orange-300" },
+  24: { icon: Crown, color: "text-red-300", bg: "bg-red-400/10", gradient: "from-red-500 to-red-300" },
+  25: { icon: Crown, color: "text-yellow-200", bg: "bg-yellow-400/15", gradient: "from-yellow-400 to-yellow-200" },
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -164,7 +182,7 @@ function KarmaPageContent() {
   }
 
   const level = summary?.level ?? 1;
-  const clampedLevel = Math.min(level, 10);
+  const clampedLevel = Math.min(level, 25);
   const config = LEVEL_CONFIG[clampedLevel] ?? LEVEL_CONFIG[1];
   const LevelIcon = config.icon;
   const totalKarma = summary?.totalKarma ?? 0;

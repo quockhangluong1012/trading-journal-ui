@@ -16,6 +16,20 @@ interface TradeSearchRequest {
   pageSize?: number
 }
 
+/** Converts search params into a URL query string for GET /v1/trade-histories */
+function buildTradeQueryString(params: TradeSearchRequest): string {
+  const query = new URLSearchParams()
+  if (params.asset) query.set("asset", params.asset)
+  if (params.position !== undefined && params.position !== null) query.set("position", String(params.position))
+  if (params.status !== undefined && params.status !== null) query.set("status", String(params.status))
+  if (params.fromDate) query.set("fromDate", params.fromDate)
+  if (params.toDate) query.set("toDate", params.toDate)
+  if (params.page) query.set("page", String(params.page))
+  if (params.pageSize) query.set("pageSize", String(params.pageSize))
+  const qs = query.toString()
+  return qs ? `?${qs}` : ""
+}
+
 interface PaginationResult<T> {
   values: T[]
   totalItems: number
@@ -162,9 +176,8 @@ export const useTradeApiStore = create<TradeApiStore>((set, get) => ({
     try {
       attachToken()
       const searchParams = params ?? get().searchParams
-      const res = await api.post<ApiResponse<PaginationResult<TradeApiResponseDto>>>(
-        "/v1/trade-histories/search",
-        searchParams
+      const res = await api.get<ApiResponse<PaginationResult<TradeApiResponseDto>>>(
+        `/v1/trade-histories${buildTradeQueryString(searchParams)}`
       )
 
       if (res.data.isSuccess && res.data.value) {
@@ -188,9 +201,8 @@ export const useTradeApiStore = create<TradeApiStore>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       attachToken()
-      const res = await api.post<ApiResponse<PaginationResult<TradeApiResponseDto>>>(
-        "/v1/trade-histories/search",
-        { page: 1, pageSize: 1000 }
+      const res = await api.get<ApiResponse<PaginationResult<TradeApiResponseDto>>>(
+        `/v1/trade-histories${buildTradeQueryString({ page: 1, pageSize: 1000 })}`
       )
 
       if (res.data.isSuccess && res.data.value) {

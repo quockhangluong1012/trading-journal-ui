@@ -5,6 +5,8 @@ import { GitBranch } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { TodaySetupDialog } from "@/components/dashboard/today-setup-dialog"
+import { DailyNotesDialog } from "@/components/dashboard/daily-notes-dialog"
+import { DailyNotesBanner } from "@/components/dashboard/daily-notes-banner"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/header"
@@ -27,6 +29,7 @@ import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
 import { useTodaySetup } from "@/hooks/use-today-setup"
+import { useDailyNotes } from "@/hooks/use-daily-notes"
 import Link from "next/link";
 
 const timeFilterOptions = [
@@ -50,11 +53,13 @@ const dashboardFilterLabels: Record<DashboardFilter, string> = {
 function DashboardContent() {
   const [filter, setFilter] = useState<DashboardFilter>(DashboardFilter.All)
   const [isTodaySetupDialogOpen, setIsTodaySetupDialogOpen] = useState(false)
+  const [isDailyNotesDialogOpen, setIsDailyNotesDialogOpen] = useState(false)
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const isDashboardEnabled = Boolean(user) && !isLoading
   const { setup: todaySetup } = useTodaySetup(user?.email ?? user?.username ?? null)
+  const dailyNotes = useDailyNotes(user?.email ?? user?.username ?? null)
   const {
     stats,
     winLossData,
@@ -106,6 +111,13 @@ function DashboardContent() {
     }
   }, [todaySetup])
 
+  // Auto-open daily notes popup on first visit of the day
+  useEffect(() => {
+    if (dailyNotes.shouldShowPopup && !isLoading && user) {
+      setIsDailyNotesDialogOpen(true)
+    }
+  }, [dailyNotes.shouldShowPopup, isLoading, user])
+
   const overview = useMemo(
     () =>
       buildDashboardOverview({
@@ -142,6 +154,13 @@ function DashboardContent() {
         <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
         <div className="space-y-6">
+          {/* Daily Notes Banner — always visible at top */}
+          <DailyNotesBanner
+            note={dailyNotes.note}
+            isLoading={dailyNotes.isLoading}
+            onClick={() => setIsDailyNotesDialogOpen(true)}
+          />
+
           <DashboardCommandCenter
             filter={filter}
             filterLabel={dashboardFilterLabels[filter]}
@@ -209,6 +228,15 @@ function DashboardContent() {
         open={isTodaySetupDialogOpen}
         onOpenChange={setIsTodaySetupDialogOpen}
         setup={todaySetup}
+      />
+
+      <DailyNotesDialog
+        open={isDailyNotesDialogOpen}
+        onOpenChange={setIsDailyNotesDialogOpen}
+        note={dailyNotes.note}
+        isSaving={dailyNotes.isSaving}
+        onSave={dailyNotes.save}
+        onDismiss={dailyNotes.dismissPopup}
       />
       </div>
     </div>

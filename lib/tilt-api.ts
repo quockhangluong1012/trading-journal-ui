@@ -20,16 +20,16 @@ interface ApiResponse<T> {
 }
 
 export async function getTiltScore(): Promise<TiltScore> {
-  const res = await api.get<ApiResponse<TiltScore>>("/api/v1/tilt/score");
+  const res = await api.get<ApiResponse<TiltScore>>("/v1/tilt/score");
   return res.data.value;
 }
 
 export async function recalculateTilt(): Promise<TiltScore> {
-  const res = await api.post<ApiResponse<TiltScore>>("/api/v1/tilt/recalculate");
+  const res = await api.post<ApiResponse<TiltScore>>("/v1/tilt/recalculate");
   return res.data.value;
 }
 
 export async function getTiltHistory(days: number = 30): Promise<TiltScore[]> {
-  const res = await api.get<ApiResponse<TiltScore[]>>(`/api/v1/tilt/history?days=${days}`);
+  const res = await api.get<ApiResponse<TiltScore[]>>(`/v1/tilt/history?days=${days}`);
   return res.data.value;
 }

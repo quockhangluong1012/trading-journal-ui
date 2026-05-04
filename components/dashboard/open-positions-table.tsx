@@ -57,18 +57,14 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
     try {
       setIsLoading(true)
       const fromDate = getFromDateForFilter(filter)
-      const payload = {
-        asset: "",
-        position: null,
-        status: TradeStatus.Open,
-        fromDate: fromDate,
-        toDate: null,
-        page: 1,
-        pageSize: 10
-      }
-      const response = await api.post<ApiPaginatedResponse<TradeHistory>>(
-        "/v1/trade-histories/search",
-        payload,
+      const queryParams = new URLSearchParams()
+      queryParams.set("status", String(TradeStatus.Open))
+      if (fromDate) queryParams.set("fromDate", fromDate)
+      queryParams.set("page", "1")
+      queryParams.set("pageSize", "10")
+
+      const response = await api.get<ApiPaginatedResponse<TradeHistory>>(
+        `/v1/trade-histories?${queryParams.toString()}`
       );
       if (response.data?.isSuccess) {
         setOpenPositions(response.data.value.values);
