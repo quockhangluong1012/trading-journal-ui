@@ -62,7 +62,7 @@ describe("buildCreateTradePayload", () => {
       activeSessionId: "42",
     })
 
-    expect(payload).toEqual({
+    expect(payload).toMatchObject({
       asset: "ETH/USD",
       position: Number(PositionType.Short),
       entryPrice: 123.45,

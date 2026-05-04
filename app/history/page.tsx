@@ -33,6 +33,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   ArrowUpRight,
   ArrowDownRight,
   Plus,
@@ -43,6 +49,9 @@ import {
   Calendar,
   Filter,
   Loader2,
+  Download,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react"
 import { EmotionTagApi, getTagCategory } from "@/lib/trade-store"
 import {
@@ -63,6 +72,7 @@ import { useAuth } from "@/lib/auth-context"
 import { useRouter, usePathname } from "next/navigation"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { AppShellLoader } from "@/components/app-shell-loader"
+import { exportTrades, ExportFormat } from "@/lib/export-api"
 
 type SortField = "date" | "pnl" | "asset"
 type SortDirection = "asc" | "desc"
@@ -94,6 +104,7 @@ function HistoryContent() {
   const [apiTrades, setApiTrades] = useState<TradeHistory[]>([]);
   const [totalRecords, setTotalRecords] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [page, setPage] = useState(1)
   const pageSize = 10
 
@@ -212,6 +223,32 @@ function HistoryContent() {
     }
   }
 
+  const handleExport = async (format: ExportFormat) => {
+    try {
+      setIsExporting(true)
+      await exportTrades({
+        asset: searchQuery || undefined,
+        position: positionFilter === PositionType.All ? null : positionFilter,
+        status: statusFilter === TradeStatus.All ? null : statusFilter,
+        fromDate: dateFrom || null,
+        toDate: dateTo || null,
+        format,
+      })
+      toast({
+        title: "Export successful",
+        description: `Your trades have been exported as ${format === ExportFormat.Excel ? "Excel" : "CSV"}.`,
+      })
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Export failed",
+        description: "Unable to export trade data. Please try again.",
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -268,12 +305,44 @@ function HistoryContent() {
             <h1 className="text-2xl font-bold text-foreground">Trade History</h1>
             <p className="text-muted-foreground">View and manage all your trades</p>
           </div>
-          <Button className="gap-2" asChild>
-            <Link href={buildCreateTradeHref("/history")}>
-              <Plus className="h-4 w-4" />
-              Create Trade
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2" disabled={isExporting} id="export-trades-btn">
+                  {isExporting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => handleExport(ExportFormat.Csv)}
+                  className="gap-2 cursor-pointer"
+                  id="export-csv-btn"
+                >
+                  <FileText className="h-4 w-4" />
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleExport(ExportFormat.Excel)}
+                  className="gap-2 cursor-pointer"
+                  id="export-excel-btn"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Export as Excel
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button className="gap-2" asChild>
+              <Link href={buildCreateTradeHref("/history")}>
+                <Plus className="h-4 w-4" />
+                Create Trade
+              </Link>
+            </Button>
+          </div>
         </div>
 
         <Tabs defaultValue="trades" className="space-y-4">

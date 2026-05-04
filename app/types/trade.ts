@@ -60,6 +60,7 @@ export interface Trade {
     takeProfit?: number;
     positionSize?: number;
   };
+  aiSummary?: string;
 }
 
 export interface CalendarData {

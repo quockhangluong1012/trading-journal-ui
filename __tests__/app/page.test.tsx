@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import DashboardPage from "../../app/page"
 import type { TradingSetupDetailDto } from "@/lib/setup-api"
+import { SidebarProvider } from "@/components/ui/sidebar"
 
 const replaceSpy = vi.fn()
 
@@ -179,23 +180,35 @@ describe("dashboard page", () => {
   it("shows the today setup badge only when a setup exists for today", () => {
     todaySetupState.setup = createTodaySetup()
 
-    const { rerender } = render(<DashboardPage />)
+    const { rerender } = render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
 
-    expect(screen.getByRole("button", { name: /today setup: wait for the reclaim candle\./i })).toBeInTheDocument()
+    expect(screen.getByText(/wait for the reclaim candle\./i)).toBeInTheDocument()
 
     todaySetupState.setup = null
-    rerender(<DashboardPage />)
+    rerender(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
 
-    expect(screen.queryByRole("button", { name: /today setup:/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/today setup:/i)).not.toBeInTheDocument()
   })
 
   it("opens the read only today setup dialog when the badge is clicked", async () => {
     const user = userEvent.setup()
     todaySetupState.setup = createTodaySetup()
 
-    render(<DashboardPage />)
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
 
-    await user.click(screen.getByRole("button", { name: /today setup: wait for the reclaim candle\./i }))
+    await user.click(screen.getByText(/wait for the reclaim candle\./i))
 
     expect(screen.getByTestId("today-setup-dialog")).toHaveTextContent("London breakout")
   })

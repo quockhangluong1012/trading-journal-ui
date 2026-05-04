@@ -695,7 +695,7 @@ function TradeDetailContent({ id }: { id: string }) {
               tradingSession: formData.tradingSession,
               screenshots: formData.screenshots,
               pretradeChecklist: formData.pretradeChecklist,
-              pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
+              pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : undefined,
               aiSummary: formData.aiSummary,
             }
           : prev,
@@ -714,7 +714,7 @@ function TradeDetailContent({ id }: { id: string }) {
         tradingSession: formData.tradingSession,
         screenshots: formData.screenshots,
         pretradeChecklist: formData.pretradeChecklist,
-        pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
+        pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : undefined,
         aiSummary: formData.aiSummary,
       });
 

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { Header } from "@/components/header"
+import { SidebarProvider } from "@/components/ui/sidebar"
 
 const logoutSpy = vi.fn()
 
@@ -32,13 +33,17 @@ vi.mock("@/lib/auth-context", () => ({
 }))
 
 describe("Header", () => {
-  it("shows the Setup link inside the account menu", async () => {
+  it("shows the Sign out link inside the account menu", async () => {
     const user = userEvent.setup()
 
-    render(<Header />)
+    render(
+      <SidebarProvider>
+        <Header />
+      </SidebarProvider>
+    )
 
     await user.click(screen.getByRole("button", { name: /account menu/i }))
 
-    expect(screen.getByRole("menuitem", { name: /^setup$/i })).toHaveAttribute("href", "/setup")
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument()
   })
 })

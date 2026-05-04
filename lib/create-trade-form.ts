@@ -206,6 +206,10 @@ export const buildCreateTradePayload = ({
   checkedItems,
   tradingSession,
   activeSessionId,
+  ictPowerOf3,
+  ictDailyBias,
+  ictMarketStructure,
+  ictPremiumDiscount,
 }: BuildCreateTradePayloadOptions): CreateTradePayload => ({
   asset: formData.asset.toUpperCase().trim(),
   position: Number(formData.position),
@@ -227,10 +231,10 @@ export const buildCreateTradePayload = ({
   tradeHistoryChecklists: parseStringIdList(checkedItems),
   tradingZoneId: parseOptionalInteger(tradingSession),
   tradingSessionId: parseOptionalInteger(activeSessionId),
-  powerOf3Phase: options.ictPowerOf3 ?? null,
-  dailyBias: options.ictDailyBias ?? null,
-  marketStructure: options.ictMarketStructure ?? null,
-  premiumDiscount: options.ictPremiumDiscount ?? null,
+  powerOf3Phase: ictPowerOf3 ?? null,
+  dailyBias: ictDailyBias ?? null,
+  marketStructure: ictMarketStructure ?? null,
+  premiumDiscount: ictPremiumDiscount ?? null,
 })
 
 export const sanitizeTradeReturnPath = (

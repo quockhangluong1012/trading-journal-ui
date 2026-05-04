@@ -8,6 +8,9 @@ import { MoodTrendChart } from "@/components/psychology/psychology-charts";
 import { EmotionWinRateChart, EmotionFrequencyChart, EmotionDistributionChart } from "@/components/psychology/psychology-charts";
 import { PsychologyHeatmap } from "@/components/psychology/psychology-heatmap";
 import { PsychologyCoachPanel, PatternGuideCard, ReflectionRoutineCard } from "@/components/psychology/psychology-coach-panel";
+import { TiltGaugeWidget } from "@/components/psychology/tilt-gauge-widget";
+import { TiltHistoryChart } from "@/components/psychology/tilt-history-chart";
+import { StreakWidget } from "@/components/psychology/streak-widget";
 import { JournalEntryCard, JournalEntriesSkeleton, type ApiJournalEntry } from "@/components/psychology/journal-entry";
 import { NewEntryForm } from "@/components/psychology/new-entry-form";
 import { useTrades } from "@/lib/trade-context";
@@ -218,7 +221,14 @@ function PsychologyContent() {
             <TabsContent value="overview" className="space-y-6">
               <PsychologyStats statsData={statsData} />
               <div className="grid gap-6 lg:grid-cols-2">
+                <TiltGaugeWidget />
+                <StreakWidget />
+              </div>
+              <div className="grid gap-6 lg:grid-cols-2">
                 <MoodTrendChart />
+                <TiltHistoryChart />
+              </div>
+              <div className="grid gap-6 lg:grid-cols-2">
                 <PsychologyCoachPanel statsData={statsData} journalEntries={sortedEntries} onOpenJournal={() => setActiveTab("journal")} onOpenPatterns={() => setActiveTab("patterns")} />
                 <PsychologyHeatmap />
               </div>
