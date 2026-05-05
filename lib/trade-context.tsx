@@ -49,8 +49,8 @@ export function TradeProvider({ children }: { children: ReactNode }) {
 
   // ── Load data from API on mount ──
   useEffect(() => {
-    tradeStore.loadAllTrades()
-    sessionStore.loadSessions()
+    //tradeStore.loadAllTrades()
+    //sessionStore.loadSessions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
