@@ -7,8 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/lib/auth-context'
 import { TradeProvider } from '@/lib/trade-context'
 import { Toaster } from "@/components/ui/toaster"
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
+import { LayoutWrapper } from "@/components/layout-wrapper"
 
 import './globals.css'
 
@@ -53,12 +52,9 @@ export default function RootLayout({
         >
           <AuthProvider>
             <TradeProvider>
-              <SidebarProvider>
-                <AppSidebar />
-                <SidebarInset>
-                  {children}
-                </SidebarInset>
-              </SidebarProvider>
+              <LayoutWrapper>
+                {children}
+              </LayoutWrapper>
             </TradeProvider>
           </AuthProvider>
           <Toaster />
