@@ -149,7 +149,7 @@ export function DailyNotesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         {/* Header with gradient accent */}
         <div className="relative shrink-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-accent/8 dark:from-primary/15 dark:to-accent/10" />
@@ -185,7 +185,7 @@ export function DailyNotesDialog({
 
         {/* Scrollable form body */}
         <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-6 px-6 pb-2">
+          <div className="space-y-6 px-6 pb-6 pt-2">
             {/* ── Daily Bias ─────────────────────────────── */}
             <fieldset className="space-y-3">
               <legend className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -361,7 +361,7 @@ export function DailyNotesDialog({
         </ScrollArea>
 
         {/* Footer */}
-        <DialogFooter className="shrink-0 border-t px-6 py-4">
+        <DialogFooter className="relative z-10 shrink-0 border-t bg-background px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)]">
           <Button variant="ghost" onClick={handleDismiss} disabled={isSaving}>
             {isEditing ? "Cancel" : "Skip for now"}
           </Button>

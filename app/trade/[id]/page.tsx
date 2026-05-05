@@ -71,6 +71,8 @@ import {
   Gauge,
   ImagePlus,
   Loader2,
+  Activity,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 import type { Trade } from "@/lib/trade-store";
@@ -1031,71 +1033,27 @@ function TradeDetailContent({ id }: { id: string }) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="detail" className="space-y-5 outline-none">
+          <TabsContent value="detail" className="space-y-6 outline-none">
             {/* Key Metrics Cards */}
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {quickStats.map((metric) => (
                 <OverviewMetricCard key={metric.label} {...metric} />
               ))}
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-              {/* Left Column - Price, analysis, and notes */}
-              <div className="space-y-5">
-                {/* Trade Notes - Prominent Section */}
-                <Card className="border-primary/20 bg-card shadow-sm relative overflow-hidden">
-                  <CardHeader className="border-b border-primary/10 bg-primary/5 pb-4 relative z-10">
-                    <CardTitle className="flex items-center gap-2 text-xl font-bold text-primary pt-5">
-                      <FileText className="h-6 w-6" />
-                      Trade Notes
-                    </CardTitle>
-                    <CardDescription className="text-sm">
-                      The core narrative of your trade. Document your rationale, execution thoughts, and market context here.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="relative z-10 pt-6">
-                    {isEditing ? (
-                      <div className="space-y-3">
-                        <Textarea
-                          value={formData.notes}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              notes: e.target.value,
-                            }))
-                          }
-                          rows={12}
-                          placeholder="Add your trade rationale, market conditions, or any other notes..."
-                          className="min-h-[240px] resize-none border-primary/20 bg-background/50 p-4 text-base focus-visible:ring-primary/30"
-                        />
-                      </div>
-                    ) : (
-                      <div className="min-h-[240px] rounded-xl bg-secondary/20 p-6 border border-border/50">
-                        <p className="whitespace-pre-wrap text-[15px] leading-relaxed text-foreground">
-                          {getPlainTextFromRichText(trade.notes || "") || (
-                            <span className="font-normal italic text-muted-foreground">
-                              No notes added for this trade. Taking detailed notes is the key to improving your edge.
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+            <div className="grid gap-6 xl:grid-cols-3">
+              {/* Main Content - 2 Columns wide on XL */}
+              <div className="space-y-6 xl:col-span-2">
                 {/* Price Level Visualization */}
                 {trade.status === TradeStatus.Open && (
                   <Card className="border-border/70 bg-card/90 shadow-sm">
-                    <CardHeader className="pb-2">
+                    <CardHeader className="pb-2 border-b border-border/50">
                       <CardTitle className="text-base font-medium flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-accent" />
-                        Price Level Progress
+                        <Activity className="h-4 w-4 text-accent" />
+                        Live Execution Status
                       </CardTitle>
-                      <CardDescription>
-                        See where the live price sits relative to your stop and profit targets.
-                      </CardDescription>
                     </CardHeader>
-                    <CardContent className="pt-8 pb-4">
+                    <CardContent className="pt-6 pb-6">
                       <PriceLevelBar trade={trade} currentPrice={currentPrice} />
                     </CardContent>
                   </Card>
@@ -1104,7 +1062,7 @@ function TradeDetailContent({ id }: { id: string }) {
                 {/* Trade Outcome - Editable P&L (if closed and editing) */}
                 {isEditing && trade.status === TradeStatus.Closed && (
                   <Card className="border-border/70 bg-card/90 shadow-sm">
-                    <CardHeader className="pb-2">
+                    <CardHeader className="pb-2 border-b border-border/50">
                       <CardTitle className="text-base font-medium flex items-center gap-2">
                         <DollarSign className="h-4 w-4 text-emerald-500" />
                         Edit Trade Outcome
@@ -1114,7 +1072,7 @@ function TradeDetailContent({ id }: { id: string }) {
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-4 pb-6">
-                      <div className="space-y-2">
+                      <div className="space-y-2 max-w-sm">
                         <Label>Realized P&L</Label>
                         <Input 
                           type="number" 
@@ -1127,69 +1085,188 @@ function TradeDetailContent({ id }: { id: string }) {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* Trading Result (If Closed) */}
+                {trade.status === TradeStatus.Closed && trade.tradingResult && (
+                  <Card className={cn(
+                    "border-none shadow-md relative overflow-hidden mb-6",
+                    trade.pnl && trade.pnl >= 0 
+                      ? "bg-linear-to-br from-emerald-500/10 to-emerald-500/5 ring-1 ring-emerald-500/20" 
+                      : "bg-linear-to-br from-destructive/10 to-destructive/5 ring-1 ring-destructive/20"
+                  )}>
+                    <div className={cn(
+                      "absolute top-0 left-0 w-1 h-full",
+                      trade.pnl && trade.pnl >= 0 ? "bg-emerald-500" : "bg-destructive"
+                    )} />
+                    <CardHeader className="pb-2 px-6 pt-5">
+                      <CardTitle className="text-lg font-bold flex items-center gap-2.5">
+                        <div className={cn(
+                          "p-1.5 rounded-md",
+                          trade.pnl && trade.pnl >= 0 ? "bg-emerald-500/20 text-emerald-500" : "bg-destructive/20 text-destructive"
+                        )}>
+                          <CheckCircle2 className="h-5 w-5" />
+                        </div>
+                        Final Trading Result
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-6 pb-6 pt-2">
+                      <div className="rounded-xl bg-background/50 backdrop-blur-sm p-5 border border-border/40 shadow-inner">
+                        <p className="text-[15px] text-foreground/90 whitespace-pre-wrap leading-relaxed font-medium">
+                          {getPlainTextFromRichText(trade.tradingResult)}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Trade Notes */}
+                <Card className="border-none bg-linear-to-br from-card to-card/50 shadow-md flex flex-col min-h-[400px] relative overflow-hidden group">
+                  <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                  <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary/50 via-primary to-primary/50" />
+                  <CardHeader className="border-b border-border/40 bg-secondary/20 pb-4 pt-5 px-6">
+                    <CardTitle className="flex items-center gap-2.5 text-xl font-bold text-foreground">
+                      <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      Trade Journal
+                    </CardTitle>
+                    <CardDescription className="text-sm mt-1.5 text-muted-foreground/80">
+                      Document your rationale, execution thoughts, and market context.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1 flex flex-col relative z-10">
+                    {isEditing ? (
+                      <div className="p-6 h-full flex flex-col">
+                        <Textarea
+                          value={formData.notes}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              notes: e.target.value,
+                            }))
+                          }
+                          placeholder="Add your trade rationale, market conditions, or any other notes..."
+                          className="flex-1 w-full resize-none border border-border/50 bg-background/50 p-5 text-[15px] focus-visible:ring-1 focus-visible:ring-primary/50 rounded-xl min-h-[300px] shadow-inner"
+                        />
+                      </div>
+                    ) : (
+                      <div className="p-8 h-full bg-transparent prose prose-sm dark:prose-invert max-w-none flex-1">
+                        {getPlainTextFromRichText(trade.notes || "") ? (
+                          <div className="text-[15px] leading-loose text-foreground/90 whitespace-pre-wrap font-medium tracking-wide">
+                            {getPlainTextFromRichText(trade.notes)}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-70 py-16">
+                            <div className="p-4 rounded-full bg-secondary/50 ring-1 ring-border/50">
+                              <FileText className="h-10 w-10 text-muted-foreground/60" />
+                            </div>
+                            <div>
+                              <p className="text-lg font-semibold text-foreground/80">No notes added</p>
+                              <p className="text-sm text-muted-foreground mt-1 max-w-[250px] mx-auto leading-relaxed">Detailed journaling is the key to discovering your true trading edge.</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Right Column - Context, Psychology, Tags */}
-              <div className="space-y-5">
+              <div className="space-y-6">
                 {/* Target Prices */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-3 border-b border-border/50">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
                       <Target className="h-4 w-4 text-emerald-500" />
-                      Target Prices
+                      Targets & Exits
                     </CardTitle>
-                    <CardDescription>
-                      Review planned exits and adjust them without losing sight of the reward profile.
-                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      {[
-                        { label: "Conservative", tier: "TIER 1", value: trade.targetTier1, rr: metrics?.rrT1 },
-                        { label: "Moderate", tier: "TIER 2", value: trade.targetTier2, rr: metrics?.rrT2 },
-                        { label: "Aggressive", tier: "TIER 3", value: trade.targetTier3, rr: metrics?.rrT3 },
-                      ].map((target, idx) => target.value > 0 ? (
-                        <div key={idx} className="rounded-xl border border-border/50 bg-secondary/20 p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{target.tier}</span>
-                            {target.rr ? (
-                              <span className="text-[10px] font-bold text-foreground bg-background rounded px-1">{target.rr.toFixed(1)}R</span>
-                            ) : null}
-                          </div>
-                          <div className="text-xs text-muted-foreground mb-1">{target.label}</div>
-                          <div className="text-sm font-bold text-emerald-500">{formatCurrency(target.value)}</div>
+                  <CardContent className="pt-4 space-y-3">
+                    {[
+                      { label: "Tier 1 (Conservative)", value: trade.targetTier1, rr: metrics?.rrT1 },
+                      { label: "Tier 2 (Moderate)", value: trade.targetTier2, rr: metrics?.rrT2 },
+                      { label: "Tier 3 (Aggressive)", value: trade.targetTier3, rr: metrics?.rrT3 },
+                    ].map((target, idx) => target.value > 0 ? (
+                      <div key={idx} className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/20 p-3">
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-0.5">{target.label}</div>
+                          <div className="text-sm font-bold text-foreground">{formatCurrency(target.value)}</div>
                         </div>
-                      ) : null)}
-                      {!trade.targetTier1 && !trade.targetTier2 && !trade.targetTier3 && (
-                        <div className="col-span-3 text-sm text-muted-foreground text-center py-2">No targets set.</div>
-                      )}
-                    </div>
+                        {target.rr ? (
+                          <Badge variant="outline" className="bg-background font-mono">{target.rr.toFixed(1)}R</Badge>
+                        ) : null}
+                      </div>
+                    ) : null)}
+                    {!trade.targetTier1 && !trade.targetTier2 && !trade.targetTier3 && (
+                      <p className="text-sm text-muted-foreground text-center py-2">No targets set.</p>
+                    )}
                   </CardContent>
                 </Card>
 
-                {/* Trading Psychology */}
+                {/* Trade Context (Combined Zone, Tech, Psych) */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-3 border-b border-border/50">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-accent" />
-                      Trading Psychology
+                      <Layers className="h-4 w-4 text-primary" />
+                      Trade Context
                     </CardTitle>
-                    <CardDescription>
-                      Capture the mental state and conviction behind the trade.
-                    </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Emotions</p>
+                  <CardContent className="pt-5 space-y-6">
+                    {/* Zone */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                        <Clock className="h-3.5 w-3.5" /> Session
+                      </h4>
+                      {selectedTradingZone ? (
+                        <div className="inline-flex items-center gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+                          <span className="text-sm font-medium text-amber-500">{selectedTradingZone.name}</span>
+                          <span className="text-xs text-amber-500/70 ml-2">{selectedTradingZone.fromTime} - {selectedTradingZone.toTime}</span>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No zone selected</p>
+                      )}
+                    </div>
+
+                    <Separator className="bg-border/50" />
+
+                    {/* Technicals */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                        <Tags className="h-3.5 w-3.5" /> Technicals
+                      </h4>
                       <div className="flex flex-wrap gap-2">
+                        {trade.analysisTags && trade.analysisTags.length > 0 ? (
+                          trade.analysisTags.map(tagId => {
+                            const tag = apiTechTags.find(t => t.id.toString() === tagId);
+                            return tag ? (
+                              <Badge key={tagId} variant="secondary" className="bg-secondary hover:bg-secondary/80">
+                                {tag.name}
+                              </Badge>
+                            ) : null;
+                          })
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No tags selected</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <Separator className="bg-border/50" />
+
+                    {/* Psychology */}
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                        <Brain className="h-3.5 w-3.5" /> Psychology
+                      </h4>
+                      <div className="flex flex-wrap gap-2 mb-3">
                         {trade.emotionTags && trade.emotionTags.length > 0 ? (
                           trade.emotionTags.map(tagId => {
                             const tag = apiTags.find(t => t.id.toString() === tagId);
                             if (!tag) return null;
                             const category = getTagCategory(tag.name);
-                            const colorClass = category === 'positive' ? 'bg-emerald-500/20 text-emerald-500' :
-                                               category === 'negative' ? 'bg-red-500/20 text-red-500' :
-                                               'bg-blue-500/20 text-blue-500';
+                            const colorClass = category === 'positive' ? 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20' :
+                                               category === 'negative' ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' :
+                                               'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20';
                             return (
                               <Badge key={tagId} variant="outline" className={cn("border-none", colorClass)}>
                                 {tag.name}
@@ -1197,77 +1274,20 @@ function TradeDetailContent({ id }: { id: string }) {
                             );
                           })
                         ) : (
-                          <span className="text-sm text-muted-foreground">Not set</span>
+                          <p className="text-sm text-muted-foreground">No emotions logged</p>
                         )}
                       </div>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Confidence Level</p>
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4, 5].map(level => (
-                            <div key={level} className={cn("h-2 w-2 rounded-full", (trade.confidenceLevel || 0) >= level ? "bg-primary" : "bg-secondary")} />
-                          ))}
+                      <div className="flex items-center justify-between rounded-md bg-secondary/30 px-3 py-2.5 border border-border/50">
+                        <span className="text-sm text-muted-foreground">Confidence</span>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-sm font-medium text-foreground">{getConfidenceLabel(trade.confidenceLevel)}</span>
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4, 5].map(level => (
+                              <div key={level} className={cn("h-1.5 w-1.5 rounded-full", (trade.confidenceLevel || 0) >= level ? "bg-primary" : "bg-muted")} />
+                            ))}
+                          </div>
                         </div>
-                        <span className="text-sm font-medium text-muted-foreground">{getConfidenceLabel(trade.confidenceLevel)}</span>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Trading Zone */}
-                <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-amber-400" />
-                      Trading Zone
-                    </CardTitle>
-                    <CardDescription>
-                      Keep the session context visible while reviewing the trade.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {selectedTradingZone ? (
-                      <div className="inline-flex flex-col items-start rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-                        <span className="text-sm font-medium text-amber-500">{selectedTradingZone.name}</span>
-                        <span className="text-xs text-amber-500/70">{selectedTradingZone.fromTime} - {selectedTradingZone.toTime}</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-muted-foreground">No zone selected</span>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Technical Analysis */}
-                <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium flex items-center gap-2">
-                      <Tags className="h-4 w-4 text-primary" />
-                      Technical Analysis
-                      {trade.analysisTags && trade.analysisTags.length > 0 && (
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {trade.analysisTags.length} Selected
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription>
-                      Keep the structural and setup tags visible during review and editing.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {trade.analysisTags && trade.analysisTags.length > 0 ? (
-                        trade.analysisTags.map(tagId => {
-                          const tag = apiTechTags.find(t => t.id.toString() === tagId);
-                          return tag ? (
-                            <Badge key={tagId} variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20">
-                              {tag.name}
-                            </Badge>
-                          ) : null;
-                        })
-                      ) : (
-                        <span className="text-sm text-muted-foreground">No tags selected</span>
-                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1278,7 +1298,7 @@ function TradeDetailContent({ id }: { id: string }) {
             {(isEditing ||
               (trade.pretradeChecklist &&
                 trade.pretradeChecklist.length > 0)) && (
-              <Card className="border-border/70 bg-card/90 shadow-sm mb-4">
+              <Card className="border-border/70 bg-card/90 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base font-medium flex items-center gap-2">
                     <ClipboardCheck className="h-5 w-5 text-amber-400" />
@@ -1420,26 +1440,7 @@ function TradeDetailContent({ id }: { id: string }) {
               </Card>
             )}
 
-            {trade.status === TradeStatus.Closed && trade.tradingResult && (
-              <Card className="border-border/70 bg-card/90 shadow-sm mt-4 mb-4">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base font-medium flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-accent" />
-                    Trading Result
-                  </CardTitle>
-                  <CardDescription>
-                    Final outcome notes captured when the trade was closed.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-lg bg-secondary/30 p-3">
-                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                      {getPlainTextFromRichText(trade.tradingResult)}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+
 
             {/* Screenshots */}
             {(isEditing ||
@@ -1651,40 +1652,54 @@ function TradeDetailContent({ id }: { id: string }) {
           </TabsContent>
 
           <TabsContent value="ai_summary" className="space-y-4 outline-none">
-            <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Brain className="h-5 w-5 text-accent" />
-                  AI Summary
+            <Card className="border-none bg-linear-to-b from-card to-card/50 shadow-lg relative overflow-hidden group">
+              <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-violet-500 via-fuchsia-500 to-cyan-500" />
+              <CardHeader className="border-b border-border/40 bg-secondary/20 pb-5 pt-6 px-7">
+                <CardTitle className="flex items-center gap-3 text-2xl font-bold text-foreground">
+                  <div className="p-2.5 rounded-xl bg-linear-to-br from-violet-500/20 to-fuchsia-500/20 text-fuchsia-500 ring-1 ring-fuchsia-500/30">
+                    <Brain className="h-6 w-6" />
+                  </div>
+                  AI Trade Analysis
                 </CardTitle>
-                <CardDescription>
-                  Enter AI-generated insights or summary for this trade.
+                <CardDescription className="text-[15px] mt-2 text-muted-foreground/80">
+                  Advanced insights generated by your AI trading assistant.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-0 relative z-10">
                 {isEditing ? (
-                  <Textarea
-                    value={formData.aiSummary}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        aiSummary: e.target.value,
-                      }))
-                    }
-                    placeholder="Input AI summary here..."
-                    className="min-h-[240px] resize-none border-primary/20 bg-background/50 p-4 text-base focus-visible:ring-primary/30"
-                  />
+                  <div className="p-7 h-full flex flex-col">
+                    <Textarea
+                      value={formData.aiSummary}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          aiSummary: e.target.value,
+                        }))
+                      }
+                      placeholder="Input AI summary here..."
+                      className="min-h-[350px] resize-none border border-border/50 bg-background/60 p-6 text-[15px] focus-visible:ring-1 focus-visible:ring-fuchsia-500/50 rounded-2xl shadow-inner leading-relaxed"
+                    />
+                  </div>
                 ) : (
-                  <div className="rounded-lg bg-secondary/30 p-4 min-h-[100px]">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                      {trade.aiSummary ? (
-                        getPlainTextFromRichText(trade.aiSummary)
-                      ) : (
-                        <span className="font-normal italic text-muted-foreground">
-                          No AI summary available.
-                        </span>
-                      )}
-                    </p>
+                  <div className="p-8 min-h-[300px]">
+                    {trade.aiSummary ? (
+                      <div className="rounded-2xl bg-secondary/30 backdrop-blur-md p-6 border border-white/5 dark:border-white/10 shadow-inner">
+                        <div className="text-[15px] leading-loose text-foreground/90 whitespace-pre-wrap font-medium tracking-wide prose prose-sm dark:prose-invert max-w-none">
+                          {getPlainTextFromRichText(trade.aiSummary)}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-[250px] text-center space-y-4 opacity-70">
+                        <div className="p-5 rounded-full bg-secondary/50 ring-1 ring-border/50">
+                          <Brain className="h-10 w-10 text-muted-foreground/60" />
+                        </div>
+                        <div>
+                          <p className="text-lg font-semibold text-foreground/80">Analysis Pending</p>
+                          <p className="text-sm text-muted-foreground mt-1 max-w-[280px] mx-auto leading-relaxed">No AI summary has been generated for this trade yet.</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>

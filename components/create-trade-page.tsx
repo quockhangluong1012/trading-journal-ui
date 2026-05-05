@@ -53,7 +53,7 @@ import { api, ApiResponse } from "@/lib/api"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
 import { cn } from "@/lib/utils"
 import { AxiosResponse } from "axios"
-import { IctContextFields, IctPreTradeChecklist } from "@/components/trade/ict-trade-fields"
+import { IctContextFields } from "@/components/trade/ict-trade-fields"
 import {
   buildCreateTradePayload,
   calculateTradeRiskMetrics,
@@ -160,7 +160,7 @@ export function CreateTradePage({
   const [ictDailyBias, setIctDailyBias] = useState<number | null>(null)
   const [ictMarketStructure, setIctMarketStructure] = useState<number | null>(null)
   const [ictPremiumDiscount, setIctPremiumDiscount] = useState<number | null>(null)
-  const [ictChecklist, setIctChecklist] = useState<string[]>([])
+
 
   const WIZARD_STEPS = [
     { id: "setup", label: "Setup" },
@@ -814,8 +814,7 @@ export function CreateTradePage({
               description="Annotate your trade with ICT concepts — Power of 3 (AMD), market structure, and zone classification."
               icon={<Layers className="h-4 w-4 text-cyan-400" />}
             >
-              <div className="space-y-6">
-                <IctContextFields
+              <IctContextFields
                   powerOf3Phase={ictPowerOf3}
                   dailyBias={ictDailyBias}
                   marketStructure={ictMarketStructure}
@@ -825,14 +824,6 @@ export function CreateTradePage({
                   onMarketStructureChange={setIctMarketStructure}
                   onPremiumDiscountChange={setIctPremiumDiscount}
                 />
-
-                <div className="border-t border-border/40 pt-4">
-                  <IctPreTradeChecklist
-                    checkedItems={ictChecklist}
-                    onToggle={(id) => setIctChecklist((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])}
-                  />
-                </div>
-              </div>
             </TradeFormSection>
                 </motion.div>
               )}

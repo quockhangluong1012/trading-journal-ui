@@ -74,6 +74,14 @@ const CATEGORY_COLORS: Record<string, string> = {
   Performance: "text-violet-400",
   Karma: "text-amber-400",
   Psychology: "text-rose-400",
+  Preparation: "text-cyan-400",
+  RiskManagement: "text-teal-400",
+  Recovery: "text-lime-400",
+  Diversification: "text-sky-400",
+  ICT: "text-indigo-400",
+  Profit: "text-emerald-300",
+  PropFirm: "text-fuchsia-400",
+  Elite: "text-yellow-400",
 };
 
 function getEventEmoji(actionType: string): string {
@@ -86,6 +94,7 @@ function getEventEmoji(actionType: string): string {
     WinStreakBonus: "🎯",
     RuleBrokenPenalty: "⚠️",
     TiltRecovery: "🧘",
+    DailyNoteWritten: "📋",
     SystemAdjustment: "⚙️",
   };
   return map[actionType] ?? "✨";
@@ -101,6 +110,7 @@ function getEventLabel(actionType: string): string {
     WinStreakBonus: "Win Streak Bonus",
     RuleBrokenPenalty: "Rule Broken",
     TiltRecovery: "Tilt Recovery",
+    DailyNoteWritten: "Daily Note",
     SystemAdjustment: "System Adjustment",
   };
   return map[actionType] ?? actionType;

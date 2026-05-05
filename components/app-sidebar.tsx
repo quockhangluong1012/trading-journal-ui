@@ -18,7 +18,8 @@ import {
   Sparkles,
   Trophy,
   GitBranch,
-  FileText
+  FileText,
+  CalendarDays
 } from "lucide-react"
 
 import {
@@ -68,6 +69,7 @@ const data = {
       title: "Psychology & Risk",
       items: [
         { title: "Psychology", url: "/psychology", icon: Brain },
+        { title: "Daily Notes", url: "/daily-notes", icon: CalendarDays },
         { title: "Risk Management", url: "/risk", icon: Shield },
         { title: "Karma & Badges", url: "/karma", icon: Trophy },
       ],
