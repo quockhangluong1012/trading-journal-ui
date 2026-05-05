@@ -113,7 +113,7 @@ export function DashboardCommandCenter({
       {/* Decorative ambient blobs */}
       <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full bg-primary/10 blur-[80px]" />
       <div className="pointer-events-none absolute -bottom-24 -left-24 h-64 w-64 rounded-full bg-secondary/20 blur-[80px]" />
-      <div className="relative z-10 grid gap-6 px-6 py-8 xl:grid-cols-[minmax(0,1.45fr)_360px] xl:grid-rows-[auto_auto] xl:px-8">
+      <div className="relative z-10 grid gap-6 px-4 py-6 sm:px-6 sm:py-8 xl:grid-cols-[minmax(0,1.45fr)_360px] xl:grid-rows-[auto_auto] xl:px-8">
         <div className="space-y-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge
@@ -139,7 +139,7 @@ export function DashboardCommandCenter({
 
           <div className="space-y-3">
             <h1 className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-3xl font-bold 
-            tracking-tight text-transparent md:text-5xl h-[60px]">
+            tracking-tight text-transparent md:text-5xl min-h-[40px] md:min-h-[60px]">
               {getGreeting(userName)}
             </h1>
             {isLoading ? (
@@ -148,7 +148,7 @@ export function DashboardCommandCenter({
                 <Skeleton className="h-4 w-full max-w-xl rounded-md" />
               </div>
             ) : (
-              <p className="max-w-3xl text-lg font-medium leading-relaxed text-foreground/90 md:text-xl">
+              <p className="max-w-3xl text-base sm:text-lg font-medium leading-relaxed text-foreground/90 md:text-xl">
                 {overview.summary}
               </p>
             )}

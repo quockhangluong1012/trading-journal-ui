@@ -104,7 +104,7 @@ function AnalyticsContent() {
 
   if (isAuthLoading) return <AppShellLoader title="Loading analytics" description="Gathering your performance data." />
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
-  if (isInitialLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><AnalyticsPageSkeleton /></main></div>
+  if (isInitialLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8"><AnalyticsPageSkeleton /></main></div>
 
   const { analytics, monthlyData, assetData, dayData, equityData, insightsData, setupData, isRefreshing, lastUpdatedAt, syncWarning } = viewState
   const SC = ANALYTICS_SURFACE_CLASS
@@ -112,7 +112,7 @@ function AnalyticsContent() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
         <div className="space-y-6">
           <AnalyticsCommandCenter range={range} rangeOptions={TIME_RANGES}
             onRangeChange={(r) => { if (isAnalyticsRangeLabel(r)) setRange(r) }}

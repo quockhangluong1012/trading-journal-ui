@@ -103,7 +103,7 @@ export function StatsCards({ filter, stats: providedStats, isLoading: providedLo
   ]
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4 relative z-10">
+    <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4 relative z-10">
       {isLoading
         ? cards.map((card) => (
             <Card key={card.title} className="border border-white/10 bg-card/60 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)]">

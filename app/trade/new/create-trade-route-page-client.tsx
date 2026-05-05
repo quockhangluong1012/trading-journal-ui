@@ -54,7 +54,7 @@ export function CreateTradeRoutePageClient() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
         <CreateTradePageContent 
           returnTo={returnTo} 
           templateId={templateId} 

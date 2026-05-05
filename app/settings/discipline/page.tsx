@@ -82,7 +82,7 @@ export default function DisciplineSettingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-3xl px-4 py-8">
+      <main className="mx-auto max-w-3xl px-4 py-4 sm:py-8">
         <h1 className="mb-6 text-3xl font-bold">Gamification & Discipline</h1>
         
         {loading ? (

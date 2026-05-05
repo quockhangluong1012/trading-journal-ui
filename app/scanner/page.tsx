@@ -47,7 +47,7 @@ export default function ScannerPage() {
 
       <div className="relative z-10 flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8 space-y-6">
           <div className="flex flex-col gap-2">
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Radar className="h-8 w-8 text-primary" />

@@ -60,7 +60,7 @@ export default function RiskPage() {
 
   if (isAuthLoading) return <AppShellLoader title="Loading risk dashboard" description="Calculating your risk metrics." />
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
-  if (state.isLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div></main></div>
+  if (state.isLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8"><div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div></main></div>
 
   const { dashboard, config, correlation, heatmap, balanceHistory } = state
   const d = dashboard!
@@ -68,7 +68,7 @@ export default function RiskPage() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
         <div className="space-y-6">
           {/* Header */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -256,7 +256,7 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                       whileHover={isCurrentMonth ? { scale: 0.97, zIndex: 20 } : {}}
                       key={day.toString()}
                       className={cn(
-                        "min-h-[140px] p-2 sm:p-4 flex flex-col items-center border-t border-border/40 transition-all duration-300 relative group/day overflow-hidden",
+                        "min-h-[80px] sm:min-h-[140px] p-1.5 sm:p-4 flex flex-col items-center border-t border-border/40 transition-all duration-300 relative group/day overflow-hidden",
                         i % 7 !== 0 && "border-l border-border/40",
                         !isCurrentMonth ? "bg-muted/10 opacity-40 grayscale" : "bg-transparent hover:bg-background/80 hover:shadow-xl hover:shadow-black/5 hover:border-border/60 hover:rounded-2xl",
                         isCurrentMonth && pnl > 0 && "bg-emerald-500/10 hover:bg-emerald-500/15",
@@ -302,7 +302,7 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             className={cn(
-                              "text-sm sm:text-lg font-black tracking-tighter drop-shadow-sm flex items-center gap-1",
+                              "text-[10px] sm:text-lg font-black tracking-tighter drop-shadow-sm flex items-center gap-1",
                               pnl > 0 && "text-emerald-500 dark:text-emerald-400",
                               pnl < 0 && "text-rose-500 dark:text-rose-400",
                               pnl === 0 && "text-muted-foreground",

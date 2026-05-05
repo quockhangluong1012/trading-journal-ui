@@ -151,7 +151,7 @@ function DashboardContent() {
 
       <div className="relative z-10 flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
 
         <div className="space-y-6">
           {/* Daily Notes Banner — always visible at top */}
