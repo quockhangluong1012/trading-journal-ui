@@ -5,6 +5,8 @@ import { GitBranch } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { TodaySetupDialog } from "@/components/dashboard/today-setup-dialog"
+import { DailyNotesDialog } from "@/components/dashboard/daily-notes-dialog"
+import { DailyNotesBanner } from "@/components/dashboard/daily-notes-banner"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/header"
@@ -19,11 +21,15 @@ import { OpenPositionsTable } from "@/components/dashboard/open-positions-table"
 import { ActiveSessionWidget } from "@/components/session/active-session-widget"
 import { KillzonesWidget } from "@/components/dashboard/killzones-widget"
 import { MacroTimesWidget } from "@/components/dashboard/macro-times-widget"
+import { TiltGaugeWidget } from "@/components/psychology/tilt-gauge-widget"
+import { StreakWidget } from "@/components/psychology/streak-widget"
+import { KarmaWidget } from "@/components/psychology/karma-widget"
 import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
 import { useTodaySetup } from "@/hooks/use-today-setup"
+import { useDailyNotes } from "@/hooks/use-daily-notes"
 import Link from "next/link";
 
 const timeFilterOptions = [
@@ -47,11 +53,13 @@ const dashboardFilterLabels: Record<DashboardFilter, string> = {
 function DashboardContent() {
   const [filter, setFilter] = useState<DashboardFilter>(DashboardFilter.All)
   const [isTodaySetupDialogOpen, setIsTodaySetupDialogOpen] = useState(false)
+  const [isDailyNotesDialogOpen, setIsDailyNotesDialogOpen] = useState(false)
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const isDashboardEnabled = Boolean(user) && !isLoading
   const { setup: todaySetup } = useTodaySetup(user?.email ?? user?.username ?? null)
+  const dailyNotes = useDailyNotes(user?.email ?? user?.username ?? null)
   const {
     stats,
     winLossData,
@@ -103,6 +111,13 @@ function DashboardContent() {
     }
   }, [todaySetup])
 
+  // Auto-open daily notes popup on first visit of the day
+  useEffect(() => {
+    if (dailyNotes.shouldShowPopup && !isLoading && user) {
+      setIsDailyNotesDialogOpen(true)
+    }
+  }, [dailyNotes.shouldShowPopup, isLoading, user])
+
   const overview = useMemo(
     () =>
       buildDashboardOverview({
@@ -139,6 +154,13 @@ function DashboardContent() {
         <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
         <div className="space-y-6">
+          {/* Daily Notes Banner — always visible at top */}
+          <DailyNotesBanner
+            note={dailyNotes.note}
+            isLoading={dailyNotes.isLoading}
+            onClick={() => setIsDailyNotesDialogOpen(true)}
+          />
+
           <DashboardCommandCenter
             filter={filter}
             filterLabel={dashboardFilterLabels[filter]}
@@ -152,6 +174,20 @@ function DashboardContent() {
             isLoading={isDashboardLoading}
             isRefreshing={isRefreshing}
             syncWarning={syncWarning}
+            todaySetupBadge={
+              todaySetup ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 border-primary/20 bg-primary/5 text-primary hover:bg-primary/10"
+                  onClick={() => setIsTodaySetupDialogOpen(true)}
+                >
+                  <GitBranch className="h-4 w-4" />
+                  <span className="hidden sm:inline">Today Setup: </span>
+                  <span className="max-w-[150px] truncate font-normal sm:max-w-[200px]">{todaySetupSummary}</span>
+                </Button>
+              ) : undefined
+            }
             onRefresh={() => {
               void refresh()
             }}
@@ -159,6 +195,13 @@ function DashboardContent() {
           />
 
           <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <TiltGaugeWidget />
+            <StreakWidget />
+          </div>
+
+          <KarmaWidget />
 
           <div className="grid gap-6 lg:grid-cols-2">
             <KillzonesWidget />
@@ -185,6 +228,15 @@ function DashboardContent() {
         open={isTodaySetupDialogOpen}
         onOpenChange={setIsTodaySetupDialogOpen}
         setup={todaySetup}
+      />
+
+      <DailyNotesDialog
+        open={isDailyNotesDialogOpen}
+        onOpenChange={setIsDailyNotesDialogOpen}
+        note={dailyNotes.note}
+        isSaving={dailyNotes.isSaving}
+        onSave={dailyNotes.save}
+        onDismiss={dailyNotes.dismissPopup}
       />
       </div>
     </div>

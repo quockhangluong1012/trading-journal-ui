@@ -7,7 +7,8 @@
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
-    "test:backtest-timeframe": "vitest run __tests__/lib/backtest-timeframe-switch.test.ts"
+    "test:backtest-timeframe": "vitest run __tests__/lib/backtest-timeframe-switch.test.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ckeditor/ckeditor5-react": "^11.1.2",

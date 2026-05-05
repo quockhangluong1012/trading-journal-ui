@@ -102,22 +102,18 @@ export function useDashboardOverview(
     }))
 
     const fromDate = getFromDateForFilter(filter)
-    const openPositionsPayload = {
-      asset: "",
-      position: null,
-      status: TradeStatus.Open,
-      fromDate,
-      toDate: null,
-      page: 1,
-      pageSize: 10,
-    }
+    const openPosParams = new URLSearchParams()
+    openPosParams.set("status", String(TradeStatus.Open))
+    if (fromDate) openPosParams.set("fromDate", fromDate)
+    openPosParams.set("page", "1")
+    openPosParams.set("pageSize", "10")
 
     const [statsResult, winLossResult, profitTrajectoryResult, openPositionsResult] =
       await Promise.allSettled([
         api.get<DashboardStats | ApiResponse<DashboardStats>>(`/v1/dashboard/statistics?filter=${filter}`),
         api.get<ApiResponse<WinLossData[]>>(`/v1/dashboard/win-loss-ratio?filter=${filter}`),
         api.get<ApiResponse<ProfitTrajectoryPoint[]>>(`/v1/dashboard/profit-trajectory?filter=${filter}`),
-        api.post<ApiPaginatedResponse<TradeHistory>>("/v1/trade-histories/search", openPositionsPayload),
+        api.get<ApiPaginatedResponse<TradeHistory>>(`/v1/trade-histories?${openPosParams.toString()}`),
       ])
 
     if (currentRequestId !== requestIdRef.current) {
