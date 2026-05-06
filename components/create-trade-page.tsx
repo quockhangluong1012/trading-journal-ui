@@ -105,6 +105,7 @@ interface CreateTradePageProps {
 import { TradeFormSection } from "./trade/create-trade/trade-form-section"
 import { TradeSummaryStat } from "./trade/create-trade/trade-summary-stat"
 import { TradeSetupSection } from "./trade/create-trade/trade-setup-section"
+import { AiPreTradeValidation } from "./trade/create-trade/ai-pre-trade-validation"
 import { RiskManagementSection } from "./trade/create-trade/risk-management-section"
 import { PreTradeChecklistSection } from "./trade/create-trade/pre-trade-checklist-section"
 import { MarketContextSection } from "./trade/create-trade/market-context-section"
@@ -164,7 +165,7 @@ export function CreateTradePage({
 
   const WIZARD_STEPS = [
     { id: "setup", label: "Setup" },
-    { id: "context", label: "Context & Psych" },
+    { id: "context", label: "Context" },
     { id: "evidence", label: "Review" },
   ]
 
@@ -720,7 +721,7 @@ export function CreateTradePage({
               </div>
               <span
                 className={cn(
-                  "text-[10px] sm:text-xs font-bold uppercase tracking-[0.15em] transition-colors duration-300",
+                  "text-[10px] sm:text-xs font-bold uppercase tracking-wider sm:tracking-[0.15em] transition-colors duration-300 text-center",
                   index <= currentStep ? "text-foreground" : "text-muted-foreground/50",
                 )}
               >
@@ -806,6 +807,7 @@ export function CreateTradePage({
               setConfidenceLevel={setConfidenceLevel}
               errors={errors}
               setErrors={setErrors}
+              notesText={formData.notes}
             />
 
             {/* ICT Methodology Section */}
@@ -850,7 +852,7 @@ export function CreateTradePage({
             </AnimatePresence>
           </div>
 
-          <aside className="order-first self-start space-y-6 xl:sticky xl:top-24 xl:order-last">
+          <aside className="order-last self-start space-y-6 xl:sticky xl:top-24">
             <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-background/50 shadow-xl backdrop-blur-2xl transition-all duration-500 hover:shadow-2xl">
               <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent opacity-50" />
               <div className="relative border-b border-border/30 px-6 py-6">
@@ -906,6 +908,24 @@ export function CreateTradePage({
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="px-5 pt-4">
+                <AiPreTradeValidation
+                  asset={formData.asset}
+                  position={formData.position === PositionType.Long ? "Long" : "Short"}
+                  entryPrice={formData.entryPrice}
+                  stopLoss={formData.stopLoss}
+                  targetTier1={formData.targetTier1}
+                  targetTier2={formData.targetTier2}
+                  targetTier3={formData.targetTier3}
+                  confidenceLevel={confidenceLevel}
+                  tradingZone={apiTradingZones.find(z => z.id.toString() === tradingSession)?.name || null}
+                  technicalAnalysisTags={analysisTags.map(id => apiTechTags.find(t => t.id.toString() === id)?.name || id)}
+                  checklistStatus={apiChecklists.length > 0 ? `${checkedItems.length}/${apiChecklists.length} completed` : "No checklist"}
+                  emotionTags={selectedEmotions.map(id => apiTags.find(t => t.id.toString() === id)?.name || id)}
+                  notes={formData.notes}
+                />
               </div>
 
               <div className="space-y-4 px-5 py-5">

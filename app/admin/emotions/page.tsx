@@ -87,7 +87,7 @@ export default function EmotionsPage() {
       ) : filtered.length === 0 && items.length === 0 ? (
         <EmptyState title="No emotion tags yet" action={() => setShowCreateDialog(true)} />
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="rounded-lg border border-border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { AiMorningBriefing } from "./ai-morning-briefing"
 
 interface FilterOption {
   label: string
@@ -138,8 +139,8 @@ export function DashboardCommandCenter({
           </div>
 
           <div className="space-y-3">
-            <h1 className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-3xl font-bold 
-            tracking-tight text-transparent md:text-5xl min-h-[40px] md:min-h-[60px]">
+            <h1 className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-2xl font-bold 
+            tracking-tight text-transparent md:text-5xl min-h-[32px] md:min-h-[60px]">
               {getGreeting(userName)}
             </h1>
             {isLoading ? (
@@ -155,7 +156,7 @@ export function DashboardCommandCenter({
           </div>
 
           <div className="flex flex-wrap items-center gap-4 pt-2">
-            <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border/70 bg-background/50 backdrop-blur-md p-1.5 shadow-sm sm:w-auto">
+            <div className="flex w-full items-center gap-1 overflow-x-auto rounded-full border border-border/70 bg-background/50 backdrop-blur-md p-1.5 shadow-sm sm:w-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {filterOptions.map((option) => (
                 <Button
                   key={option.label}
@@ -172,20 +173,20 @@ export function DashboardCommandCenter({
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <Button size="default" className="gap-2 rounded-full bg-primary font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:scale-105 hover:bg-primary/90" asChild>
+            <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:flex-wrap sm:gap-3">
+              <Button size="default" className="gap-2 rounded-full bg-primary font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:scale-105 hover:bg-primary/90 w-full sm:w-auto" asChild>
                 <Link href={buildCreateTradeHref(pathname)}>
                   <TrendingUp className="h-4 w-4" />
                   New Trade
                 </Link>
               </Button>
-              <Button variant="outline" size="default" className="gap-2 rounded-full border-border/70 bg-background/50 shadow-sm backdrop-blur-md transition-all hover:bg-accent/50" asChild>
+              <Button variant="outline" size="default" className="gap-2 rounded-full border-border/70 bg-background/50 shadow-sm backdrop-blur-md transition-all hover:bg-accent/50 w-full sm:w-auto" asChild>
                 <Link href="/review">
                   <TrendingDown className="h-4 w-4" />
                   Review
                 </Link>
               </Button>
-              <Button variant="outline" size="default" className="gap-2 rounded-full border-border/70 bg-background/50 shadow-sm backdrop-blur-md transition-all hover:bg-accent/50" asChild>
+              <Button variant="outline" size="default" className="col-span-2 gap-2 rounded-full border-border/70 bg-background/50 shadow-sm backdrop-blur-md transition-all hover:bg-accent/50 w-full sm:w-auto" asChild>
                 <Link href="/analytics">
                   <BarChart3 className="h-4 w-4" />
                   Analytics
@@ -199,6 +200,8 @@ export function DashboardCommandCenter({
               {syncWarning}
             </div>
           ) : null}
+
+          <AiMorningBriefing />
         </div>
 
         <div className="group mt-2 overflow-hidden rounded-2xl border border-primary/10 bg-linear-to-br from-background/90 to-primary/5 p-6 shadow-lg backdrop-blur-md transition-all hover:border-primary/30 hover:shadow-primary/5 xl:row-span-2">
@@ -238,28 +241,28 @@ export function DashboardCommandCenter({
               <Progress value={Math.max(0, Math.min(stats.winRate, 100))} className="mt-3 h-2 rounded-full" />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="group/stat rounded-xl border border-primary/10 bg-background/50 p-5 backdrop-blur-md transition-all hover:bg-background/80 hover:-translate-y-0.5">
+            <div className="grid gap-3 sm:gap-4 grid-cols-2">
+              <div className="group/stat rounded-xl border border-primary/10 bg-background/50 p-3 sm:p-5 backdrop-blur-md transition-all hover:bg-background/80 hover:-translate-y-0.5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-hover/stat:text-primary transition-colors">
                   Open book
                 </p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">{stats.openPositions}</p>
-                <p className="mt-1.5 text-xs font-medium leading-relaxed opacity-80 text-muted-foreground">
-                  {overview.openPositionsSummary.longCount} long / {overview.openPositionsSummary.shortCount} short
+                <p className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{stats.openPositions}</p>
+                <p className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs font-medium leading-relaxed opacity-80 text-muted-foreground">
+                  {overview.openPositionsSummary.longCount} L / {overview.openPositionsSummary.shortCount} S
                 </p>
               </div>
 
-              <div className="group/stat rounded-xl border border-primary/10 bg-background/50 p-5 backdrop-blur-md transition-all hover:bg-background/80 hover:-translate-y-0.5">
+              <div className="group/stat rounded-xl border border-primary/10 bg-background/50 p-3 sm:p-5 backdrop-blur-md transition-all hover:bg-background/80 hover:-translate-y-0.5">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-hover/stat:text-primary transition-colors">
                   Setup quality
                 </p>
-                <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">
+                <p className="mt-1 sm:mt-2 text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
                   {overview.openPositionsSummary.avgRiskReward !== null
                     ? `${overview.openPositionsSummary.avgRiskReward.toFixed(1)}R`
                     : "Clear"}
                 </p>
-                <p className="mt-1.5 text-xs font-medium leading-relaxed opacity-80 text-muted-foreground">
-                  {overview.openPositionsSummary.highConfidenceCount} high-conviction ideas live
+                <p className="mt-1 sm:mt-1.5 text-[10px] sm:text-xs font-medium leading-relaxed opacity-80 text-muted-foreground">
+                  {overview.openPositionsSummary.highConfidenceCount} top ideas
                 </p>
               </div>
             </div>

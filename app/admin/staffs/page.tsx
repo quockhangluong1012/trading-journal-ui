@@ -104,7 +104,7 @@ export default function StaffsPage() {
       ) : filtered.length === 0 && items.length === 0 ? (
         <EmptyState title="No staff members found" action={openCreate} />
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="rounded-lg border border-border overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
