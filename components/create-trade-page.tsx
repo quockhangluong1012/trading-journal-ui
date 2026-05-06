@@ -105,6 +105,7 @@ interface CreateTradePageProps {
 import { TradeFormSection } from "./trade/create-trade/trade-form-section"
 import { TradeSummaryStat } from "./trade/create-trade/trade-summary-stat"
 import { TradeSetupSection } from "./trade/create-trade/trade-setup-section"
+import { AiChartScreenshotAnalysis } from "./trade/create-trade/ai-chart-screenshot-analysis"
 import { AiPreTradeValidation } from "./trade/create-trade/ai-pre-trade-validation"
 import { RiskManagementSection } from "./trade/create-trade/risk-management-section"
 import { PreTradeChecklistSection } from "./trade/create-trade/pre-trade-checklist-section"
@@ -600,6 +601,7 @@ export function CreateTradePage({
   const selectedTradingZone = apiTradingZones.find(
     (zone) => zone.id.toString() === tradingSession,
   )
+  const selectedTradingZoneName = selectedTradingZone?.name ?? null
   const selectedChecklistModel = checklistModels.find(
     (model) => model.id.toString() === selectedModelId,
   )
@@ -847,6 +849,17 @@ export function CreateTradePage({
               handleScreenshotUpload={handleScreenshotUpload}
               removeScreenshot={removeScreenshot}
             />
+
+            <AiChartScreenshotAnalysis
+              asset={formData.asset}
+              position={formData.position === PositionType.Long ? "Long" : "Short"}
+              entryPrice={formData.entryPrice}
+              stopLoss={formData.stopLoss}
+              targetTier1={formData.targetTier1}
+              tradingZone={selectedTradingZoneName}
+              notes={formData.notes}
+              screenshots={screenshots}
+            />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -920,7 +933,7 @@ export function CreateTradePage({
                   targetTier2={formData.targetTier2}
                   targetTier3={formData.targetTier3}
                   confidenceLevel={confidenceLevel}
-                  tradingZone={apiTradingZones.find(z => z.id.toString() === tradingSession)?.name || null}
+                  tradingZone={selectedTradingZoneName}
                   technicalAnalysisTags={analysisTags.map(id => apiTechTags.find(t => t.id.toString() === id)?.name || id)}
                   checklistStatus={apiChecklists.length > 0 ? `${checkedItems.length}/${apiChecklists.length} completed` : "No checklist"}
                   emotionTags={selectedEmotions.map(id => apiTags.find(t => t.id.toString() === id)?.name || id)}

@@ -73,6 +73,9 @@ import { useRouter, usePathname } from "next/navigation"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { exportTrades, ExportFormat } from "@/lib/export-api"
+import type { NaturalLanguageTradeSearchResult } from "@/lib/ai-insights-api"
+import { AiHistorySearchBar } from "@/components/trade/ai-history-search-bar"
+import { mapAiTradeSearchToHistoryFilters } from "@/lib/history-ai-filters"
 
 type SortField = "date" | "pnl" | "asset"
 type SortDirection = "asc" | "desc"
@@ -265,6 +268,16 @@ function HistoryContent() {
     setPage(1)
   }
 
+  const applyAiFilters = useCallback((result: NaturalLanguageTradeSearchResult) => {
+    const nextFilters = mapAiTradeSearchToHistoryFilters(result)
+    setSearchQuery(nextFilters.searchQuery)
+    setPositionFilter(nextFilters.positionFilter)
+    setStatusFilter(nextFilters.statusFilter)
+    setDateFrom(nextFilters.dateFrom)
+    setDateTo(nextFilters.dateTo)
+    setPage(nextFilters.page)
+  }, [])
+
   const getPositionTypeLabel = (position: PositionType) => {
     switch (position) {
       case PositionType.Long:
@@ -361,6 +374,7 @@ function HistoryContent() {
           <CardContent>
             {/* Filters */}
             <div className="mb-6 space-y-4">
+              <AiHistorySearchBar onApplyFilters={applyAiFilters} />
               <div className="flex flex-col gap-4 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

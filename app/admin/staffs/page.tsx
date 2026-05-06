@@ -58,7 +58,7 @@ export default function StaffsPage() {
     try {
       attachToken();
       if (editItem) {
-        await updateStaff({ id: editItem.id, fullName: form.fullName, password: form.password, isActive: form.isActive });
+        await updateStaff({ id: editItem.id, email: editItem.email, fullName: form.fullName, isActive: form.isActive });
         toast({ title: "Updated", description: `"${form.fullName}" updated.` });
       } else {
         await createStaff(form);

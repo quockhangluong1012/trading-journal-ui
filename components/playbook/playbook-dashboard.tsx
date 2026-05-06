@@ -18,6 +18,7 @@ import {
   retireSetup, reactivateSetup,
 } from "@/lib/playbook-api"
 import { AnalyticsFilter, FILTER_LABELS } from "@/lib/analytics-api"
+import { AiPlaybookOptimizerCard } from "./ai-playbook-optimizer-card"
 import { PlaybookDetailView } from "./playbook-detail-view"
 import { SetupComparisonView } from "./setup-comparison-view"
 import { RetireDialog } from "./retire-dialog"
@@ -290,6 +291,8 @@ export function PlaybookDashboard({ overview, isLoading, range, rangeOptions, on
           </Button>
         ))}
       </div>
+
+      <AiPlaybookOptimizerCard rangeLabel={range as "1W" | "1M" | "3M" | "6M" | "All"} />
 
       {/* Setup cards */}
       {overview.setups.length === 0 ? (

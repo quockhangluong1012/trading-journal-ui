@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { HubConnection, HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
-import { notificationApi, NotificationDto } from "../notification-api";
+import { normalizeNotification, notificationApi, NotificationDto } from "../notification-api";
 
 interface NotificationState {
   notifications: NotificationDto[];
@@ -38,7 +38,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
     newConnection.on("NewNotification", (notification: NotificationDto) => {
       set((state) => ({
-        notifications: [notification, ...state.notifications],
+        notifications: [normalizeNotification(notification), ...state.notifications],
         unreadCount: state.unreadCount + 1,
       }));
     });

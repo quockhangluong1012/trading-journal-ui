@@ -15,6 +15,7 @@ import { ConceptPerformanceDashboard } from "@/components/analytics/concept-perf
 import { SetupPerformanceDashboard } from "@/components/analytics/setup-performance-dashboard"
 import { TradeEventCorrelation } from "@/components/analytics/trade-event-correlation"
 import { EquityCurveWithEvents } from "@/components/analytics/equity-curve-with-events"
+import { AiPatternDiscoveryCard } from "@/components/analytics/ai-pattern-discovery-card"
 import { AnalyticsFilter, FILTER_LABELS, fetchAssetBreakdown, fetchDayOfWeekBreakdown, fetchEquityCurve, fetchInsights, fetchMonthlyReturns, fetchPerformanceSummary, fetchSetupPerformance,
   type AssetBreakdown as AssetBreakdownType, type DayOfWeekBreakdown as DayBreakdownType, type EquityPoint, type Insight, type MonthlyReturn, type PerformanceSummary, type SetupPerformance,
 } from "@/lib/analytics-api"
@@ -201,6 +202,7 @@ function AnalyticsContent() {
               <div className="grid gap-6 lg:grid-cols-5">
                 <div className="space-y-6 lg:col-span-3">
                   <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Lightbulb className="h-5 w-5 text-amber-400" />Recommendations</CardTitle><CardDescription className="text-muted-foreground">AI-driven analysis of your trading patterns, discipline, and payoff profile</CardDescription></CardHeader><CardContent><InsightsPanel insights={insightsData} /></CardContent></Card>
+                  <AiPatternDiscoveryCard rangeLabel={range} surfaceClassName={SC} />
                 </div>
                 <div className="space-y-4 lg:col-span-2">
                   <Card className={SC}><CardHeader className="pb-3"><CardTitle className="text-base text-foreground">Quick stats</CardTitle></CardHeader>

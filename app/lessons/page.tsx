@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { LessonsStatsCards } from "@/components/lessons/lessons-stats-cards"
 import { DisciplineScoreChart } from "@/components/lessons/discipline-score-chart"
 import { CategoryBreakdownChart } from "@/components/lessons/category-breakdown-chart"
+import { AiLessonSuggestions } from "@/components/lessons/ai-lesson-suggestions"
 import { LessonsList } from "@/components/lessons/lessons-list"
 import { DisciplineRulesPanel } from "@/components/lessons/discipline-rules-panel"
 import { DisciplineLogTable } from "@/components/lessons/discipline-log-table"
@@ -142,7 +143,13 @@ export default function LessonsPage() {
               </TabsList>
 
               <TabsContent value="lessons" className="mt-6">
-                <LessonsList onRefreshDashboard={fetchDashboard} refreshTrigger={refreshTrigger} />
+                <div className="space-y-6">
+                  <AiLessonSuggestions onCreated={() => {
+                    void fetchDashboard()
+                    setRefreshTrigger((prev) => prev + 1)
+                  }} />
+                  <LessonsList onRefreshDashboard={fetchDashboard} refreshTrigger={refreshTrigger} />
+                </div>
               </TabsContent>
 
               <TabsContent value="rules" className="mt-6">

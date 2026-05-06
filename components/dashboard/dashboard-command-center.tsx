@@ -42,6 +42,7 @@ interface DashboardCommandCenterProps {
   isRefreshing: boolean
   syncWarning?: string | null
   onRefresh: () => void
+  todaySetupBadge?: ReactNode
   sessionControl: ReactNode
 }
 
@@ -107,6 +108,7 @@ export function DashboardCommandCenter({
   isRefreshing,
   syncWarning,
   onRefresh,
+  todaySetupBadge,
   sessionControl,
 }: DashboardCommandCenterProps) {
   return (
@@ -172,6 +174,8 @@ export function DashboardCommandCenter({
                 </Button>
               ))}
             </div>
+
+            {todaySetupBadge ? <div className="w-full sm:w-auto">{todaySetupBadge}</div> : null}
 
             <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:flex-wrap sm:gap-3">
               <Button size="default" className="gap-2 rounded-full bg-primary font-medium text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:scale-105 hover:bg-primary/90 w-full sm:w-auto" asChild>
