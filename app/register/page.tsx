@@ -105,7 +105,7 @@ export default function RegisterPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
               <TrendingUp className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold text-foreground">Trading Journey</span>
+            <span className="text-lg font-semibold text-foreground">Trading Journal</span>
           </Link>
           <h1 className="mt-3 text-2xl font-bold tracking-tight text-foreground">Create your account</h1>
           <p className="text-sm text-muted-foreground">Start tracking your trades and building your edge.</p>

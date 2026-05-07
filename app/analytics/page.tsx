@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Award, Calendar, CheckCircle2, Clock, Crosshair, Layers, Lightbulb, Newspaper, PieChart as PieChartIcon, Shield, Target, TrendingDown, TrendingUp, Zap } from "lucide-react"
 import { AnalyticsCommandCenter, type AnalyticsTabValue } from "@/components/analytics/analytics-command-center"
-import { Header } from "@/components/header"
+import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PerformanceHeatmap } from "@/components/analytics/performance-heatmap"
@@ -15,6 +15,7 @@ import { ConceptPerformanceDashboard } from "@/components/analytics/concept-perf
 import { SetupPerformanceDashboard } from "@/components/analytics/setup-performance-dashboard"
 import { TradeEventCorrelation } from "@/components/analytics/trade-event-correlation"
 import { EquityCurveWithEvents } from "@/components/analytics/equity-curve-with-events"
+import { AiPatternDiscoveryCard } from "@/components/analytics/ai-pattern-discovery-card"
 import { AnalyticsFilter, FILTER_LABELS, fetchAssetBreakdown, fetchDayOfWeekBreakdown, fetchEquityCurve, fetchInsights, fetchMonthlyReturns, fetchPerformanceSummary, fetchSetupPerformance,
   type AssetBreakdown as AssetBreakdownType, type DayOfWeekBreakdown as DayBreakdownType, type EquityPoint, type Insight, type MonthlyReturn, type PerformanceSummary, type SetupPerformance,
 } from "@/lib/analytics-api"
@@ -104,16 +105,13 @@ function AnalyticsContent() {
 
   if (isAuthLoading) return <AppShellLoader title="Loading analytics" description="Gathering your performance data." />
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
-  if (isInitialLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><AnalyticsPageSkeleton /></main></div>
+  if (isInitialLoading) return <AppPageShell><AnalyticsPageSkeleton /></AppPageShell>
 
   const { analytics, monthlyData, assetData, dayData, equityData, insightsData, setupData, isRefreshing, lastUpdatedAt, syncWarning } = viewState
   const SC = ANALYTICS_SURFACE_CLASS
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="space-y-6">
+    <AppPageShell contentClassName="space-y-6">
           <AnalyticsCommandCenter range={range} rangeOptions={TIME_RANGES}
             onRangeChange={(r) => { if (isAnalyticsRangeLabel(r)) setRange(r) }}
             analytics={analytics} assetData={assetData} insights={insightsData}
@@ -201,6 +199,7 @@ function AnalyticsContent() {
               <div className="grid gap-6 lg:grid-cols-5">
                 <div className="space-y-6 lg:col-span-3">
                   <Card className={SC}><CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-lg text-foreground"><Lightbulb className="h-5 w-5 text-amber-400" />Recommendations</CardTitle><CardDescription className="text-muted-foreground">AI-driven analysis of your trading patterns, discipline, and payoff profile</CardDescription></CardHeader><CardContent><InsightsPanel insights={insightsData} /></CardContent></Card>
+                  <AiPatternDiscoveryCard rangeLabel={range} surfaceClassName={SC} />
                 </div>
                 <div className="space-y-4 lg:col-span-2">
                   <Card className={SC}><CardHeader className="pb-3"><CardTitle className="text-base text-foreground">Quick stats</CardTitle></CardHeader>
@@ -225,9 +224,7 @@ function AnalyticsContent() {
               </div>
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
-    </div>
+    </AppPageShell>
   )
 }
 

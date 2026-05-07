@@ -2,6 +2,7 @@ import React from "react"
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SpeechToTextButton } from "@/components/ui/speech-to-text-button"
 import { ImagePlus, X } from "lucide-react"
 import type { TradeFormData } from "@/lib/create-trade-form"
 import { TradeFormSection } from "./trade-form-section"
@@ -37,7 +38,18 @@ export function NotesEvidenceSection({
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-3">
-          <Label htmlFor="trade-notes">Trade Notes</Label>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <Label htmlFor="trade-notes">Trade Notes</Label>
+            <SpeechToTextButton
+              label="Voice note"
+              onTranscript={(transcript) =>
+                handleInputChange(
+                  "notes",
+                  formData.notes.trim() ? `${formData.notes.trimEnd()}\n${transcript}` : transcript,
+                )
+              }
+            />
+          </div>
           <Textarea
             id="trade-notes"
             placeholder="Add your rationale, market conditions, trigger, or execution notes..."

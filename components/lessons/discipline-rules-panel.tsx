@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, GripVertical } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { SafeHtml } from "@/components/ui/safe-html"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -163,9 +164,9 @@ export function DisciplineRulesPanel() {
                     </Badge>
                   </div>
                   {rule.description && (
-                    <div 
+                    <SafeHtml
+                      html={rule.description}
                       className="text-xs text-muted-foreground line-clamp-2 [&>ul]:pl-4 [&>ul]:list-disc [&>ul]:m-0 [&>p]:m-0" 
-                      dangerouslySetInnerHTML={{ __html: rule.description }} 
                     />
                   )}
                 </div>

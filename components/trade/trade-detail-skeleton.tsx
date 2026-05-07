@@ -1,11 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton";
-import { Header } from "@/components/header";
+import { AppPageShell } from "@/components/app-page-shell";
 
 export function TradeDetailSkeleton() {
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+    <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
         <Skeleton className="mb-5 h-5 w-32 rounded-full" />
 
         <div className="mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-card/80 p-5 shadow-sm">
@@ -63,7 +61,6 @@ export function TradeDetailSkeleton() {
             <Skeleton className="h-112 rounded-2xl" />
           </div>
         </div>
-      </main>
-    </div>
+    </AppPageShell>
   );
 }

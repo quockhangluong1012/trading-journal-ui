@@ -81,20 +81,11 @@ export interface Trade {
     takeProfit?: number
     positionSize?: number
   }
-  tradeSummary?: TradeSummary
+
   aiSummary?: string
 }
 
-export interface TradeSummary {
-  tradeId: number
-  executiveSummary: string
-  technicalInsights: string
-  psychologyAnalysis: string
-  criticalMistakes: {
-    technical: string[]
-    psychological: string[]
-  }
-}
+
 
 export interface UserSession {
   id: string

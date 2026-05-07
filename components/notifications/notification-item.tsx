@@ -1,7 +1,7 @@
 import React from "react";
 import { formatDistanceToNow } from "date-fns";
 import { NotificationDto, NotificationType, NotificationPriority } from "@/lib/notification-api";
-import { Bell, ShieldAlert, LineChart, Cpu, X, Check } from "lucide-react";
+import { Bell, ShieldAlert, LineChart, Cpu, X, Check, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
 import Link from "next/link";
@@ -23,6 +23,10 @@ export function NotificationItem({ notification, onMarkAsRead, onDelete }: Notif
         return <ShieldAlert className="h-5 w-5 text-amber-500" />;
       case NotificationType.AiInsight:
         return <Cpu className="h-5 w-5 text-emerald-500" />;
+      case NotificationType.TiltWarning:
+        return <ShieldAlert className="h-5 w-5 text-red-500" />;
+      case NotificationType.StreakAlert:
+        return <Trophy className="h-5 w-5 text-amber-500" />;
       default:
         return <Bell className="h-5 w-5 text-gray-500" />;
     }

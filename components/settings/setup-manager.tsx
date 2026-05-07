@@ -42,6 +42,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { SafeHtml } from "@/components/ui/safe-html"
 import {
   Sheet,
   SheetContent,
@@ -815,9 +816,9 @@ export function SetupManager() {
                           <h2 className="text-base font-semibold tracking-tight text-foreground">
                             {setup.name}
                           </h2>
-                          <div 
+                          <SafeHtml
+                            html={setup.description?.trim() || "No description yet. Open the setup to add the context and execution notes."}
                             className="line-clamp-3 text-sm leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                            dangerouslySetInnerHTML={{ __html: setup.description?.trim() || "No description yet. Open the setup to add the context and execution notes." }}
                           />
                         </div>
 
@@ -903,9 +904,9 @@ export function SetupManager() {
               <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
                 {workspaceTitle}
               </h1>
-              <div 
+              <SafeHtml
+                html={workspaceDescription}
                 className="max-w-4xl text-sm leading-relaxed text-muted-foreground sm:text-base [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                dangerouslySetInnerHTML={{ __html: workspaceDescription }}
               />
             </div>
           </div>
@@ -1055,9 +1056,9 @@ export function SetupManager() {
 
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-foreground">Overview</p>
-                    <div 
+                    <SafeHtml
+                      html={description.trim() || "No overview saved yet for this setup."}
                       className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                      dangerouslySetInnerHTML={{ __html: description.trim() || "No overview saved yet for this setup." }}
                     />
                   </div>
                 </>
@@ -1176,9 +1177,9 @@ export function SetupManager() {
 
                       <div className="space-y-2">
                         <p className="text-sm font-medium text-foreground">Guidance</p>
-                        <div 
+                        <SafeHtml
+                          html={activeNode.data.notes?.trim() || "No guidance yet. Add the reminders you want to see here when you switch into edit mode."}
                           className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-                          dangerouslySetInnerHTML={{ __html: activeNode.data.notes?.trim() || "No guidance yet. Add the reminders you want to see here when you switch into edit mode." }}
                         />
                       </div>
                     </>

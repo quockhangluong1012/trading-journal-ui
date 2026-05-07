@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Header } from "@/components/header";
+import { AppPageIntro } from "@/components/app-page-intro";
+import { AppPageShell } from "@/components/app-page-shell";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter, usePathname } from "next/navigation";
 import { buildRedirectWithNext } from "@/lib/auth-redirect";
@@ -111,12 +112,12 @@ function NoteCard({
       type="button"
       onClick={onView}
       className="group relative w-full overflow-hidden rounded-2xl border border-border/70
-        bg-gradient-to-br from-background via-background to-background
+        bg-linear-to-br from-background via-background to-background
         p-4 text-left transition-all duration-300
         hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
       id={`daily-note-card-${note.id}`}
     >
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/3 via-transparent to-accent/3 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+      <div className="absolute inset-0 bg-linear-to-r from-primary/3 via-transparent to-accent/3 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       <div className="relative flex items-start gap-4">
         {/* Date pill */}
@@ -196,7 +197,7 @@ function NoteDetailPanel({
   ];
 
   return (
-    <Card className="sticky top-8 rounded-2xl border border-border/70 bg-gradient-to-br from-background via-background to-primary/3 shadow-xl">
+    <Card className="sticky top-8 rounded-2xl border border-border/70 bg-linear-to-br from-background via-background to-primary/3 shadow-xl">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <Badge variant="outline" className="border-primary/25 bg-primary/10 text-primary gap-1.5">
@@ -273,7 +274,7 @@ function ReviewSummary({ notes }: { notes: DailyNoteSummaryDto[] }) {
   if (totalNotes === 0) return null;
 
   return (
-    <Card className="rounded-2xl border border-border/70 bg-gradient-to-br from-primary/5 via-background to-accent/5">
+    <Card className="rounded-2xl border border-border/70 bg-linear-to-br from-primary/5 via-background to-accent/5">
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <CalendarRange className="h-4 w-4 text-primary" />
@@ -413,22 +414,23 @@ function DailyNotesContent() {
   if (!user) return <AppShellLoader title="Redirecting" description="Taking you to login." />;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          {/* Page Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <CalendarDays className="h-6 w-6 text-primary" />
-                Daily Notes
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Review your trading preparation notes — daily, weekly, or monthly.
-              </p>
-            </div>
-          </div>
+    <AppPageShell contentClassName="space-y-6">
+          <AppPageIntro
+            badge="Preparation archive"
+            icon={<CalendarDays className="h-6 w-6" />}
+            title="Daily Notes"
+            description="Review your trading preparation notes across daily, weekly, and monthly views."
+            stats={[
+              { label: "Notes visible", value: notes.length },
+              { label: "View", value: viewMode === "all" ? "All entries" : range?.label ?? viewMode },
+              {
+                label: "Selected note",
+                value: selectedNote
+                  ? new Date(selectedNote.noteDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : "None",
+              },
+            ]}
+          />
 
           {/* View Mode Tabs */}
           <Tabs value={viewMode} onValueChange={(v) => { setViewMode(v as "all" | "week" | "month"); setRefDate(new Date()); }} className="space-y-4">
@@ -451,7 +453,7 @@ function DailyNotesContent() {
                   <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" onClick={handlePrev}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="min-w-[180px] text-center text-sm font-medium text-foreground">
+                  <span className="min-w-45 text-center text-sm font-medium text-foreground">
                     {range.label}
                   </span>
                   <Button variant="outline" size="icon" className="h-8 w-8 rounded-xl" onClick={handleNext}>
@@ -525,7 +527,6 @@ function DailyNotesContent() {
               </div>
             </div>
           )}
-        </div>
 
         {/* Edit Dialog (reuses existing component) */}
         <DailyNotesDialog
@@ -536,8 +537,7 @@ function DailyNotesContent() {
           onSave={handleSave}
           onDismiss={() => setEditDialogOpen(false)}
         />
-      </main>
-    </div>
+    </AppPageShell>
   );
 }
 

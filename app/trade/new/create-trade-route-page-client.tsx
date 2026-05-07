@@ -3,8 +3,8 @@
 import { useEffect } from "react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { AppShellLoader } from "@/components/app-shell-loader"
+import { AppPageShell } from "@/components/app-page-shell"
 import { CreateTradePage as CreateTradePageContent } from "@/components/create-trade-page"
-import { Header } from "@/components/header"
 import { useAuth } from "@/lib/auth-context"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { sanitizeTradeReturnPath } from "@/lib/create-trade-form"
@@ -16,7 +16,10 @@ export function CreateTradeRoutePageClient() {
   const searchParams = useSearchParams()
   const returnTo = sanitizeTradeReturnPath(searchParams.get("next"))
   const templateIdStr = searchParams.get("templateId")
-  const templateId = templateIdStr ? Number.parseInt(templateIdStr, 10) : undefined
+  const parsedTemplateId = templateIdStr ? Number.parseInt(templateIdStr, 10) : undefined
+  const templateId = parsedTemplateId !== undefined && Number.isNaN(parsedTemplateId)
+    ? undefined
+    : parsedTemplateId
   const queryOverrides = {
     asset: searchParams.get("asset") || undefined,
     position: searchParams.get("position") || undefined,
@@ -52,15 +55,12 @@ export function CreateTradeRoutePageClient() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <CreateTradePageContent 
-          returnTo={returnTo} 
-          templateId={templateId} 
-          queryOverrides={queryOverrides} 
-        />
-      </main>
-    </div>
+    <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
+      <CreateTradePageContent 
+        returnTo={returnTo} 
+        templateId={templateId} 
+        queryOverrides={queryOverrides} 
+      />
+    </AppPageShell>
   )
 }

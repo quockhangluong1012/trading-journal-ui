@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Calculator, DollarSign, GitBranch, RefreshCcw, Settings2, Shield, ShieldAlert, TrendingDown, TrendingUp, Wallet } from "lucide-react"
-import { Header } from "@/components/header"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { RiskGauges } from "@/components/risk/risk-gauges"
+import { AiRiskAdvisorCard } from "@/components/risk/ai-risk-advisor-card"
 import { PositionSizer } from "@/components/risk/position-sizer"
 import { CorrelationMatrixPanel } from "@/components/risk/correlation-matrix"
 import { RiskHeatmapPanel } from "@/components/risk/risk-heatmap"
@@ -60,28 +62,29 @@ export default function RiskPage() {
 
   if (isAuthLoading) return <AppShellLoader title="Loading risk dashboard" description="Calculating your risk metrics." />
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
-  if (state.isLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"><div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div></main></div>
+  if (state.isLoading) return <AppPageShell><div className="flex items-center justify-center py-20"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div></AppPageShell>
 
   const { dashboard, config, correlation, heatmap, balanceHistory } = state
   const d = dashboard!
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          {/* Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground sm:text-3xl">
-                <Shield className="h-7 w-7 text-primary" /> Risk Management
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">Portfolio-level risk controls, position sizing, and exposure analysis</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={state.isRefreshing} className="gap-2">
-              <RefreshCcw className={`h-4 w-4 ${state.isRefreshing ? "animate-spin" : ""}`} /> Refresh
-            </Button>
-          </div>
+    <AppPageShell contentClassName="space-y-6">
+          <AppPageIntro
+            badge="Risk desk"
+            icon={<Shield className="h-6 w-6" />}
+            title="Risk Management"
+            description="Portfolio-level risk controls, position sizing, and exposure analysis."
+            stats={[
+              { label: "Account balance", value: `$${d.accountBalance.toLocaleString()}` },
+              { label: "Open positions", value: `${d.openPositionCount} / ${d.maxOpenPositions}` },
+              { label: "Daily P&L", value: `${d.dailyPnl >= 0 ? "+" : ""}$${d.dailyPnl.toLocaleString()}` },
+            ]}
+            actions={
+              <Button variant="outline" size="sm" onClick={() => void loadData()} disabled={state.isRefreshing} className="gap-2 rounded-full">
+                <RefreshCcw className={`h-4 w-4 ${state.isRefreshing ? "animate-spin" : ""}`} /> Refresh
+              </Button>
+            }
+          />
 
           {/* Alerts */}
           {d.alerts.length > 0 && (
@@ -150,6 +153,7 @@ export default function RiskPage() {
 
             <TabsContent value="overview" className="space-y-6">
               <RiskGauges dashboard={d} />
+              <AiRiskAdvisorCard />
               {heatmap && <RiskHeatmapPanel data={heatmap} />}
             </TabsContent>
 
@@ -158,8 +162,6 @@ export default function RiskPage() {
             <TabsContent value="balance"><AccountBalancePanel data={balanceHistory} onRefresh={loadData} /></TabsContent>
             <TabsContent value="settings"><RiskConfigPanel config={config} onSaved={loadData} /></TabsContent>
           </Tabs>
-        </div>
-      </main>
-    </div>
+    </AppPageShell>
   )
 }

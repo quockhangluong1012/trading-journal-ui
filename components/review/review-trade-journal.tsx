@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { SafeHtml } from "@/components/ui/safe-html"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ReviewTrade } from "@/lib/review-api"
 import { cn } from "@/lib/utils"
@@ -258,9 +259,9 @@ function TradeJournalCard({ trade }: { trade: ReviewTrade }) {
                 <FileText className="h-3.5 w-3.5 text-primary" />
                 Trade Notes
               </p>
-              <div
+              <SafeHtml
+                html={trade.notes}
                 className="trade-notes-html text-sm leading-relaxed text-foreground/85 [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_h1]:text-base [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1 [&_br]:block [&_a]:text-primary [&_a]:underline"
-                dangerouslySetInnerHTML={{ __html: trade.notes }}
               />
             </div>
           ) : null}

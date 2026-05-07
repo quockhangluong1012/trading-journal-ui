@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Header } from "@/components/header";
+import { AppPageShell } from "@/components/app-page-shell";
 import { ChatMessage, TypingIndicator } from "@/components/coach/chat-message";
 import { ChatInput } from "@/components/coach/chat-input";
 import { Button } from "@/components/ui/button";
@@ -62,71 +62,71 @@ function CoachContent() {
   if (!user) return <AppShellLoader title="Redirecting" description="Taking you to login." />;
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <Header />
-      <div className="flex min-h-0 flex-1 flex-col">
-        {/* Chat header bar */}
-        <div className="flex items-center justify-between border-b border-border/70 bg-background/95 px-4 py-3 backdrop-blur-sm sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 shadow-sm">
-              <Sparkles className="h-5 w-5 text-accent" />
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-foreground">TradeMind</h1>
-              <p className="text-xs text-muted-foreground">AI Trading Coach &middot; Personalized to your data</p>
-            </div>
+    <AppPageShell
+      width="full"
+      contentClassName="flex min-h-0 flex-1 flex-col px-0 py-0 sm:px-0 sm:py-0 lg:px-0"
+    >
+      {/* Chat header bar */}
+      <div className="flex items-center justify-between border-b border-border/70 bg-background/95 px-4 py-3 backdrop-blur-sm sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 shadow-sm">
+            <Sparkles className="h-5 w-5 text-accent" />
           </div>
-          {messages.length > 0 && (
-            <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5 rounded-xl">
-              <RotateCcw className="h-3.5 w-3.5" /> New chat
-            </Button>
+          <div>
+            <h1 className="text-base font-semibold text-foreground">TradeMind</h1>
+            <p className="text-xs text-muted-foreground">AI Trading Coach &middot; Personalized to your data</p>
+          </div>
+        </div>
+        {messages.length > 0 && (
+          <Button variant="outline" size="sm" onClick={handleReset} className="gap-1.5 rounded-xl">
+            <RotateCcw className="h-3.5 w-3.5" /> New chat
+          </Button>
+        )}
+      </div>
+
+      {/* Messages area */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-3xl space-y-6">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="flex h-20 w-20 items-center justify-center rounded-3xl border border-accent/20 bg-accent/10 shadow-lg">
+                <Bot className="h-10 w-10 text-accent" />
+              </div>
+              <h2 className="mt-6 text-xl font-semibold text-foreground">Welcome to TradeMind</h2>
+              <p className="mt-2 max-w-md text-center text-sm leading-relaxed text-muted-foreground">
+                Your AI trading coach analyzes your real performance data, psychology journal, and trade history to give personalized, actionable guidance.
+              </p>
+              <div className="mt-8 grid w-full max-w-lg gap-3 sm:grid-cols-2">
+                {STARTER_PROMPTS.map((starter) => (
+                  <button key={starter.label} type="button" onClick={() => sendMessage(starter.prompt)}
+                    className="flex items-start gap-3 rounded-2xl border border-border/70 bg-card/95 p-4 text-left shadow-sm transition-all hover:border-accent/30 hover:bg-accent/5 hover:shadow-md">
+                    <starter.icon className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{starter.label}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{starter.prompt}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-8 flex items-center gap-2 rounded-2xl border border-border/50 bg-secondary/20 px-4 py-2.5">
+                <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">Start a conversation or pick a starter prompt above</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {messages.map((msg, i) => (
+                <ChatMessage key={i} role={msg.role} content={msg.content} />
+              ))}
+              {isLoading && <TypingIndicator />}
+            </>
           )}
         </div>
-
-        {/* Messages area */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-          <div className="mx-auto max-w-3xl space-y-6">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <div className="flex h-20 w-20 items-center justify-center rounded-3xl border border-accent/20 bg-accent/10 shadow-lg">
-                  <Bot className="h-10 w-10 text-accent" />
-                </div>
-                <h2 className="mt-6 text-xl font-semibold text-foreground">Welcome to TradeMind</h2>
-                <p className="mt-2 max-w-md text-center text-sm leading-relaxed text-muted-foreground">
-                  Your AI trading coach analyzes your real performance data, psychology journal, and trade history to give personalized, actionable guidance.
-                </p>
-                <div className="mt-8 grid w-full max-w-lg gap-3 sm:grid-cols-2">
-                  {STARTER_PROMPTS.map((starter) => (
-                    <button key={starter.label} type="button" onClick={() => sendMessage(starter.prompt)}
-                      className="flex items-start gap-3 rounded-2xl border border-border/70 bg-card/95 p-4 text-left shadow-sm transition-all hover:border-accent/30 hover:bg-accent/5 hover:shadow-md">
-                      <starter.icon className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{starter.label}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{starter.prompt}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-8 flex items-center gap-2 rounded-2xl border border-border/50 bg-secondary/20 px-4 py-2.5">
-                  <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">Start a conversation or pick a starter prompt above</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {messages.map((msg, i) => (
-                  <ChatMessage key={i} role={msg.role} content={msg.content} />
-                ))}
-                {isLoading && <TypingIndicator />}
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Input area */}
-        <ChatInput onSend={sendMessage} disabled={isLoading} />
       </div>
-    </div>
+
+      {/* Input area */}
+      <ChatInput onSend={sendMessage} disabled={isLoading} />
+    </AppPageShell>
   );
 }
 

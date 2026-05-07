@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   Target,
 } from "lucide-react"
-import { Header } from "@/components/header"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { useAuth } from "@/lib/auth-context"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
@@ -24,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { LessonsStatsCards } from "@/components/lessons/lessons-stats-cards"
 import { DisciplineScoreChart } from "@/components/lessons/discipline-score-chart"
 import { CategoryBreakdownChart } from "@/components/lessons/category-breakdown-chart"
+import { AiLessonSuggestions } from "@/components/lessons/ai-lesson-suggestions"
 import { LessonsList } from "@/components/lessons/lessons-list"
 import { DisciplineRulesPanel } from "@/components/lessons/discipline-rules-panel"
 import { DisciplineLogTable } from "@/components/lessons/discipline-log-table"
@@ -76,39 +78,24 @@ export default function LessonsPage() {
   }
 
   return (
-    <div className="min-h-screen relative bg-slate-50 dark:bg-background overflow-hidden selection:bg-primary/20">
-      {/* Dynamic Background */}
-      <div className="pointer-events-none absolute -inset-[10px] opacity-60 dark:opacity-40">
-        <div className="absolute -top-24 -right-24 h-[600px] w-[600px] rounded-full bg-primary/10 dark:bg-primary/20 blur-[100px]" />
-        <div className="absolute -bottom-24 -left-24 h-[600px] w-[600px] rounded-full bg-secondary/20 dark:bg-secondary/20 blur-[100px]" />
-      </div>
+    <>
+      <AppPageShell className="selection:bg-primary/20" contentClassName="space-y-6">
+          <AppPageIntro
+            badge="Learning workspace"
+            icon={<BookOpen className="h-6 w-6" />}
+            title="Lessons & Discipline"
+            description="Track what you learn from losses, stay disciplined, and grow as a trader."
+            actions={
+              <Button
+                onClick={() => setIsCreateOpen(true)}
+                className="gap-2 bg-linear-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all"
+              >
+                <Plus className="h-4 w-4" />
+                New Lesson
+              </Button>
+            }
+          />
 
-      <div className="relative z-10 flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          {/* Page Header */}
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25">
-                  <BookOpen className="h-5 w-5 text-white" />
-                </div>
-                Lessons & Discipline
-              </h1>
-              <p className="mt-1 text-muted-foreground">
-                Track what you learn from losses, stay disciplined, and grow as a trader.
-              </p>
-            </div>
-            <Button
-              onClick={() => setIsCreateOpen(true)}
-              className="gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all"
-            >
-              <Plus className="h-4 w-4" />
-              New Lesson
-            </Button>
-          </div>
-
-          <div className="space-y-6">
             {/* Stats Cards */}
             <LessonsStatsCards dashboard={dashboard} isLoading={isDashboardLoading} />
 
@@ -142,7 +129,13 @@ export default function LessonsPage() {
               </TabsList>
 
               <TabsContent value="lessons" className="mt-6">
-                <LessonsList onRefreshDashboard={fetchDashboard} refreshTrigger={refreshTrigger} />
+                <div className="space-y-6">
+                  <AiLessonSuggestions onCreated={() => {
+                    void fetchDashboard()
+                    setRefreshTrigger((prev) => prev + 1)
+                  }} />
+                  <LessonsList onRefreshDashboard={fetchDashboard} refreshTrigger={refreshTrigger} />
+                </div>
               </TabsContent>
 
               <TabsContent value="rules" className="mt-6">
@@ -153,9 +146,7 @@ export default function LessonsPage() {
                 <DisciplineLogTable />
               </TabsContent>
             </Tabs>
-          </div>
-        </main>
-      </div>
+      </AppPageShell>
 
       <CreateLessonDialog
         open={isCreateOpen}
@@ -166,6 +157,6 @@ export default function LessonsPage() {
           setRefreshTrigger(prev => prev + 1)
         }}
       />
-    </div>
+    </>
   )
 }

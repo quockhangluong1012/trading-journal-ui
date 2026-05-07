@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { useEffect } from "react"
 import { FileText, Zap } from "lucide-react"
-import { Header } from "@/components/header"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { TemplateManager } from "@/components/trade/template-manager"
 import { QuickTradeModal } from "@/components/trade/quick-trade-modal"
 import { useAuth } from "@/lib/auth-context"
@@ -41,20 +41,13 @@ function TemplatesContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Page header */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1.5">
-            <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-foreground">
-              <FileText className="h-6 w-6 text-primary" />
-              Trade Templates
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Save frequently-used configurations and create trades faster during live sessions.
-            </p>
-          </div>
+    <AppPageShell contentClassName="space-y-8 py-4 sm:py-6 lg:py-8">
+      <AppPageIntro
+        badge="Template library"
+        icon={<FileText className="h-6 w-6" />}
+        title="Trade Templates"
+        description="Save frequently-used configurations and create trades faster during live sessions."
+        actions={
           <Button
             onClick={() => {
               setSelectedTemplate(null)
@@ -65,19 +58,17 @@ function TemplatesContent() {
             <Zap className="h-4 w-4" />
             Quick Trade
           </Button>
-        </div>
+        }
+      />
 
-        {/* Template manager grid */}
-        <TemplateManager onUseTemplate={handleUseTemplate} />
+      <TemplateManager onUseTemplate={handleUseTemplate} />
 
-        {/* Quick trade modal */}
-        <QuickTradeModal
-          open={quickTradeOpen}
-          onOpenChange={setQuickTradeOpen}
-          prefillTemplate={selectedTemplate}
-        />
-      </main>
-    </div>
+      <QuickTradeModal
+        open={quickTradeOpen}
+        onOpenChange={setQuickTradeOpen}
+        prefillTemplate={selectedTemplate}
+      />
+    </AppPageShell>
   )
 }
 

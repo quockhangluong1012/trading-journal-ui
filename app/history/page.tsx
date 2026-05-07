@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Header } from "@/components/header"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { useTrades } from "@/lib/trade-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -41,6 +42,7 @@ import {
 import {
   ArrowUpRight,
   ArrowDownRight,
+  History,
   Plus,
   Pencil,
   Trash2,
@@ -73,6 +75,9 @@ import { useRouter, usePathname } from "next/navigation"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { exportTrades, ExportFormat } from "@/lib/export-api"
+import type { NaturalLanguageTradeSearchResult } from "@/lib/ai-insights-api"
+import { AiHistorySearchBar } from "@/components/trade/ai-history-search-bar"
+import { mapAiTradeSearchToHistoryFilters } from "@/lib/history-ai-filters"
 
 type SortField = "date" | "pnl" | "asset"
 type SortDirection = "asc" | "desc"
@@ -265,6 +270,24 @@ function HistoryContent() {
     setPage(1)
   }
 
+  const activeFilterCount = [
+    searchQuery.trim().length > 0,
+    positionFilter !== PositionType.All,
+    statusFilter !== TradeStatus.All,
+    Boolean(dateFrom),
+    Boolean(dateTo),
+  ].filter(Boolean).length
+
+  const applyAiFilters = useCallback((result: NaturalLanguageTradeSearchResult) => {
+    const nextFilters = mapAiTradeSearchToHistoryFilters(result)
+    setSearchQuery(nextFilters.searchQuery)
+    setPositionFilter(nextFilters.positionFilter)
+    setStatusFilter(nextFilters.statusFilter)
+    setDateFrom(nextFilters.dateFrom)
+    setDateTo(nextFilters.dateTo)
+    setPage(nextFilters.page)
+  }, [])
+
   const getPositionTypeLabel = (position: PositionType) => {
     switch (position) {
       case PositionType.Long:
@@ -296,58 +319,63 @@ function HistoryContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Trade History</h1>
-            <p className="text-muted-foreground">View and manage all your trades</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="gap-2" disabled={isExporting} id="export-trades-btn">
-                  {isExporting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="h-4 w-4" />
-                  )}
-                  Export
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => handleExport(ExportFormat.Csv)}
-                  className="gap-2 cursor-pointer"
-                  id="export-csv-btn"
-                >
-                  <FileText className="h-4 w-4" />
-                  Export as CSV
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleExport(ExportFormat.Excel)}
-                  className="gap-2 cursor-pointer"
-                  id="export-excel-btn"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Export as Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button className="gap-2" asChild>
-              <Link href={buildCreateTradeHref("/history")}>
-                <Plus className="h-4 w-4" />
-                Create Trade
-              </Link>
-            </Button>
-          </div>
-        </div>
+    <AppPageShell contentClassName="space-y-6">
+        <AppPageIntro
+          badge="Trade ledger"
+          icon={<History className="h-6 w-6" />}
+          title="Trade History"
+          description="View, filter, export, and manage your complete trade log with AI-assisted search."
+          stats={[
+            { label: "Total trades", value: totalRecords },
+            { label: "Visible results", value: filteredAndSortedTrades.length },
+            { label: "Active filters", value: activeFilterCount },
+          ]}
+          actions={
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="gap-2 rounded-full" disabled={isExporting} id="export-trades-btn">
+                    {isExporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => handleExport(ExportFormat.Csv)}
+                    className="gap-2 cursor-pointer"
+                    id="export-csv-btn"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Export as CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleExport(ExportFormat.Excel)}
+                    className="gap-2 cursor-pointer"
+                    id="export-excel-btn"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Export as Excel
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Button className="gap-2" asChild>
+                <Link href={buildCreateTradeHref("/history")}>
+                  <Plus className="h-4 w-4" />
+                  Create Trade
+                </Link>
+              </Button>
+            </>
+          }
+        />
 
         <Tabs defaultValue="trades" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="trades">Trades</TabsTrigger>
-            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsList className="grid h-auto w-full max-w-sm grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1">
+            <TabsTrigger value="trades" className="rounded-xl px-4 py-2.5 text-sm">Trades</TabsTrigger>
+            <TabsTrigger value="sessions" className="rounded-xl px-4 py-2.5 text-sm">Sessions</TabsTrigger>
           </TabsList>
 
           <TabsContent value="trades" className="m-0">
@@ -361,6 +389,7 @@ function HistoryContent() {
           <CardContent>
             {/* Filters */}
             <div className="mb-6 space-y-4">
+              <AiHistorySearchBar onApplyFilters={applyAiFilters} />
               <div className="flex flex-col gap-4 sm:flex-row">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -384,7 +413,7 @@ function HistoryContent() {
                   }
                   setPage(1)
                 }}>
-                  <SelectTrigger className="w-full sm:w-[150px]">
+                  <SelectTrigger className="w-full sm:w-37.5">
                     <SelectValue placeholder="Position" />
                   </SelectTrigger>
                   <SelectContent>
@@ -403,7 +432,7 @@ function HistoryContent() {
                   }
                   setPage(1)
                 }}>
-                  <SelectTrigger className="w-full sm:w-[150px]">
+                  <SelectTrigger className="w-full sm:w-37.5">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -424,7 +453,7 @@ function HistoryContent() {
                       setDateFrom(e.target.value)
                       setPage(1)
                     }}
-                    className="w-[160px]"
+                    className="w-40"
                   />
                 </div>
                 <div className="flex items-center gap-2">
@@ -436,7 +465,7 @@ function HistoryContent() {
                       setDateTo(e.target.value)
                       setPage(1)
                     }}
-                    className="w-[160px]"
+                    className="w-40"
                   />
                 </div>
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1">
@@ -585,7 +614,7 @@ function HistoryContent() {
                                     )}
                                   </div>
                                 </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-[200px]">
+                                <TooltipContent side="top" className="max-w-50">
                                   <div className="flex flex-wrap gap-1">
                                     {trade.emotionTags.map((emotionTag: EmotionTag) => {
                                       return (
@@ -753,7 +782,7 @@ function HistoryContent() {
 
         {/* Delete Confirmation Dialog */}
         <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-106.25">
             <DialogHeader>
               <DialogTitle>Delete Trade</DialogTitle>
               <DialogDescription>
@@ -772,8 +801,7 @@ function HistoryContent() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </main>
-    </div>
+    </AppPageShell>
   )
 }
 

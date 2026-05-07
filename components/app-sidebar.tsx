@@ -11,7 +11,6 @@ import {
   Radar,
   Shield,
   Settings2,
-  TrendingUp,
   BarChart3,
   ClipboardList,
   Wand2,
@@ -25,17 +24,12 @@ import {
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth-context"
 
@@ -97,27 +91,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar variant="inset" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <TrendingUp className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">Trading Journey</span>
-                  <span className="truncate text-xs">Track & Improve</span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="px-1">
         {data.navMain.map((group) => (
-          <SidebarGroup key={group.title}>
-            <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
+          <SidebarGroup key={group.title} className="py-1">
+            <SidebarGroupLabel className="px-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-sidebar-foreground/55">
+              {group.title}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
@@ -129,7 +108,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
                   return (
                     <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={item.title}
+                        className="h-10 rounded-xl px-3 text-[13px] font-medium text-sidebar-foreground/82 hover:bg-sidebar-accent/80 hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary/12 data-[active=true]:text-sidebar-primary data-[active=true]:shadow-sm"
+                      >
                         <Link href={item.url}>
                           {item.icon && <item.icon />}
                           <span>{item.title}</span>

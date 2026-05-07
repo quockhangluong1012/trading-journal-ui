@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from "react"
 import { GitBranch } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { AppShellLoader } from "@/components/app-shell-loader"
+import { AppPageShell } from "@/components/app-page-shell"
 import { TodaySetupDialog } from "@/components/dashboard/today-setup-dialog"
 import { DailyNotesDialog } from "@/components/dashboard/daily-notes-dialog"
 import { DailyNotesBanner } from "@/components/dashboard/daily-notes-banner"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
-import { Header } from "@/components/header"
 import { DashboardCommandCenter } from "@/components/dashboard/dashboard-command-center"
+import { AiEconomicImpactCard } from "@/components/dashboard/ai-economic-impact-card"
 import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
@@ -141,19 +142,8 @@ function DashboardContent() {
   }
 
   return (
-    <div className="min-h-screen relative bg-slate-50 dark:bg-background overflow-hidden selection:bg-primary/20">
-      {/* Dynamic Background Elements */}
-      <div className="pointer-events-none absolute -inset-[10px] opacity-60 dark:opacity-40">
-        <div className="absolute -top-24 -right-24 h-[600px] w-[600px] rounded-full bg-primary/10 dark:bg-primary/20 blur-[100px]" />
-        <div className="absolute -bottom-24 -left-24 h-[600px] w-[600px] rounded-full bg-secondary/20 dark:bg-secondary/20 blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/20 dark:bg-accent/10 blur-[120px]" />
-      </div>
-
-      <div className="relative z-10 flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-
-        <div className="space-y-6">
+    <AppPageShell className="selection:bg-primary/20">
+      <div className="space-y-6">
           {/* Daily Notes Banner — always visible at top */}
           <DailyNotesBanner
             note={dailyNotes.note}
@@ -184,7 +174,7 @@ function DashboardContent() {
                 >
                   <GitBranch className="h-4 w-4" />
                   <span className="hidden sm:inline">Today Setup: </span>
-                  <span className="max-w-[150px] truncate font-normal sm:max-w-[200px]">{todaySetupSummary}</span>
+                  <span className="max-w-40 truncate font-normal sm:max-w-52">{todaySetupSummary}</span>
                 </Button>
               ) : undefined
             }
@@ -215,6 +205,8 @@ function DashboardContent() {
 
           <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
 
+          <AiEconomicImpactCard symbols={openPositions.map((position) => position.asset)} />
+
           <CalendarWidget filter={filter} />
           
           <div className="w-full space-y-4">
@@ -222,7 +214,6 @@ function DashboardContent() {
             <EconomicCalendarWidget />
           </div>
         </div>
-      </main>
 
       <TodaySetupDialog
         open={isTodaySetupDialogOpen}
@@ -238,8 +229,7 @@ function DashboardContent() {
         onSave={dailyNotes.save}
         onDismiss={dailyNotes.dismissPopup}
       />
-      </div>
-    </div>
+    </AppPageShell>
   )
 }
 

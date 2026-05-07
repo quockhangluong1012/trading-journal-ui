@@ -105,6 +105,9 @@ interface CreateTradePageProps {
 import { TradeFormSection } from "./trade/create-trade/trade-form-section"
 import { TradeSummaryStat } from "./trade/create-trade/trade-summary-stat"
 import { TradeSetupSection } from "./trade/create-trade/trade-setup-section"
+import { AiChartScreenshotAnalysis } from "./trade/create-trade/ai-chart-screenshot-analysis"
+import { AiDisciplineGuardian } from "./trade/create-trade/ai-discipline-guardian"
+import { AiPreTradeValidation } from "./trade/create-trade/ai-pre-trade-validation"
 import { RiskManagementSection } from "./trade/create-trade/risk-management-section"
 import { PreTradeChecklistSection } from "./trade/create-trade/pre-trade-checklist-section"
 import { MarketContextSection } from "./trade/create-trade/market-context-section"
@@ -163,10 +166,30 @@ export function CreateTradePage({
 
 
   const WIZARD_STEPS = [
-    { id: "setup", label: "Setup" },
-    { id: "context", label: "Context & Psych" },
-    { id: "evidence", label: "Review" },
-  ]
+    {
+      id: "setup",
+      label: "Setup",
+      description: "Define the instrument, trade direction, entry, stop, and targets.",
+      icon: Target,
+    },
+    {
+      id: "context",
+      label: "Context",
+      description: "Capture checklist status, market context, and trading psychology.",
+      icon: ClipboardCheck,
+    },
+    {
+      id: "evidence",
+      label: "Evidence & Submit",
+      description: "Add notes or charts, then review the setup before saving it.",
+      icon: FileText,
+    },
+  ] as const
+  const STEP_VALIDATION_FIELDS = [
+    ["asset", "entryPrice", "stopLoss", "date", "targetTier1"],
+    ["checklist", "tradingSession", "confidenceLevel"],
+    [],
+  ] as const
 
   const checklistDetailRequestRef = useRef(0)
 
@@ -366,7 +389,7 @@ export function CreateTradePage({
     }
   }
 
-  const validateForm = () => {
+  const getValidationErrors = () => {
     const nextErrors: Record<string, string> = {}
 
     if (!formData.asset.trim()) {
@@ -401,9 +424,80 @@ export function CreateTradePage({
       nextErrors.confidenceLevel = "Confidence level is required"
     }
 
+    return nextErrors
+  }
+
+  const validateForm = () => {
+    const nextErrors = getValidationErrors()
+
     setErrors(nextErrors)
 
     return Object.keys(nextErrors).length === 0
+  }
+
+  const validateStep = (stepIndex: number) => {
+    const relevantFields = [...STEP_VALIDATION_FIELDS[stepIndex]] as string[]
+
+    if (relevantFields.length === 0) {
+      return true
+    }
+
+    const nextErrors = getValidationErrors()
+
+    setErrors((prev) => {
+      const mergedErrors = { ...prev }
+
+      relevantFields.forEach((field) => {
+        delete mergedErrors[field]
+      })
+
+      Object.entries(nextErrors).forEach(([field, message]) => {
+        if (relevantFields.includes(field)) {
+          mergedErrors[field] = message
+        }
+      })
+
+      return mergedErrors
+    })
+
+    return relevantFields.every((field) => !nextErrors[field])
+  }
+
+  const scrollToWizardTop = () => {
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion ? "auto" : "smooth" })
+  }
+
+  const handleStepChange = (nextStep: number) => {
+    if (nextStep === currentStep || nextStep < 0 || nextStep >= WIZARD_STEPS.length) {
+      return
+    }
+
+    if (nextStep > currentStep) {
+      for (let stepIndex = currentStep; stepIndex < nextStep; stepIndex += 1) {
+        const isStepValid = validateStep(stepIndex)
+
+        if (!isStepValid) {
+          if (stepIndex !== currentStep) {
+            setCurrentStep(stepIndex)
+          }
+
+          toast({
+            variant: "destructive",
+            title: "Complete this step first",
+            description: "Fill the highlighted fields before moving to the next section.",
+          })
+          scrollToWizardTop()
+          return
+        }
+      }
+    }
+
+    setCurrentStep(nextStep)
+    scrollToWizardTop()
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -599,6 +693,7 @@ export function CreateTradePage({
   const selectedTradingZone = apiTradingZones.find(
     (zone) => zone.id.toString() === tradingSession,
   )
+  const selectedTradingZoneName = selectedTradingZone?.name ?? null
   const selectedChecklistModel = checklistModels.find(
     (model) => model.id.toString() === selectedModelId,
   )
@@ -623,20 +718,95 @@ export function CreateTradePage({
   const riskTone = getProgressTone(riskMetrics.riskScore)
   const checklistTone = getProgressTone(checklistProgress)
   const completionTone = getProgressTone(completionProgress)
+  const validationErrors = getValidationErrors()
+  const validationGuidance: Record<string, string> = {
+    asset: "Add the asset or market you are planning to trade.",
+    entryPrice: "Enter a valid entry price for the setup.",
+    stopLoss: "Set a protective stop loss before continuing.",
+    date: "Choose the date for this trade idea.",
+    targetTier1: "Add at least one target so the reward plan is clear.",
+    checklist: apiChecklists.length > 0
+      ? "Check at least one checklist item for this model."
+      : "Choose a checklist model if you want pre-trade criteria.",
+    tradingSession: "Select the trading zone or session for this setup.",
+    confidenceLevel: "Set your confidence level to capture conviction.",
+  }
+  const stepReadiness = [
+    {
+      completed: [
+        formData.asset.trim().length > 0,
+        Number.parseFloat(formData.entryPrice) > 0,
+        Number.parseFloat(formData.stopLoss) > 0,
+        Boolean(formData.date),
+        hasTargetConfigured,
+      ].filter(Boolean).length,
+      total: 5,
+    },
+    {
+      completed: [
+        apiChecklists.length === 0 || checkedItems.length > 0,
+        Boolean(tradingSession),
+        confidenceLevel > 0,
+      ].filter(Boolean).length,
+      total: 3,
+    },
+    {
+      completed: [Boolean(formData.notes.trim()), screenshots.length > 0].filter(Boolean)
+        .length,
+      total: 2,
+    },
+  ]
+  const currentStepMeta = WIZARD_STEPS[currentStep]
+  const currentStepReadiness = stepReadiness[currentStep]
+  const currentStepTone = getProgressTone(
+    Math.round((currentStepReadiness.completed / currentStepReadiness.total) * 100),
+  )
+  const currentStepAttentionItems = STEP_VALIDATION_FIELDS[currentStep]
+    .filter((field) => validationErrors[field])
+    .map((field) => validationGuidance[field] ?? validationErrors[field])
+  const reviewSuggestions = [
+    formData.notes.trim().length > 0
+      ? null
+      : "Add a short trade rationale so the later review has context.",
+    screenshots.length > 0
+      ? null
+      : `Upload up to ${CREATE_TRADE_SCREENSHOT_MAX_COUNT} screenshots if you want AI chart analysis.`,
+    selectedTradingZoneName
+      ? null
+      : "Confirm the trading zone so session-based review stays accurate.",
+  ].filter((item): item is string => Boolean(item))
+  const sidebarGuidanceItems =
+    currentStepAttentionItems.length > 0
+      ? currentStepAttentionItems
+      : currentStep === WIZARD_STEPS.length - 1
+        ? reviewSuggestions.length > 0
+          ? reviewSuggestions
+          : ["Notes and evidence are in place. Review the live preview and submit when ready."]
+        : ["This step has the required inputs. Use the live preview to sanity check before moving on."]
+  const remainingRequiredCount = Object.keys(validationErrors).length
+  const nextStepLabel =
+    currentStep < WIZARD_STEPS.length - 1 ? WIZARD_STEPS[currentStep + 1].label : null
+  const currentStepStatusLabel =
+    currentStepAttentionItems.length > 0
+      ? `${currentStepAttentionItems.length} item${currentStepAttentionItems.length === 1 ? "" : "s"} to fix`
+      : currentStep === WIZARD_STEPS.length - 1
+        ? "Optional review aids"
+        : "Ready to continue"
 
   return (
-    <div className="relative space-y-8 pb-32">
+    <div className="relative space-y-6 pb-32">
       {/* Background glow effects */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-[10%] left-[-5%] h-[600px] w-[600px] animate-pulse rounded-full bg-primary/10 blur-[120px] duration-1000" />
-        <div className="absolute right-[-5%] top-[20%] h-[500px] w-[500px] animate-pulse rounded-full bg-accent/10 blur-[100px] duration-700" />
-        <div className="absolute bottom-[10%] left-[10%] h-[700px] w-[700px] animate-pulse rounded-full bg-emerald-500/5 blur-[150px] duration-1000" />
+        <div className="absolute -top-[10%] left-[-5%] h-150 w-150 animate-pulse rounded-full bg-primary/10 blur-[120px] duration-1000" />
+        <div className="absolute right-[-5%] top-[20%] h-125 w-125 animate-pulse rounded-full bg-accent/10 blur-[100px] duration-700" />
+        <div className="absolute bottom-[10%] left-[10%] h-175 w-175 animate-pulse rounded-full bg-emerald-500/5 blur-[150px] duration-1000" />
       </div>
 
-      <div className="relative overflow-hidden rounded-[2.5rem] border border-white/10 bg-background/40 shadow-sm backdrop-blur-2xl">
-        <div className="absolute inset-0 bg-linear-to-br from-primary/5 via-transparent to-accent/5 opacity-50" />
-        <div className="relative flex flex-col gap-8 px-8 py-10 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0 space-y-5">
+      <div className="mx-auto w-full max-w-6xl space-y-5">
+        <div className="relative overflow-hidden rounded-[2.75rem] border border-slate-200/80 bg-background/85 ring-1 ring-slate-300/60 shadow-[0_24px_60px_rgba(148,163,184,0.22)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-950/90 dark:ring-white/5 dark:shadow-[0_24px_60px_rgba(2,8,23,0.38)]">
+          <div className="absolute inset-0 bg-linear-to-br from-primary/6 via-transparent to-accent/6 opacity-70" />
+          <div className="relative flex flex-col gap-6 px-6 py-7 sm:px-8 sm:py-8 md:flex-row md:items-center md:justify-between md:gap-8">
+            <div className="min-w-0 space-y-4">
             <Button
               variant="ghost"
               size="sm"
@@ -659,76 +829,166 @@ export function CreateTradePage({
               </Badge>
               <Badge
                 variant="outline"
-                className="rounded-full border-white/10 bg-background/60 px-3 py-1.5 text-[11px] backdrop-blur-md"
+                className="rounded-full border-slate-200/80 bg-background/70 px-3 py-1.5 text-[11px] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-slate-200"
               >
                 {activeSession ? "Session linked" : "Manual entry"}
               </Badge>
               <Badge
                 variant="outline"
-                className="rounded-full border-white/10 bg-background/60 px-3 py-1.5 text-[11px] backdrop-blur-md"
+                className="rounded-full border-slate-200/80 bg-background/70 px-3 py-1.5 text-[11px] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-slate-200"
               >
                 Standalone page
               </Badge>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "rounded-full px-3 py-1.5 text-[11px] backdrop-blur-md",
+                  currentStepTone.pillClassName,
+                )}
+              >
+                Step {currentStep + 1} of {WIZARD_STEPS.length}
+              </Badge>
             </div>
 
-            <div>
-              <h1 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent drop-shadow-sm">
+            <div className="space-y-3">
+              <div className="inline-flex w-fit items-center rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-300">
+                Trade Workspace
+              </div>
+              <h1 className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent drop-shadow-sm">
                 Create New Trade
               </h1>
-              <p className="mt-3 max-w-2xl text-sm font-medium leading-relaxed text-muted-foreground/80">
+              <p className="max-w-2xl text-sm font-medium leading-relaxed text-muted-foreground/80">
                 Capture execution details, risk guardrails, and trading psychology before the position goes live.
               </p>
+              <div className="rounded-3xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/75 dark:shadow-[0_12px_30px_rgba(2,8,23,0.22)]">
+                <p className="text-sm font-medium text-foreground/85">
+                  Current focus: <span className="text-foreground">{currentStepMeta.label}</span>
+                  <span className="text-muted-foreground/80"> · {currentStepMeta.description}</span>
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TradeSummaryStat
-              label="Risk score"
-              value={`${riskMetrics.riskScore}/100`}
-              helper="Live based on stop and target setup"
-              valueClassName={riskTone.textClassName}
-            />
-            <TradeSummaryStat
-              label="Form completion"
-              value={`${completionProgress}%`}
-              helper="Core trade fields ready"
-              valueClassName={completionTone.textClassName}
-            />
+            <div className="grid gap-4 sm:grid-cols-2 md:min-w-105">
+              <TradeSummaryStat
+                label="Risk score"
+                value={`${riskMetrics.riskScore}/100`}
+                helper="Live based on stop and target setup"
+                valueClassName={riskTone.textClassName}
+              />
+              <TradeSummaryStat
+                label="Form completion"
+                value={`${completionProgress}%`}
+                helper="Core trade fields ready"
+                valueClassName={completionTone.textClassName}
+              />
+            </div>
           </div>
+        </div>
+
+        <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-4xl border border-slate-200/80 bg-background/75 ring-1 ring-slate-300/50 shadow-[0_20px_50px_rgba(148,163,184,0.18)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-950/85 dark:ring-white/5 dark:shadow-[0_20px_50px_rgba(2,8,23,0.3)]">
+        <div className="border-b border-slate-200/70 px-5 py-5 sm:px-6 dark:border-slate-800/90">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                Wizard progress
+              </p>
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                  {currentStepMeta.label}
+                </h2>
+                <p className="mt-1 max-w-2xl text-sm text-muted-foreground/85">
+                  {currentStepMeta.description}
+                </p>
+              </div>
+            </div>
+            <Badge
+              variant="outline"
+              className={cn(
+                "rounded-full px-3 py-1.5 text-[11px] font-medium backdrop-blur-md",
+                currentStepTone.pillClassName,
+              )}
+            >
+              {currentStepReadiness.completed}/{currentStepReadiness.total} ready
+            </Badge>
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-4 lg:grid-cols-3">
+          {WIZARD_STEPS.map((step, index) => {
+            const StepIcon = step.icon
+            const stepState = stepReadiness[index]
+            const stepPercent = Math.round((stepState.completed / stepState.total) * 100)
+            const stepTone = getProgressTone(stepPercent)
+            const stepErrors = STEP_VALIDATION_FIELDS[index].filter((field) => validationErrors[field])
+            const isActive = index === currentStep
+            const isCompleted = index < currentStep || stepPercent === 100
+
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => handleStepChange(index)}
+                className={cn(
+                  "rounded-3xl border p-4 text-left transition-all duration-300",
+                  isActive
+                    ? "border-primary/45 bg-primary/10 shadow-[0_16px_40px_rgba(79,70,229,0.12)] dark:bg-primary/15 dark:shadow-[0_16px_40px_rgba(79,70,229,0.18)]"
+                    : "border-slate-200/70 bg-background/60 hover:border-slate-300/90 hover:bg-background/75 dark:border-slate-700/70 dark:bg-slate-950/72 dark:hover:border-slate-500/80 dark:hover:bg-slate-900/80",
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div
+                    className={cn(
+                      "flex h-11 w-11 items-center justify-center rounded-2xl border backdrop-blur-md",
+                      isActive
+                        ? "border-primary/45 bg-primary/15 text-primary"
+                        : "border-slate-200/70 bg-background/75 text-muted-foreground dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-300",
+                    )}
+                  >
+                    {isCompleted ? <Check className="h-5 w-5" /> : <StepIcon className="h-5 w-5" />}
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[10px] font-medium backdrop-blur-md",
+                      isActive
+                        ? currentStepTone.pillClassName
+                        : isCompleted
+                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                          : stepErrors.length > 0
+                            ? "border-red-500/20 bg-red-500/10 text-red-400"
+                            : "border-slate-200/80 bg-background/80 text-muted-foreground dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-300",
+                    )}
+                  >
+                    {isActive ? "Active" : isCompleted ? "Ready" : stepErrors.length > 0 ? "Needs input" : "Upcoming"}
+                  </Badge>
+                </div>
+
+                <div className="mt-4 space-y-1.5">
+                  <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground/80">
+                    {step.description}
+                  </p>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>{stepState.completed}/{stepState.total} ready</span>
+                    <span className={stepTone.textClassName}>{stepPercent}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary/70">
+                    <div
+                      className={cn("h-full rounded-full transition-all duration-300", stepTone.barClassName)}
+                      style={{ width: `${stepPercent}%` }}
+                    />
+                  </div>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
-
-        {/* Stepper Progress */}
-        <div className="mx-auto mt-4 mb-4 flex w-full max-w-3xl justify-between relative px-2 sm:px-6">
-          <div className="absolute left-6 right-6 top-1/2 -z-10 h-1.5 -translate-y-1/2 rounded-full bg-secondary/50 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-primary transition-all duration-500 ease-out shadow-[0_0_10px_rgba(79,70,229,0.5)]"
-              style={{ width: `${(currentStep / (WIZARD_STEPS.length - 1)) * 100}%` }}
-            />
-          </div>
-          {WIZARD_STEPS.map((step, index) => (
-            <div key={step.id} className="flex flex-col items-center gap-3">
-              <div
-                className={cn(
-                  "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-500",
-                  index <= currentStep
-                    ? "border-primary bg-primary text-primary-foreground shadow-[0_0_20px_rgba(79,70,229,0.4)] scale-110"
-                    : "border-white/10 bg-background/80 text-muted-foreground backdrop-blur-sm",
-                )}
-              >
-                {index < currentStep ? <Check className="h-6 w-6" /> : <span className="text-sm font-bold">{index + 1}</span>}
-              </div>
-              <span
-                className={cn(
-                  "text-[10px] sm:text-xs font-bold uppercase tracking-[0.15em] transition-colors duration-300",
-                  index <= currentStep ? "text-foreground" : "text-muted-foreground/50",
-                )}
-              >
-                {step.label}
-              </span>
-            </div>
-          ))}
-        </div>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -806,6 +1066,7 @@ export function CreateTradePage({
               setConfidenceLevel={setConfidenceLevel}
               errors={errors}
               setErrors={setErrors}
+              notesText={formData.notes}
             />
 
             {/* ICT Methodology Section */}
@@ -845,19 +1106,30 @@ export function CreateTradePage({
               handleScreenshotUpload={handleScreenshotUpload}
               removeScreenshot={removeScreenshot}
             />
+
+            <AiChartScreenshotAnalysis
+              asset={formData.asset}
+              position={formData.position === PositionType.Long ? "Long" : "Short"}
+              entryPrice={formData.entryPrice}
+              stopLoss={formData.stopLoss}
+              targetTier1={formData.targetTier1}
+              tradingZone={selectedTradingZoneName}
+              notes={formData.notes}
+              screenshots={screenshots}
+            />
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          <aside className="order-first self-start space-y-6 xl:sticky xl:top-24 xl:order-last">
-            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-background/50 shadow-xl backdrop-blur-2xl transition-all duration-500 hover:shadow-2xl">
-              <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent opacity-50" />
-              <div className="relative border-b border-border/30 px-6 py-6">
+          <aside className="order-last self-start space-y-6 xl:sticky xl:top-24">
+            <div className="overflow-hidden rounded-4xl border border-slate-200/80 bg-background/60 ring-1 ring-slate-300/40 shadow-[0_24px_55px_rgba(148,163,184,0.18)] backdrop-blur-2xl transition-all duration-500 hover:border-slate-300/90 hover:shadow-[0_30px_65px_rgba(148,163,184,0.22)] dark:border-slate-700/70 dark:bg-slate-950/82 dark:ring-white/5 dark:shadow-[0_24px_55px_rgba(2,8,23,0.34)] dark:hover:border-slate-500/80 dark:hover:shadow-[0_30px_65px_rgba(2,8,23,0.38)]">
+              <div className="absolute inset-0 bg-linear-to-b from-white/6 to-transparent opacity-70" />
+              <div className="relative border-b border-slate-200/70 px-6 py-6 dark:border-slate-800/90">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     variant="outline"
-                    className="rounded-full border-white/10 bg-background/80 px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-md"
+                    className="rounded-full border-slate-200/80 bg-background/80 px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-200"
                   >
                     Open trade
                   </Badge>
@@ -883,7 +1155,7 @@ export function CreateTradePage({
                   <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                     Live preview
                   </p>
-                  <h2 className="bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text mt-2 text-3xl font-bold tracking-tight text-transparent">
+                  <h2 className="mt-2 bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
                     {previewAsset}
                   </h2>
                   <p className="mt-1 text-sm font-medium text-muted-foreground/80">
@@ -909,6 +1181,52 @@ export function CreateTradePage({
               </div>
 
               <div className="space-y-4 px-5 py-5">
+                <div className="rounded-2xl border border-slate-200/80 bg-background/80 p-4 shadow-[0_12px_30px_rgba(148,163,184,0.14)] dark:border-slate-700/70 dark:bg-slate-950/88 dark:shadow-[0_12px_30px_rgba(2,8,23,0.28)]">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={cn(
+                        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border",
+                        currentStepAttentionItems.length > 0
+                          ? "border-red-500/25 bg-red-500/10 text-red-400"
+                          : "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
+                      )}
+                    >
+                      {currentStepAttentionItems.length > 0 ? (
+                        <CircleAlert className="h-5 w-5" />
+                      ) : (
+                        <Check className="h-5 w-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0 space-y-1.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {currentStepAttentionItems.length > 0
+                          ? "Needs attention"
+                          : currentStep === WIZARD_STEPS.length - 1
+                            ? "Helpful before submit"
+                            : "Current step status"}
+                      </p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {currentStepMeta.label}
+                      </p>
+                      <p className="text-sm text-muted-foreground/80">
+                        {currentStepStatusLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {sidebarGuidanceItems.map((item) => (
+                      <div
+                        key={item}
+                        className="flex items-start gap-2 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-sm text-foreground/90 dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-100"
+                      >
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                   <TradeSummaryStat
                     label="Entry"
@@ -937,7 +1255,7 @@ export function CreateTradePage({
                   />
                 </div>
 
-                <div className="rounded-xl border border-border/60 bg-background/80 p-4 shadow-sm">
+                <div className="rounded-2xl border border-slate-200/80 bg-background/80 p-4 shadow-[0_12px_30px_rgba(148,163,184,0.14)] dark:border-slate-700/70 dark:bg-slate-950/88 dark:shadow-[0_12px_30px_rgba(2,8,23,0.28)]">
                   <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                     Captured context
                   </p>
@@ -971,19 +1289,58 @@ export function CreateTradePage({
                   </div>
                 </div>
               </div>
+
+              <div className="border-t border-slate-200/70 px-5 py-5 dark:border-slate-800/90">
+                <div className="space-y-4">
+                  <AiPreTradeValidation
+                    asset={formData.asset}
+                    position={formData.position === PositionType.Long ? "Long" : "Short"}
+                    entryPrice={formData.entryPrice}
+                    stopLoss={formData.stopLoss}
+                    targetTier1={formData.targetTier1}
+                    targetTier2={formData.targetTier2}
+                    targetTier3={formData.targetTier3}
+                    confidenceLevel={confidenceLevel}
+                    tradingZone={selectedTradingZoneName}
+                    technicalAnalysisTags={analysisTags.map((id) => apiTechTags.find((tag) => tag.id.toString() === id)?.name || id)}
+                    checklistStatus={apiChecklists.length > 0 ? `${checkedItems.length}/${apiChecklists.length} completed` : "No checklist"}
+                    emotionTags={selectedEmotions.map((id) => apiTags.find((tag) => tag.id.toString() === id)?.name || id)}
+                    notes={formData.notes}
+                  />
+
+                  <AiDisciplineGuardian />
+                </div>
+              </div>
             </div>
           </aside>
         </div>
 
-        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-3rem)] max-w-5xl -translate-x-1/2 overflow-hidden rounded-[2rem] border border-white/10 bg-background/60 px-6 py-4 shadow-2xl backdrop-blur-2xl transition-all duration-500">
+        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-3rem)] max-w-5xl -translate-x-1/2 overflow-hidden rounded-4xl border border-slate-200/80 bg-background/75 px-6 py-4 ring-1 ring-slate-300/40 shadow-[0_24px_50px_rgba(148,163,184,0.18)] backdrop-blur-2xl transition-all duration-500 dark:border-slate-700/70 dark:bg-slate-950/88 dark:ring-white/5 dark:shadow-[0_24px_50px_rgba(2,8,23,0.34)]">
           <div className="absolute inset-0 bg-linear-to-r from-primary/10 via-transparent to-accent/10 opacity-30" />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1.5">
-              <p className="text-sm font-semibold text-foreground">
-                Review the guardrails before you submit
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-foreground">
+                  {currentStep === WIZARD_STEPS.length - 1
+                    ? "Final review before you submit"
+                    : `Step ${currentStep + 1}: ${currentStepMeta.label}`}
+                </p>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-[10px] font-medium backdrop-blur-md",
+                    remainingRequiredCount > 0 ? completionTone.pillClassName : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+                  )}
+                >
+                  {remainingRequiredCount > 0
+                    ? `${remainingRequiredCount} required item${remainingRequiredCount === 1 ? "" : "s"} remaining`
+                    : "Ready to submit"}
+                </Badge>
+              </div>
               <p className="text-xs font-medium text-muted-foreground/80">
-                This trade will be saved as open and synced to your dashboard immediately.
+                {currentStep === WIZARD_STEPS.length - 1
+                  ? "This trade will be saved as open and synced to your dashboard immediately."
+                  : currentStepMeta.description}
               </p>
             </div>
 
@@ -994,10 +1351,10 @@ export function CreateTradePage({
                 variant="outline"
                 onClick={(e) => {
                   e.preventDefault()
-                  if (currentStep > 0) setCurrentStep(prev => prev - 1)
+                  if (currentStep > 0) handleStepChange(currentStep - 1)
                   else router.push(returnTo)
                 }}
-                className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10 sm:min-w-32 backdrop-blur-md transition-all duration-300"
+                className="rounded-xl border-slate-200/80 bg-white/75 hover:bg-white/90 sm:min-w-32 backdrop-blur-md transition-all duration-300 dark:border-slate-700/70 dark:bg-slate-900/75 dark:hover:bg-slate-900"
               >
                 {currentStep > 0 ? "Back" : "Cancel"}
               </Button>
@@ -1007,11 +1364,11 @@ export function CreateTradePage({
                   type="button" 
                   onClick={(e) => {
                     e.preventDefault()
-                    setCurrentStep(prev => prev + 1)
+                    handleStepChange(currentStep + 1)
                   }}
                   className="rounded-xl sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40"
                 >
-                  Continue to Next Step
+                  Continue to {nextStepLabel}
                 </Button>
               ) : (
                 <Button key="submit-button" type="submit" disabled={isSubmitting} className="rounded-xl gap-2 sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40">

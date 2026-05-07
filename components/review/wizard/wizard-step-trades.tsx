@@ -3,6 +3,7 @@
 import { ArrowDownCircle, ArrowUpCircle, Trophy, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { SafeHtml } from "@/components/ui/safe-html"
 import { Textarea } from "@/components/ui/textarea"
 import type { UseReviewWizardResult } from "@/hooks/use-review-wizard"
 import type { WizardTradeHighlight } from "@/lib/wizard-api"
@@ -52,9 +53,9 @@ function TradeCard({ trade, rank }: { trade: WizardTradeHighlight; rank: number 
         </div>
       )}
       {trade.notes && (
-        <div 
+        <SafeHtml
+          html={trade.notes}
           className="mt-2 text-xs leading-relaxed text-muted-foreground line-clamp-2 [&_p]:inline [&_ul]:inline [&_li]:inline"
-          dangerouslySetInnerHTML={{ __html: trade.notes }}
         />
       )}
     </div>

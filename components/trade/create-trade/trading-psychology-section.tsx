@@ -5,6 +5,7 @@ import { Brain } from "lucide-react"
 import { getTagCategory } from "@/lib/trade-store"
 import { TradeFormSection } from "./trade-form-section"
 import { getConfidenceLabel } from "./shared-utils"
+import { AiEmotionDetector } from "./ai-emotion-detector"
 import type { EmotionTagApi } from "@/lib/trade-store"
 
 export interface TradingPsychologySectionProps {
@@ -15,6 +16,7 @@ export interface TradingPsychologySectionProps {
   setConfidenceLevel: (level: number) => void
   errors: Record<string, string>
   setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  notesText?: string
 }
 
 export function TradingPsychologySection({
@@ -25,6 +27,7 @@ export function TradingPsychologySection({
   setConfidenceLevel,
   errors,
   setErrors,
+  notesText = "",
 }: TradingPsychologySectionProps) {
   return (
     <TradeFormSection
@@ -77,6 +80,17 @@ export function TradingPsychologySection({
               </div>
             </div>
           ))}
+
+          <AiEmotionDetector
+            textContent={notesText}
+            apiTags={apiTags}
+            selectedEmotions={selectedEmotions}
+            onSelectEmotions={(ids) => {
+              ids.forEach(id => {
+                if (!selectedEmotions.includes(id)) toggleEmotion(id)
+              })
+            }}
+          />
         </div>
 
         <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">

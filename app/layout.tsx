@@ -13,8 +13,15 @@ import './globals.css'
 
 const outfit = Outfit({ subsets: ['latin'] })
 
+export const viewport: import("next").Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
-  title: 'Trading Journey - Track Your Trades',
+  title: 'Trading Journal - Track Your Trades',
   description: 'A comprehensive trading journal to track, analyze, and improve your trading performance',
   generator: 'v0.app',
   icons: {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, use } from "react";
 import type { ElementType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Header } from "@/components/header";
+import { AppPageShell } from "@/components/app-page-shell";
 import { useTrades } from "@/lib/trade-context";
 import {
   mockCurrentPrices,
@@ -306,7 +306,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   positionSize: returnedValue.riskGuardrail.positionSize,
                 }
               : undefined,
-            tradeSummary: returnedValue.tradeSummary,
+
             aiSummary: returnedValue.aiSummary,
           };
           setTrade(mappedTrade);
@@ -429,62 +429,59 @@ function TradeDetailContent({ id }: { id: string }) {
 
   if (!trade) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="mb-5">
-            <Link
-              href="/history"
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Trade History
-            </Link>
-          </div>
+      <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
+        <div className="mb-5">
+          <Link
+            href="/history"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Trade History
+          </Link>
+        </div>
 
-          <div className="flex justify-center py-10 sm:py-16">
-            <Card className="w-full max-w-xl border-border/70 bg-card/90 shadow-sm">
-              <CardContent className="flex flex-col items-center px-6 py-10 text-center sm:px-10">
-                <div
-                  className={cn(
-                    "mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border",
-                    tradeLoadError
-                      ? "border-destructive/20 bg-destructive/10 text-destructive"
-                      : "border-border/70 bg-secondary/60 text-muted-foreground",
-                  )}
-                >
-                  {tradeLoadError ? (
-                    <AlertTriangle className="h-7 w-7" />
-                  ) : (
-                    <BarChart3 className="h-7 w-7" />
-                  )}
-                </div>
-                <p className="text-xl font-semibold text-foreground">
-                  {tradeLoadError ? "Unable to load trade" : "Trade not found"}
-                </p>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                  {tradeLoadError
-                    ? tradeLoadError
-                    : "This trade may have been deleted, archived, or the link is no longer valid."}
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {tradeLoadError ? (
-                    <Button variant="outline" onClick={() => router.refresh()}>
-                      Try Again
-                    </Button>
-                  ) : null}
-                  <Link href="/history">
-                    <Button className="gap-2">
-                      <ArrowLeft className="h-4 w-4" />
-                      Back to History
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
-      </div>
+        <div className="flex justify-center py-10 sm:py-16">
+          <Card className="w-full max-w-xl border-border/70 bg-card/90 shadow-sm">
+            <CardContent className="flex flex-col items-center px-6 py-10 text-center sm:px-10">
+              <div
+                className={cn(
+                  "mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border",
+                  tradeLoadError
+                    ? "border-destructive/20 bg-destructive/10 text-destructive"
+                    : "border-border/70 bg-secondary/60 text-muted-foreground",
+                )}
+              >
+                {tradeLoadError ? (
+                  <AlertTriangle className="h-7 w-7" />
+                ) : (
+                  <BarChart3 className="h-7 w-7" />
+                )}
+              </div>
+              <p className="text-xl font-semibold text-foreground">
+                {tradeLoadError ? "Unable to load trade" : "Trade not found"}
+              </p>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                {tradeLoadError
+                  ? tradeLoadError
+                  : "This trade may have been deleted, archived, or the link is no longer valid."}
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-2">
+                {tradeLoadError ? (
+                  <Button variant="outline" onClick={() => router.refresh()}>
+                    Try Again
+                  </Button>
+                ) : null}
+                <Link href="/history">
+                  <Button className="gap-2">
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to History
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </AppPageShell>
     );
   }
 
@@ -823,9 +820,7 @@ function TradeDetailContent({ id }: { id: string }) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+    <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
         {/* Back Navigation */}
         <div className="mb-5">
           <Link
@@ -1009,20 +1004,13 @@ function TradeDetailContent({ id }: { id: string }) {
         </div>
 
         <Tabs defaultValue="detail" className="space-y-5">
-          <TabsList className="grid w-full max-w-lg grid-cols-3 rounded-2xl border border-border/70 bg-card/80 p-1 shadow-sm">
+          <TabsList className="grid w-full max-w-lg grid-cols-2 rounded-2xl border border-border/70 bg-card/80 p-1 shadow-sm">
             <TabsTrigger
               value="detail"
               className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
             >
               <BarChart3 className="h-4 w-4" />
               Trade Detail
-            </TabsTrigger>
-            <TabsTrigger
-              value="summary"
-              className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
-            >
-              <FileText className="h-4 w-4" />
-              Trade Summary
             </TabsTrigger>
             <TabsTrigger
               value="ai_summary"
@@ -1543,113 +1531,7 @@ function TradeDetailContent({ id }: { id: string }) {
             )}
           </TabsContent>
 
-          <TabsContent value="summary" className="space-y-4 outline-none">
-            {trade.tradeSummary ? (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <FileText className="h-5 w-5 text-primary" />
-                      Executive Summary
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm leading-relaxed">
-                      {trade.tradeSummary.executiveSummary}
-                    </p>
-                  </CardContent>
-                </Card>
 
-                <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-accent" />
-                      Technical Insights
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm leading-relaxed whitespace-pre-line">
-                      {trade.tradeSummary.technicalInsights}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border/70 bg-card/90 shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-amber-400" />
-                      Psychology Analysis
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm leading-relaxed whitespace-pre-line">
-                      {trade.tradeSummary.psychologyAnalysis}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                {trade.tradeSummary.criticalMistakes &&
-                  (trade.tradeSummary.criticalMistakes.technical?.length > 0 ||
-                    trade.tradeSummary.criticalMistakes.psychological?.length >
-                      0) && (
-                    <Card className="border-border/70 bg-card/90 shadow-sm lg:col-span-2">
-                      <CardHeader>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <AlertTriangle className="h-5 w-5 text-destructive" />
-                          Critical Mistakes
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-6">
-                        {trade.tradeSummary.criticalMistakes.technical?.length >
-                          0 && (
-                          <div>
-                            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                              <Gauge className="h-4 w-4 text-muted-foreground" />
-                              Technical Mistakes
-                            </h4>
-                            <ul className="list-disc pl-5 text-sm space-y-1.5 text-muted-foreground">
-                              {trade.tradeSummary.criticalMistakes.technical.map(
-                                (m: string, i: number) => (
-                                  <li key={i}>{m}</li>
-                                ),
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                        {trade.tradeSummary.criticalMistakes.psychological
-                          ?.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                              <Brain className="h-4 w-4 text-muted-foreground" />
-                              Psychological Mistakes
-                            </h4>
-                            <ul className="list-disc pl-5 text-sm space-y-1.5 text-muted-foreground">
-                              {trade.tradeSummary.criticalMistakes.psychological.map(
-                                (m: string, i: number) => (
-                                  <li key={i}>{m}</li>
-                                ),
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  )}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg bg-card border-dashed">
-                <FileText className="h-8 w-8 text-muted-foreground/50 mb-4" />
-                <p className="text-foreground font-medium">
-                  No summary available
-                </p>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
-                  A trade summary is not available for this trade yet. Trade
-                  summaries provide AI-generated insights into your technical
-                  and psychological performance.
-                </p>
-              </div>
-            )}
-          </TabsContent>
 
           <TabsContent value="ai_summary" className="space-y-4 outline-none">
             <Card className="border-none bg-linear-to-b from-card to-card/50 shadow-lg relative overflow-hidden group">
@@ -1860,8 +1742,7 @@ function TradeDetailContent({ id }: { id: string }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </main>
-    </div>
+    </AppPageShell>
   );
 }
 

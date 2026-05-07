@@ -10,6 +10,7 @@ import { type EmotionTagApi, getTagCategory } from "@/lib/trade-store";
 import { getPlainTextFromRichText, normalizeRichTextValue } from "@/lib/rich-text";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/ui/use-toast";
+import { AiEmotionDetector } from "@/components/trade/create-trade/ai-emotion-detector";
 
 const moodLabels = ["", "Very Low", "Low", "Neutral", "Good", "Excellent"];
 const confidenceLabels = ["", "Fragile", "Tentative", "Balanced", "Strong", "Locked in"];
@@ -69,7 +70,9 @@ export function NewEntryForm({ apiTags, onSave, onCancel }: {
       }
     } catch (err) {
       toast({ title: "Error", description: "An unexpected error occurred while saving.", variant: "destructive" });
-      console.error("Error saving journal:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error saving journal:", err);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -176,6 +179,12 @@ export function NewEntryForm({ apiTags, onSave, onCancel }: {
                 <span>{selectedEmotionLabels.length > 0 ? selectedEmotionLabels.join(" • ") : "No emotions selected yet"}</span>
                 <span>{getPlainTextFromRichText(journalEntry).trim().length} chars</span>
               </div>
+              <AiEmotionDetector
+                textContent={journalEntry}
+                apiTags={apiTags}
+                selectedEmotions={selectedTags}
+                onSelectEmotions={setSelectedTags}
+              />
             </div>
           </div>
         </div>

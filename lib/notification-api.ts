@@ -5,6 +5,8 @@ export enum NotificationType {
   ScannerAlert = 1,
   TradeReminder = 2,
   AiInsight = 3,
+  TiltWarning = 4,
+  StreakAlert = 5,
 }
 
 export enum NotificationPriority {
@@ -28,6 +30,11 @@ export interface NotificationDto {
   createdDate: string;
 }
 
+type NotificationWireDto = Omit<NotificationDto, "type" | "priority"> & {
+  type: NotificationType | string;
+  priority: NotificationPriority | string;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   totalCount: number;
@@ -36,6 +43,14 @@ export interface PaginatedResult<T> {
   totalPages: number;
   hasNextPage: boolean;
   hasPreviousPage: boolean;
+}
+
+export function normalizeNotification(notification: NotificationWireDto): NotificationDto {
+  return {
+    ...notification,
+    type: parseNotificationType(notification.type),
+    priority: parseNotificationPriority(notification.priority),
+  }
 }
 
 export const notificationApi = {
@@ -47,7 +62,11 @@ export const notificationApi = {
     const response = await api.get(
       `/v1/notifications?pageNumber=${pageNumber}&pageSize=${pageSize}&unreadOnly=${unreadOnly}`
     );
-    return response.data?.value ?? response.data;
+    const result = response.data?.value ?? response.data;
+    return {
+      ...result,
+      items: (result.items ?? []).map(normalizeNotification),
+    };
   },
 
   getUnreadCount: async (): Promise<number> => {
@@ -67,3 +86,41 @@ export const notificationApi = {
     await api.delete(`/v1/notifications/${id}`);
   },
 };
+
+function parseNotificationType(value: NotificationType | string): NotificationType {
+  if (typeof value === "number") return value
+
+  switch (value.toLowerCase()) {
+    case "system":
+      return NotificationType.System
+    case "scanneralert":
+      return NotificationType.ScannerAlert
+    case "tradereminder":
+      return NotificationType.TradeReminder
+    case "aiinsight":
+      return NotificationType.AiInsight
+    case "tiltwarning":
+      return NotificationType.TiltWarning
+    case "streakalert":
+      return NotificationType.StreakAlert
+    default:
+      return NotificationType.System
+  }
+}
+
+function parseNotificationPriority(value: NotificationPriority | string): NotificationPriority {
+  if (typeof value === "number") return value
+
+  switch (value.toLowerCase()) {
+    case "critical":
+      return NotificationPriority.Critical
+    case "high":
+      return NotificationPriority.High
+    case "normal":
+      return NotificationPriority.Normal
+    case "low":
+      return NotificationPriority.Low
+    default:
+      return NotificationPriority.Normal
+  }
+}

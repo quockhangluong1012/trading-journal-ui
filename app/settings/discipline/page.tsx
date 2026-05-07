@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Header } from "@/components/header"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -80,10 +81,12 @@ export default function DisciplineSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-3xl px-4 py-8">
-        <h1 className="mb-6 text-3xl font-bold">Gamification & Discipline</h1>
+    <AppPageShell width="narrow" contentClassName="space-y-6 py-4 sm:py-8">
+        <AppPageIntro
+          badge="Trading guardrails"
+          title="Gamification & Discipline"
+          description="Configure trading rules that help flag emotional or out-of-bounds execution in your journal history."
+        />
         
         {loading ? (
           <div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -150,7 +153,6 @@ export default function DisciplineSettingsPage() {
             </CardFooter>
           </Card>
         )}
-      </main>
-    </div>
+    </AppPageShell>
   )
 }
