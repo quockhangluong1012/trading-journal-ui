@@ -33,6 +33,17 @@ interface ScannerState {
   removeAsset: (watchlistId: number, assetId: number) => Promise<void>;
 }
 
+function normalizeWatchlist(watchlist: WatchlistDto): WatchlistDto {
+  return {
+    ...watchlist,
+    assets: watchlist.assets ?? [],
+  };
+}
+
+function normalizeWatchlists(watchlists: WatchlistDto[]): WatchlistDto[] {
+  return watchlists.map(normalizeWatchlist);
+}
+
 export const useScannerStore = create<ScannerState>((set, get) => ({
   status: {
     status: ScannerStatus.Stopped,
@@ -130,7 +141,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       set({
         status,
         alerts: alerts.items,
-        watchlists,
+        watchlists: normalizeWatchlists(watchlists),
       });
     } catch (error) {
       console.error("Failed to fetch scanner initial data:", error);
@@ -146,7 +157,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       const watchlists = await scannerApi.getWatchlists().catch(() => []);
       set((state) => ({
         status: { ...state.status, status: ScannerStatus.Running },
-        watchlists,
+        watchlists: normalizeWatchlists(watchlists),
       }));
     } catch (error) {
       console.error("Failed to start scanner:", error);
@@ -160,7 +171,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       const watchlists = await scannerApi.getWatchlists().catch(() => []);
       set((state) => ({
         status: { ...state.status, status: ScannerStatus.Stopped },
-        watchlists,
+        watchlists: normalizeWatchlists(watchlists),
       }));
     } catch (error) {
       console.error("Failed to stop scanner:", error);
@@ -169,9 +180,9 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
 
   toggleWatchlistScanner: async (watchlistId: number, start: boolean) => {
     try {
-      const updatedWatchlist = start
+      const updatedWatchlist = normalizeWatchlist(start
         ? await scannerApi.startWatchlistScanner(watchlistId)
-        : await scannerApi.stopWatchlistScanner(watchlistId);
+        : await scannerApi.stopWatchlistScanner(watchlistId));
 
       set((state) => {
         const newWatchlists = state.watchlists.map((w) =>
@@ -217,7 +228,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
 
   createWatchlist: async (name: string) => {
     try {
-      const newList = await scannerApi.createWatchlist(name);
+      const newList = normalizeWatchlist(await scannerApi.createWatchlist(name));
       set((state) => ({ watchlists: [...state.watchlists, newList] }));
     } catch (error) {
       console.error("Failed to create watchlist:", error);
@@ -251,7 +262,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       const asset = await scannerApi.addAsset(watchlistId, symbol, displayName);
       set((state) => ({
         watchlists: state.watchlists.map((w) =>
-          w.id === watchlistId ? { ...w, assets: [...w.assets, asset] } : w
+          w.id === watchlistId ? { ...w, assets: [...(w.assets ?? []), asset] } : w
         ),
       }));
     } catch (error) {
@@ -265,7 +276,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       set((state) => ({
         watchlists: state.watchlists.map((w) =>
           w.id === watchlistId
-            ? { ...w, assets: w.assets.filter((a) => a.id !== assetId) }
+            ? { ...w, assets: (w.assets ?? []).filter((a) => a.id !== assetId) }
             : w
         ),
       }));

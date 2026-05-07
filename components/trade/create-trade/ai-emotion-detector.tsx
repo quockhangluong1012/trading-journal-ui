@@ -41,6 +41,8 @@ const readinessConfig: Record<string, { color: string; bg: string; label: string
   not_ready: { color: "text-red-400", bg: "bg-red-500/10 border-red-500/20", label: "Not ready" },
 }
 
+const MAX_EMOTION_INPUT_LENGTH = 5000
+
 export function AiEmotionDetector({ textContent, apiTags, selectedEmotions, onSelectEmotions }: AiEmotionDetectorProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<EmotionDetectionResult | null>(null)
@@ -50,12 +52,19 @@ export function AiEmotionDetector({ textContent, apiTags, selectedEmotions, onSe
 
   const handleDetect = async () => {
     if (!canDetect) return
+    const normalizedText = textContent.trim()
+
+    if (normalizedText.length > MAX_EMOTION_INPUT_LENGTH) {
+      setError(`Keep the note under ${MAX_EMOTION_INPUT_LENGTH} characters for AI emotion detection.`)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
     setResult(null)
 
     try {
-      const response = await api.post<ApiResponse<EmotionDetectionResult>>("/v1/ai-emotions/detect", { textContent: textContent.trim() })
+      const response = await api.post<ApiResponse<EmotionDetectionResult>>("/v1/ai-emotions/detect", { textContent: normalizedText })
       if (response.data.isSuccess && response.data.value) {
         const r = response.data.value
         setResult(r)

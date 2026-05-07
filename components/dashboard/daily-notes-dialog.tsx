@@ -29,6 +29,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { DailyNoteDto, UpsertDailyNoteRequest } from "@/lib/daily-notes-api"
+import { AiEmotionDetector } from "@/components/trade/create-trade/ai-emotion-detector"
+import { SpeechToTextButton } from "@/components/ui/speech-to-text-button"
+import { api, type ApiResponse } from "@/lib/api"
+import type { EmotionTagApi } from "@/lib/trade-store"
 
 // ─── Constants ────────────────────────────────────────────────────────
 
@@ -95,6 +99,8 @@ export function DailyNotesDialog({
   const [riskAppetite, setRiskAppetite] = useState("")
   const [mentalState, setMentalState] = useState("")
   const [keyRulesAndReminders, setKeyRulesAndReminders] = useState("")
+  const [apiTags, setApiTags] = useState<EmotionTagApi[]>([])
+  const [suggestedEmotionIds, setSuggestedEmotionIds] = useState<string[]>([])
 
   // Populate form from existing note
   useEffect(() => {
@@ -117,7 +123,33 @@ export function DailyNotesDialog({
       setMentalState("")
       setKeyRulesAndReminders("")
     }
+    setSuggestedEmotionIds([])
   }, [note, open])
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
+    let isMounted = true
+
+    api
+      .get<ApiResponse<EmotionTagApi[]>>("/v1/emotions")
+      .then((response) => {
+        if (isMounted && response.data.isSuccess) {
+          setApiTags(response.data.value)
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setApiTags([])
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [open])
 
   const toggleSession = useCallback((session: string) => {
     setSessionFocus((prev) =>
@@ -146,6 +178,9 @@ export function DailyNotesDialog({
   }, [onDismiss, onOpenChange])
 
   const isEditing = Boolean(note)
+  const suggestedEmotionNames = apiTags
+    .filter((tag) => suggestedEmotionIds.includes(tag.id.toString()))
+    .map((tag) => tag.name)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -340,6 +375,28 @@ export function DailyNotesDialog({
                 rows={2}
                 className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none transition-all"
               />
+              <div className="rounded-xl border border-dashed border-primary/20 bg-primary/5 p-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="space-y-1 text-[11px] text-muted-foreground">
+                    <p>Run AI emotion detection on today&apos;s mindset note.</p>
+                    <p>{suggestedEmotionNames.length > 0 ? suggestedEmotionNames.join(" • ") : "Suggestions stay local to this dialog"}</p>
+                  </div>
+                  <SpeechToTextButton
+                    label="Voice note"
+                    onTranscript={(transcript) =>
+                      setMentalState((current) => (current.trim() ? `${current.trimEnd()}\n${transcript}` : transcript))
+                    }
+                  />
+                </div>
+                <div className="mt-3">
+                  <AiEmotionDetector
+                    textContent={mentalState}
+                    apiTags={apiTags}
+                    selectedEmotions={suggestedEmotionIds}
+                    onSelectEmotions={setSuggestedEmotionIds}
+                  />
+                </div>
+              </div>
             </fieldset>
 
             {/* ── Key Rules & Reminders ───────────────────── */}

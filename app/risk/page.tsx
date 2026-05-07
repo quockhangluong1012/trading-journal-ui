@@ -11,6 +11,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { RiskGauges } from "@/components/risk/risk-gauges"
+import { AiRiskAdvisorCard } from "@/components/risk/ai-risk-advisor-card"
 import { PositionSizer } from "@/components/risk/position-sizer"
 import { CorrelationMatrixPanel } from "@/components/risk/correlation-matrix"
 import { RiskHeatmapPanel } from "@/components/risk/risk-heatmap"
@@ -150,6 +151,7 @@ export default function RiskPage() {
 
             <TabsContent value="overview" className="space-y-6">
               <RiskGauges dashboard={d} />
+              <AiRiskAdvisorCard />
               {heatmap && <RiskHeatmapPanel data={heatmap} />}
             </TabsContent>
 

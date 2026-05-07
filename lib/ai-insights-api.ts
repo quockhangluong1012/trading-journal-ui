@@ -77,6 +77,34 @@ export interface PlaybookOptimizationResult {
   sampleSize: number
 }
 
+export interface AiRiskAdvisorResult {
+  riskLevel: string
+  summary: string
+  positionSizingAdvice: string
+  keyRisks: string[]
+  actionItems: string[]
+  shouldReduceRisk: boolean
+  confidence: number
+}
+
+export interface AiDisciplineGuardianResult {
+  riskLevel: string
+  tiltType: string
+  title: string
+  message: string
+  actionItems: string[]
+  shouldNotify: boolean
+}
+
+export interface AiEconomicImpactPredictorResult {
+  riskLevel: string
+  summary: string
+  tradeStance: string
+  keyDrivers: string[]
+  actionItems: string[]
+  confidence: number
+}
+
 export interface ChartScreenshotAnalysisRequest {
   asset: string
   position: string
@@ -117,6 +145,27 @@ export async function suggestLessons(request: SuggestLessonsRequest = {}): Promi
 
 export async function optimizePlaybook(request: PlaybookOptimizationRequest): Promise<PlaybookOptimizationResult> {
   const response = await api.post<ApiResponse<PlaybookOptimizationResult>>("/v1/ai-playbook/optimize", request)
+  return response.data.value
+}
+
+export async function generateRiskAdvice(): Promise<AiRiskAdvisorResult> {
+  const response = await api.post<ApiResponse<AiRiskAdvisorResult>>("/v1/ai-risk/generate")
+  return response.data.value
+}
+
+export async function generateDisciplineGuardian(): Promise<AiDisciplineGuardianResult> {
+  const response = await api.post<ApiResponse<AiDisciplineGuardianResult>>("/v1/ai-discipline/guardian")
+  return response.data.value
+}
+
+export async function generateEconomicImpactPrediction(
+  symbol: string,
+  proximityMinutes: number = 30,
+): Promise<AiEconomicImpactPredictorResult> {
+  const response = await api.post<ApiResponse<AiEconomicImpactPredictorResult>>("/v1/ai-economic/predict-impact", {
+    symbol,
+    proximityMinutes,
+  })
   return response.data.value
 }
 

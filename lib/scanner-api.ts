@@ -35,6 +35,17 @@ export interface WatchlistDto {
   assets: WatchlistAssetDto[];
 }
 
+function normalizeWatchlistDto(watchlist: WatchlistDto): WatchlistDto {
+  return {
+    ...watchlist,
+    assets: watchlist.assets ?? [],
+  };
+}
+
+function normalizeWatchlistsDto(watchlists: WatchlistDto[]): WatchlistDto[] {
+  return watchlists.map(normalizeWatchlistDto);
+}
+
 export interface ScannerAlertDto {
   id: number;
   symbol: string;
@@ -57,16 +68,41 @@ export interface ScannerStatusDto {
   activeAlerts: number;
 }
 
+export interface SmartScannerConfluenceSignalDto {
+  timeframe: string;
+  priceAtDetection: number;
+  zoneHigh: number | null;
+  zoneLow: number | null;
+  description: string;
+  detectedAt: string;
+}
+
+export interface SmartScannerConfluenceCandidateDto {
+  patternType: string;
+  confluenceScore: number;
+  confirmingTimeframes: string[];
+  signals: SmartScannerConfluenceSignalDto[];
+}
+
+export interface SmartScannerConfluenceDto {
+  symbol: string;
+  economicRiskState: string;
+  economicRiskMessage: string;
+  minConfluenceScore: number;
+  maxConfluenceScore: number;
+  candidates: SmartScannerConfluenceCandidateDto[];
+}
+
 export const scannerApi = {
   // Watchlists
   getWatchlists: async (): Promise<WatchlistDto[]> => {
     const response = await api.get("/v1/scanner/watchlists");
-    return response.data?.value ?? response.data;
+    return normalizeWatchlistsDto(response.data?.value ?? response.data);
   },
 
   createWatchlist: async (name: string): Promise<WatchlistDto> => {
     const response = await api.post("/v1/scanner/watchlists", { name });
-    return response.data?.value ?? response.data;
+    return normalizeWatchlistDto(response.data?.value ?? response.data);
   },
 
   updateWatchlist: async (id: number, data: { name?: string; isActive?: boolean }): Promise<void> => {
@@ -89,12 +125,12 @@ export const scannerApi = {
   // Per-Watchlist Scanner Control
   startWatchlistScanner: async (watchlistId: number): Promise<WatchlistDto> => {
     const response = await api.post(`/v1/scanner/watchlists/${watchlistId}/scanner/start`);
-    return response.data?.value ?? response.data;
+    return normalizeWatchlistDto(response.data?.value ?? response.data);
   },
 
   stopWatchlistScanner: async (watchlistId: number): Promise<WatchlistDto> => {
     const response = await api.post(`/v1/scanner/watchlists/${watchlistId}/scanner/stop`);
-    return response.data?.value ?? response.data;
+    return normalizeWatchlistDto(response.data?.value ?? response.data);
   },
 
   // Global Scanner Control (batch start/stop all)
@@ -114,6 +150,11 @@ export const scannerApi = {
   // Alerts
   getAlerts: async (page: number = 1, limit: number = 50, activeOnly: boolean = true): Promise<{ items: ScannerAlertDto[], totalCount: number }> => {
     const response = await api.get(`/v1/scanner/alerts?pageNumber=${page}&pageSize=${limit}&activeOnly=${activeOnly}`);
+    return response.data?.value ?? response.data;
+  },
+
+  getSmartConfluence: async (symbol: string): Promise<SmartScannerConfluenceDto> => {
+    const response = await api.get(`/v1/scanner/smart-confluence?symbol=${encodeURIComponent(symbol)}`);
     return response.data?.value ?? response.data;
   },
 

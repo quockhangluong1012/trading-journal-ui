@@ -8,12 +8,17 @@ import { ScannerControl } from "@/components/scanner/scanner-control";
 import { AlertFeed } from "@/components/scanner/alert-feed";
 import { EconomicNewsBanner } from "@/components/scanner/economic-news-banner";
 import { PreTradeCheckWidget } from "@/components/scanner/pre-trade-check-widget";
+import { SmartScannerConfluenceCard } from "@/components/scanner/smart-scanner-confluence-card";
 import { Radar } from "lucide-react";
 import { Header } from "@/components/header";
 
 export default function ScannerPage() {
   const { user } = useAuth();
-  const { connect, disconnect } = useScannerStore();
+  const { connect, disconnect, alerts, watchlists } = useScannerStore();
+  const scannerSymbols = [...new Set([
+    ...alerts.map((alert) => alert.symbol),
+    ...watchlists.flatMap((watchlist) => (watchlist.assets ?? []).map((asset) => asset.symbol)),
+  ])];
 
   useEffect(() => {
     if (user?.token) {
@@ -62,6 +67,7 @@ export default function ScannerPage() {
             <div className="space-y-6 lg:col-span-1">
               <ScannerControl />
               <PreTradeCheckWidget />
+              <SmartScannerConfluenceCard symbols={scannerSymbols} />
               <div className="h-[400px]">
                 <WatchlistManager />
               </div>

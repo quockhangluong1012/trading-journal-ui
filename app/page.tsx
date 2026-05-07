@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Header } from "@/components/header"
 import { DashboardCommandCenter } from "@/components/dashboard/dashboard-command-center"
+import { AiEconomicImpactCard } from "@/components/dashboard/ai-economic-impact-card"
 import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
@@ -214,6 +215,8 @@ function DashboardContent() {
           </div>
 
           <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
+
+          <AiEconomicImpactCard symbols={openPositions.map((position) => position.asset)} />
 
           <CalendarWidget filter={filter} />
           

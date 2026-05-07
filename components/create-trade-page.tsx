@@ -106,6 +106,7 @@ import { TradeFormSection } from "./trade/create-trade/trade-form-section"
 import { TradeSummaryStat } from "./trade/create-trade/trade-summary-stat"
 import { TradeSetupSection } from "./trade/create-trade/trade-setup-section"
 import { AiChartScreenshotAnalysis } from "./trade/create-trade/ai-chart-screenshot-analysis"
+import { AiDisciplineGuardian } from "./trade/create-trade/ai-discipline-guardian"
 import { AiPreTradeValidation } from "./trade/create-trade/ai-pre-trade-validation"
 import { RiskManagementSection } from "./trade/create-trade/risk-management-section"
 import { PreTradeChecklistSection } from "./trade/create-trade/pre-trade-checklist-section"
@@ -939,6 +940,10 @@ export function CreateTradePage({
                   emotionTags={selectedEmotions.map(id => apiTags.find(t => t.id.toString() === id)?.name || id)}
                   notes={formData.notes}
                 />
+              </div>
+
+              <div className="px-5 pt-5">
+                <AiDisciplineGuardian />
               </div>
 
               <div className="space-y-4 px-5 py-5">
