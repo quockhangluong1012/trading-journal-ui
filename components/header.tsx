@@ -78,7 +78,7 @@ export function Header() {
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-                Trading Journey
+                Trading Journal
               </p>
               <div className="flex min-w-0 items-center gap-2">
                 <span className="truncate text-sm font-semibold text-foreground">{sectionLabel}</span>

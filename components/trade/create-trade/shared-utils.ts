@@ -92,4 +92,4 @@ export const getRRColorClass = (rrRatio: number) => {
   return "text-red-400"
 }
 
-export const surfaceFieldClassName = "border-white/10 bg-background/50 backdrop-blur-sm shadow-inner transition-all hover:border-primary/40 focus:bg-background/80 focus:ring-2 focus:ring-primary/20"
+export const surfaceFieldClassName = "border-slate-200/80 bg-background/85 backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-all hover:border-primary/55 focus:border-primary/60 focus:bg-background focus:ring-2 focus:ring-primary/20 dark:border-slate-700/70 dark:bg-slate-950/80 dark:hover:border-primary/45 dark:focus:bg-slate-950"

@@ -42,6 +42,7 @@ import {
 import {
   ArrowUpRight,
   ArrowDownRight,
+  History,
   Plus,
   Pencil,
   Trash2,

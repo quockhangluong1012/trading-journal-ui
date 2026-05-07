@@ -21,7 +21,7 @@ export const viewport: import("next").Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Trading Journey - Track Your Trades',
+  title: 'Trading Journal - Track Your Trades',
   description: 'A comprehensive trading journal to track, analyze, and improve your trading performance',
   generator: 'v0.app',
   icons: {

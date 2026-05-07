@@ -17,8 +17,8 @@ export default function ScannerPage() {
   const { user } = useAuth();
   const { connect, disconnect, alerts, watchlists } = useScannerStore();
   const scannerSymbols = [...new Set([
-    ...alerts.map((alert) => alert.symbol),
-    ...watchlists.flatMap((watchlist) => (watchlist.assets ?? []).map((asset) => asset.symbol)),
+    ...(alerts ? alerts.map((alert) => alert.symbol) : []),
+    ...(watchlists ? watchlists.flatMap((watchlist) => (watchlist.assets ?? []).map((asset) => asset.symbol)) : []),
   ])];
 
   useEffect(() => {
@@ -54,8 +54,8 @@ export default function ScannerPage() {
             title="Algorithmic Scanner"
             description="Real-time multi-timeframe detection of ICT patterns across your watchlists."
             stats={[
-              { label: "Active alerts", value: alerts.length },
-              { label: "Watchlists", value: watchlists.length },
+              { label: "Active alerts", value: alerts ? alerts.length : 0 },
+              { label: "Watchlists", value: watchlists ? watchlists.length : 0 },
               { label: "Symbols tracked", value: scannerSymbols.length },
             ]}
           />

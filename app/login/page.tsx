@@ -318,7 +318,7 @@ export default function LoginPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-foreground/15 backdrop-blur-sm">
               <TrendingUp className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-semibold text-primary-foreground">Trading Journey</span>
+            <span className="text-xl font-semibold text-primary-foreground">Trading Journal</span>
           </div>
         </div>
 
@@ -352,7 +352,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative z-10 text-xs text-primary-foreground/40">
-          Trading Journey &copy; {new Date().getFullYear()}
+          Trading Journal &copy; {new Date().getFullYear()}
         </div>
       </div>
 
@@ -365,7 +365,7 @@ export default function LoginPage() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <TrendingUp className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-foreground">Trading Journey</span>
+            <span className="font-semibold text-foreground">Trading Journal</span>
           </div>
           <div className="lg:ml-auto" />
           <ThemeToggle className="h-9 w-9 rounded-md" />

@@ -18,7 +18,7 @@ export function AppShellLoader({
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
               <TrendingUp className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="text-lg font-semibold text-foreground sm:text-xl">Trading Journey</span>
+            <span className="text-lg font-semibold text-foreground sm:text-xl">Trading Journal</span>
           </div>
 
           <div className="hidden items-center gap-2 lg:flex">
