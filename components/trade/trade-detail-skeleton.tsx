@@ -3,7 +3,7 @@ import { AppPageShell } from "@/components/app-page-shell";
 
 export function TradeDetailSkeleton() {
   return (
-    <AppPageShell contentClassName="py-4 sm:py-4 lg:py-4">
+    <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
         <Skeleton className="mb-5 h-5 w-32 rounded-full" />
 
         <div className="mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-card/80 p-5 shadow-sm">

@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { SafeHtml } from "@/components/ui/safe-html"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -117,9 +118,9 @@ export function DisciplineLogTable() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-xs">{log.ruleName}</p>
                     {log.notes && (
-                      <div 
+                      <SafeHtml
+                        html={log.notes}
                         className="text-[10px] text-muted-foreground truncate [&>ul]:pl-4 [&>ul]:list-disc [&>ul]:m-0 [&>p]:m-0" 
-                        dangerouslySetInnerHTML={{ __html: log.notes }} 
                       />
                     )}
                   </div>

@@ -3,6 +3,7 @@
 import { Flag, GitBranch, Play, Square } from "lucide-react"
 import { Handle, Position, type NodeProps } from "@xyflow/react"
 
+import { SafeHtml } from "@/components/ui/safe-html"
 import { cn } from "@/lib/utils"
 import type { SetupFlowNode } from "@/lib/setup-flow"
 
@@ -57,9 +58,9 @@ export function SetupFlowNodeComponent({ data, selected }: NodeProps<SetupFlowNo
 
         <div>
           <p className="text-sm font-semibold text-foreground">{data.title}</p>
-          <div 
+          <SafeHtml
+            html={data.notes?.trim() ? data.notes : "No guidance yet. Add the conditions or reminders you want to see here."}
             className="mt-1 text-xs leading-relaxed text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
-            dangerouslySetInnerHTML={{ __html: data.notes?.trim() ? data.notes : "No guidance yet. Add the conditions or reminders you want to see here." }}
           />
         </div>
       </div>

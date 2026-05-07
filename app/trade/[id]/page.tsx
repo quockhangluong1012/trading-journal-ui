@@ -429,7 +429,7 @@ function TradeDetailContent({ id }: { id: string }) {
 
   if (!trade) {
     return (
-      <AppPageShell contentClassName="py-4 sm:py-4 lg:py-4">
+      <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
         <div className="mb-5">
           <Link
             href="/history"
@@ -820,7 +820,7 @@ function TradeDetailContent({ id }: { id: string }) {
   };
 
   return (
-    <AppPageShell contentClassName="py-4 sm:py-4 lg:py-4">
+    <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
         {/* Back Navigation */}
         <div className="mb-5">
           <Link
