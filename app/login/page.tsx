@@ -3,9 +3,8 @@
 import { Suspense, useState, useCallback } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { useTheme } from "next-themes"
 import { useEffect } from "react"
-import { TrendingUp, Eye, EyeOff, Sun, Moon, ArrowRight, AlertCircle, Loader2 } from "lucide-react"
+import { TrendingUp, Eye, EyeOff, ArrowRight, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { loginUser } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { getSafeNextPath } from "@/lib/auth-redirect"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 // ========================
 // Validation helpers
@@ -297,10 +297,6 @@ function LoginFormFallback() {
 // ========================
 
 export default function LoginPage() {
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
-
   return (
     <div className="flex min-h-svh bg-background transition-colors duration-300">
       {/* Left panel -- branding */}
@@ -372,17 +368,7 @@ export default function LoginPage() {
             <span className="font-semibold text-foreground">Trading Journey</span>
           </div>
           <div className="lg:ml-auto" />
-          <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            aria-label="Toggle theme"
-          >
-            {mounted ? (
-              theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />
-            ) : (
-              <span className="h-4 w-4" />
-            )}
-          </button>
+          <ThemeToggle className="h-9 w-9 rounded-md" />
         </div>
 
         {/* Centered form area */}

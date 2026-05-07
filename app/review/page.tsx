@@ -2,7 +2,8 @@
 
 import { ClipboardList, Wand2 } from "lucide-react"
 import Link from "next/link"
-import { Header } from "@/components/header"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { ReviewCommandCenter } from "@/components/review/review-command-center"
 import { ReviewMetricGrid } from "@/components/review/review-metric-grid"
 import { ReviewNotesPanel, ReviewPeriodDetailsCard } from "@/components/review/review-side-panels"
@@ -111,34 +112,29 @@ function ReviewContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center items-start justify-between gap-4">
-          <div className="space-y-1.5">
-            <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-foreground">
-              <ClipboardList className="h-6 w-6 text-primary" />
-              Trade Review
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Review your trading journal with full trade details, notes, emotions, and AI coaching insights. Export as PDF anytime.
-            </p>
-          </div>
-          <Link
-            href="/review/wizard"
-            className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-md"
-          >
-            <Wand2 className="h-4 w-4" />
-            Review Wizard
-          </Link>
-        </div>
+    <AppPageShell contentClassName="space-y-6">
+        <AppPageIntro
+          badge="Review workspace"
+          icon={<ClipboardList className="h-6 w-6" />}
+          title="Trade Review"
+          description="Review your trading journal with full trade details, notes, emotions, and AI coaching insights. Export as PDF anytime."
+          actions={
+            <Link
+              href="/review/wizard"
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-md"
+            >
+              <Wand2 className="h-4 w-4" />
+              Review Wizard
+            </Link>
+          }
+        />
 
         <Tabs defaultValue="weekly" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="daily" className="gap-1.5">Daily</TabsTrigger>
-            <TabsTrigger value="weekly" className="gap-1.5">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly" className="gap-1.5">Monthly</TabsTrigger>
-            <TabsTrigger value="quarterly" className="gap-1.5">Quarterly</TabsTrigger>
+          <TabsList className="grid h-auto w-full max-w-2xl grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1 lg:grid-cols-4">
+            <TabsTrigger value="daily" className="gap-1.5 rounded-xl px-3 py-2.5">Daily</TabsTrigger>
+            <TabsTrigger value="weekly" className="gap-1.5 rounded-xl px-3 py-2.5">Weekly</TabsTrigger>
+            <TabsTrigger value="monthly" className="gap-1.5 rounded-xl px-3 py-2.5">Monthly</TabsTrigger>
+            <TabsTrigger value="quarterly" className="gap-1.5 rounded-xl px-3 py-2.5">Quarterly</TabsTrigger>
           </TabsList>
 
           <TabsContent value="daily">
@@ -154,8 +150,7 @@ function ReviewContent() {
             <ReviewTabContent periodType={ReviewPeriodType.Quarterly} />
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+    </AppPageShell>
   )
 }
 

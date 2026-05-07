@@ -10,8 +10,9 @@ const publicRoutes = ["/login", "/register", "/forgot-password"]
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isPublicRoute = publicRoutes.includes(pathname)
+  const isAdminRoute = pathname.startsWith("/admin")
 
-  if (isPublicRoute) {
+  if (isPublicRoute || isAdminRoute) {
     return <>{children}</>
   }
 

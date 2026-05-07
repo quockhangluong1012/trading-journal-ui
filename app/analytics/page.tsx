@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Award, Calendar, CheckCircle2, Clock, Crosshair, Layers, Lightbulb, Newspaper, PieChart as PieChartIcon, Shield, Target, TrendingDown, TrendingUp, Zap } from "lucide-react"
 import { AnalyticsCommandCenter, type AnalyticsTabValue } from "@/components/analytics/analytics-command-center"
-import { Header } from "@/components/header"
+import { AppPageShell } from "@/components/app-page-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PerformanceHeatmap } from "@/components/analytics/performance-heatmap"
@@ -105,16 +105,13 @@ function AnalyticsContent() {
 
   if (isAuthLoading) return <AppShellLoader title="Loading analytics" description="Gathering your performance data." />
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
-  if (isInitialLoading) return <div className="min-h-screen bg-background"><Header /><main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8"><AnalyticsPageSkeleton /></main></div>
+  if (isInitialLoading) return <AppPageShell><AnalyticsPageSkeleton /></AppPageShell>
 
   const { analytics, monthlyData, assetData, dayData, equityData, insightsData, setupData, isRefreshing, lastUpdatedAt, syncWarning } = viewState
   const SC = ANALYTICS_SURFACE_CLASS
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <div className="space-y-6">
+    <AppPageShell contentClassName="space-y-6">
           <AnalyticsCommandCenter range={range} rangeOptions={TIME_RANGES}
             onRangeChange={(r) => { if (isAnalyticsRangeLabel(r)) setRange(r) }}
             analytics={analytics} assetData={assetData} insights={insightsData}
@@ -227,9 +224,7 @@ function AnalyticsContent() {
               </div>
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
-    </div>
+    </AppPageShell>
   )
 }
 

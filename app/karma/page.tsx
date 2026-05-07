@@ -22,7 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Header } from "@/components/header";
+import { AppPageIntro } from "@/components/app-page-intro";
+import { AppPageShell } from "@/components/app-page-shell";
 import {
   getKarmaSummary,
   getKarmaHistory,
@@ -211,45 +212,35 @@ function KarmaPageContent() {
   }, {});
 
   return (
-    <div className="min-h-screen relative bg-slate-50 dark:bg-background overflow-hidden selection:bg-primary/20">
-      {/* Background */}
-      <div className="pointer-events-none absolute -inset-[10px] opacity-60 dark:opacity-40">
-        <div className="absolute -top-24 -right-24 h-[600px] w-[600px] rounded-full bg-primary/10 dark:bg-primary/20 blur-[100px]" />
-        <div className="absolute -bottom-24 -left-24 h-[600px] w-[600px] rounded-full bg-secondary/20 dark:bg-secondary/20 blur-[100px]" />
-        <div className="absolute top-1/2 left-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/20 dark:bg-accent/10 blur-[120px]" />
-      </div>
-
-      <div className="relative z-10 flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
-          <div className="space-y-6">
-            {/* Page header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold flex items-center gap-2">
-                  <Sparkles className="h-6 w-6 text-amber-400" />
-                  Karma & Achievements
-                </h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Track your journaling karma and unlock achievements through consistent trading discipline.
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRecalculate}
-                disabled={isRecalculating}
-                className="gap-2"
-              >
-                <RefreshCw className={`h-4 w-4 ${isRecalculating ? "animate-spin" : ""}`} />
-                Recalculate
-              </Button>
-            </div>
+    <AppPageShell className="selection:bg-primary/20" contentClassName="space-y-6">
+            <AppPageIntro
+              badge="Achievement ladder"
+              icon={<Sparkles className="h-6 w-6" />}
+              title="Karma & Achievements"
+              description="Track your journaling karma and unlock achievements through consistent trading discipline."
+              stats={[
+                { label: "Current level", value: `Level ${level}` },
+                { label: "Karma points", value: totalKarma.toLocaleString() },
+                { label: "Day streak", value: journalingStreak },
+              ]}
+              actions={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRecalculate}
+                  disabled={isRecalculating}
+                  className="gap-2 rounded-full"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRecalculating ? "animate-spin" : ""}`} />
+                  Recalculate
+                </Button>
+              }
+            />
 
             {/* Hero karma card */}
             <Card className="relative overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
               <div
-                className={`absolute inset-0 bg-gradient-to-br ${config.bg} pointer-events-none opacity-50`}
+                className={`absolute inset-0 bg-linear-to-br ${config.bg} pointer-events-none opacity-50`}
               />
               <CardContent className="relative py-8">
                 <div className="flex flex-col items-center text-center gap-4">
@@ -346,7 +337,7 @@ function KarmaPageContent() {
                           <CardContent className="flex items-center gap-4 py-4">
                             {/* Emoji badge */}
                             <div
-                              className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl border ${
+                              className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border ${
                                 achievement.isUnlocked
                                   ? "bg-primary/5 border-primary/20"
                                   : "bg-muted/30 border-border/30"
@@ -362,9 +353,9 @@ function KarmaPageContent() {
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold truncate">{achievement.name}</span>
                                 {achievement.isUnlocked ? (
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                                 ) : (
-                                  <Lock className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+                                  <Lock className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />
                                 )}
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{achievement.description}</p>
@@ -414,13 +405,13 @@ function KarmaPageContent() {
                           className="flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <span className="text-lg flex-shrink-0">{getEventEmoji(event.actionType)}</span>
+                            <span className="text-lg shrink-0">{getEventEmoji(event.actionType)}</span>
                             <div className="min-w-0">
                               <div className="text-sm font-medium">{getEventLabel(event.actionType)}</div>
                               <div className="text-xs text-muted-foreground truncate">{event.description}</div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+                          <div className="ml-4 flex shrink-0 items-center gap-4">
                             <span
                               className={`text-sm font-bold tabular-nums ${
                                 event.points >= 0 ? "text-emerald-400" : "text-red-400"
@@ -440,10 +431,7 @@ function KarmaPageContent() {
                 </Card>
               </TabsContent>
             </Tabs>
-          </div>
-        </main>
-      </div>
-    </div>
+    </AppPageShell>
   );
 }
 

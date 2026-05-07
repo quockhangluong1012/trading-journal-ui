@@ -1,6 +1,6 @@
 "use client";
 
-import { Header } from "@/components/header";
+import { AppPageShell } from "@/components/app-page-shell";
 import { PretradeModelManager } from "@/components/settings/pretrade-model-manager";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter, usePathname } from "next/navigation";
@@ -28,11 +28,8 @@ export default function PretradeModelsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <AppPageShell width="narrow" contentClassName="py-8">
         <PretradeModelManager />
-      </main>
-    </div>
+    </AppPageShell>
   );
 }

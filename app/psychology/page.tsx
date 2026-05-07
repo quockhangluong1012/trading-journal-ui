@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Header } from "@/components/header";
+import { AppPageShell } from "@/components/app-page-shell";
 import { PsychologyCommandCenter } from "@/components/psychology/psychology-command-center";
 import { PsychologyStats, SURFACE_CARD_CLASS } from "@/components/psychology/psychology-stats";
 import { MoodTrendChart } from "@/components/psychology/psychology-charts";
@@ -195,10 +195,7 @@ function PsychologyContent() {
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />;
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <div className="space-y-6">
+    <AppPageShell contentClassName="space-y-6">
           <PsychologyCommandCenter
             narrative={narrative} pulseCards={pulseCards} journalEntriesCount={sortedEntries.length} latestEntry={latestEntry}
             exportAction={
@@ -255,7 +252,7 @@ function PsychologyContent() {
                       </div>
                       <div className="flex gap-2">
                         <Select value={moodFilter} onValueChange={setMoodFilter}>
-                          <SelectTrigger className="w-[140px] bg-background/50"><SelectValue placeholder="Mood" /></SelectTrigger>
+                          <SelectTrigger className="w-35 bg-background/50"><SelectValue placeholder="Mood" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Moods</SelectItem>
                             <SelectItem value="5">Excellent</SelectItem><SelectItem value="4">Good</SelectItem>
@@ -263,7 +260,7 @@ function PsychologyContent() {
                           </SelectContent>
                         </Select>
                         <Select value={confidenceFilter} onValueChange={setConfidenceFilter}>
-                          <SelectTrigger className="w-[140px] bg-background/50"><SelectValue placeholder="Confidence" /></SelectTrigger>
+                          <SelectTrigger className="w-35 bg-background/50"><SelectValue placeholder="Confidence" /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="all">All Confidence</SelectItem>
                             <SelectItem value="5">Locked in</SelectItem><SelectItem value="4">Strong</SelectItem>
@@ -325,9 +322,7 @@ function PsychologyContent() {
               <NewEntryForm apiTags={apiTags} onSave={handleSaveEntry} onCancel={() => setNewEntryOpen(false)} />
             </DialogContent>
           </Dialog>
-        </div>
-      </main>
-    </div>
+    </AppPageShell>
   );
 }
 

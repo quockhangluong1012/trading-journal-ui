@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useState } from "react"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { ClipboardList, Wand2 } from "lucide-react"
-import { Header } from "@/components/header"
+import { Wand2 } from "lucide-react"
+import { AppPageIntro } from "@/components/app-page-intro"
+import { AppPageShell } from "@/components/app-page-shell"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import { WizardContainer } from "@/components/review/wizard/wizard-container"
@@ -20,7 +21,7 @@ function WizardTabContent({ periodType }: { periodType: ReviewPeriodType }) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-24 w-full rounded-3xl" />
-        <Skeleton className="h-[400px] w-full rounded-2xl" />
+        <Skeleton className="h-100 w-full rounded-2xl" />
         <Skeleton className="h-16 w-full rounded-2xl" />
       </div>
     )
@@ -51,23 +52,18 @@ function WizardContent() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <div className="mb-6 space-y-1.5">
-          <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-foreground">
-            <Wand2 className="h-6 w-6 text-primary" />
-            Review Wizard
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Complete a structured review to analyze your performance, identify patterns, and set improvement goals.
-          </p>
-        </div>
+    <AppPageShell contentClassName="space-y-6">
+        <AppPageIntro
+          badge="Structured review"
+          icon={<Wand2 className="h-6 w-6" />}
+          title="Review Wizard"
+          description="Complete a structured review to analyze your performance, identify patterns, and set improvement goals."
+        />
 
         <Tabs defaultValue={defaultTab} className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="weekly" className="gap-1.5">Weekly</TabsTrigger>
-            <TabsTrigger value="monthly" className="gap-1.5">Monthly</TabsTrigger>
+          <TabsList className="grid h-auto w-full max-w-md grid-cols-2 gap-1 rounded-2xl border border-border/70 bg-secondary/30 p-1">
+            <TabsTrigger value="weekly" className="gap-1.5 rounded-xl px-4 py-2.5">Weekly</TabsTrigger>
+            <TabsTrigger value="monthly" className="gap-1.5 rounded-xl px-4 py-2.5">Monthly</TabsTrigger>
           </TabsList>
 
           <TabsContent value="weekly">
@@ -77,8 +73,7 @@ function WizardContent() {
             <WizardTabContent periodType={ReviewPeriodType.Monthly} />
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+    </AppPageShell>
   )
 }
 
