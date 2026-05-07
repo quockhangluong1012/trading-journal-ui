@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Header } from "@/components/header"
+import { AppPageShell } from "@/components/app-page-shell"
 import { useAuth } from "@/lib/auth-context"
 import { useRouter, usePathname } from "next/navigation"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
@@ -48,18 +48,15 @@ export default function PlaybookPage() {
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <PlaybookDashboard
-          overview={overview}
-          isLoading={isLoading}
-          range={range}
-          rangeOptions={TIME_RANGES}
-          onRangeChange={(r) => setRange(r as RangeLabel)}
-          onRefresh={() => loadData(range)}
-        />
-      </main>
-    </div>
+    <AppPageShell>
+      <PlaybookDashboard
+        overview={overview}
+        isLoading={isLoading}
+        range={range}
+        rangeOptions={TIME_RANGES}
+        onRangeChange={(r) => setRange(r as RangeLabel)}
+        onRefresh={() => loadData(range)}
+      />
+    </AppPageShell>
   )
 }

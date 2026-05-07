@@ -7,7 +7,7 @@ import {
   ArrowLeft, Pencil, Trash2, Link2, Unlink, AlertTriangle,
   CheckCircle2, Target, Calendar, TrendingDown,
 } from "lucide-react"
-import { Header } from "@/components/header"
+import { AppPageShell } from "@/components/app-page-shell"
 import { AppShellLoader } from "@/components/app-shell-loader"
 import { useAuth } from "@/lib/auth-context"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
@@ -159,13 +159,7 @@ export default function LessonDetailPage() {
   if (!user) return <AppShellLoader title="Redirecting" description="" />
 
   return (
-    <div className="min-h-screen relative bg-slate-50 dark:bg-background overflow-hidden">
-      <div className="pointer-events-none absolute -inset-[10px] opacity-60 dark:opacity-40">
-        <div className="absolute -top-24 -right-24 h-[600px] w-[600px] rounded-full bg-primary/10 dark:bg-primary/20 blur-[100px]" />
-      </div>
-      <div className="relative z-10 flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+    <AppPageShell contentClassName="max-w-4xl py-8 sm:py-8 lg:py-8">
           <Button variant="ghost" className="mb-6 gap-2 text-muted-foreground" onClick={() => router.push("/lessons")}>
             <ArrowLeft className="h-4 w-4" /> Back to Lessons
           </Button>
@@ -302,8 +296,6 @@ export default function LessonDetailPage() {
               </Card>
             </div>
           )}
-        </main>
-      </div>
 
       {/* Edit Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
@@ -348,7 +340,7 @@ export default function LessonDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </AppPageShell>
   )
 }
 

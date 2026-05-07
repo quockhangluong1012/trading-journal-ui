@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, use } from "react";
 import type { ElementType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Header } from "@/components/header";
+import { AppPageShell } from "@/components/app-page-shell";
 import { useTrades } from "@/lib/trade-context";
 import {
   mockCurrentPrices,
@@ -429,62 +429,59 @@ function TradeDetailContent({ id }: { id: string }) {
 
   if (!trade) {
     return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="mb-5">
-            <Link
-              href="/history"
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Trade History
-            </Link>
-          </div>
+      <AppPageShell contentClassName="py-4 sm:py-4 lg:py-4">
+        <div className="mb-5">
+          <Link
+            href="/history"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Trade History
+          </Link>
+        </div>
 
-          <div className="flex justify-center py-10 sm:py-16">
-            <Card className="w-full max-w-xl border-border/70 bg-card/90 shadow-sm">
-              <CardContent className="flex flex-col items-center px-6 py-10 text-center sm:px-10">
-                <div
-                  className={cn(
-                    "mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border",
-                    tradeLoadError
-                      ? "border-destructive/20 bg-destructive/10 text-destructive"
-                      : "border-border/70 bg-secondary/60 text-muted-foreground",
-                  )}
-                >
-                  {tradeLoadError ? (
-                    <AlertTriangle className="h-7 w-7" />
-                  ) : (
-                    <BarChart3 className="h-7 w-7" />
-                  )}
-                </div>
-                <p className="text-xl font-semibold text-foreground">
-                  {tradeLoadError ? "Unable to load trade" : "Trade not found"}
-                </p>
-                <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-                  {tradeLoadError
-                    ? tradeLoadError
-                    : "This trade may have been deleted, archived, or the link is no longer valid."}
-                </p>
-                <div className="mt-6 flex flex-wrap justify-center gap-2">
-                  {tradeLoadError ? (
-                    <Button variant="outline" onClick={() => router.refresh()}>
-                      Try Again
-                    </Button>
-                  ) : null}
-                  <Link href="/history">
-                    <Button className="gap-2">
-                      <ArrowLeft className="h-4 w-4" />
-                      Back to History
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </main>
-      </div>
+        <div className="flex justify-center py-10 sm:py-16">
+          <Card className="w-full max-w-xl border-border/70 bg-card/90 shadow-sm">
+            <CardContent className="flex flex-col items-center px-6 py-10 text-center sm:px-10">
+              <div
+                className={cn(
+                  "mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border",
+                  tradeLoadError
+                    ? "border-destructive/20 bg-destructive/10 text-destructive"
+                    : "border-border/70 bg-secondary/60 text-muted-foreground",
+                )}
+              >
+                {tradeLoadError ? (
+                  <AlertTriangle className="h-7 w-7" />
+                ) : (
+                  <BarChart3 className="h-7 w-7" />
+                )}
+              </div>
+              <p className="text-xl font-semibold text-foreground">
+                {tradeLoadError ? "Unable to load trade" : "Trade not found"}
+              </p>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+                {tradeLoadError
+                  ? tradeLoadError
+                  : "This trade may have been deleted, archived, or the link is no longer valid."}
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-2">
+                {tradeLoadError ? (
+                  <Button variant="outline" onClick={() => router.refresh()}>
+                    Try Again
+                  </Button>
+                ) : null}
+                <Link href="/history">
+                  <Button className="gap-2">
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to History
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </AppPageShell>
     );
   }
 
@@ -823,9 +820,7 @@ function TradeDetailContent({ id }: { id: string }) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+    <AppPageShell contentClassName="py-4 sm:py-4 lg:py-4">
         {/* Back Navigation */}
         <div className="mb-5">
           <Link
@@ -1747,8 +1742,7 @@ function TradeDetailContent({ id }: { id: string }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </main>
-    </div>
+    </AppPageShell>
   );
 }
 
