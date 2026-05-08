@@ -160,6 +160,15 @@ export interface AiEconomicImpactPredictorResult {
   confidence: number
 }
 
+export interface MorningBriefingResult {
+  greeting: string
+  briefing: string
+  focusAreas: string[]
+  warnings: string[]
+  actionItem: string
+  overallMood: string
+}
+
 export interface ChartScreenshotAnalysisRequest {
   asset: string
   position: string
@@ -221,6 +230,26 @@ export async function generateEconomicImpactPrediction(
     symbol,
     proximityMinutes,
   })
+  return response.data.value
+}
+
+export async function getMorningBriefing(): Promise<MorningBriefingResult | null> {
+  const response = await api.get<ApiResponse<MorningBriefingResult | null>>("/v1/ai-briefing")
+
+  if (!response.data.isSuccess) {
+    throw new Error("Unable to load the saved morning briefing right now.")
+  }
+
+  return response.data.value ?? null
+}
+
+export async function generateMorningBriefing(): Promise<MorningBriefingResult> {
+  const response = await api.post<ApiResponse<MorningBriefingResult>>("/v1/ai-briefing/generate")
+
+  if (!response.data.isSuccess || !response.data.value) {
+    throw new Error("Unable to generate the morning briefing right now.")
+  }
+
   return response.data.value
 }
 
