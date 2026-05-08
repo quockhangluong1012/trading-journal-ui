@@ -33,6 +33,31 @@ let todaySetupState: {
   isLoading: false,
 }
 
+type DailyNotesState = {
+  note: null
+  isLoading: boolean
+  isSaving: boolean
+  shouldShowPopup: boolean
+  dismissPopup: ReturnType<typeof vi.fn>
+  save: ReturnType<typeof vi.fn>
+  refresh: ReturnType<typeof vi.fn>
+}
+
+function createDailyNotesState(overrides: Partial<DailyNotesState> = {}): DailyNotesState {
+  return {
+    note: null,
+    isLoading: false,
+    isSaving: false,
+    shouldShowPopup: false,
+    dismissPopup: vi.fn(),
+    save: vi.fn(),
+    refresh: vi.fn(),
+    ...overrides,
+  }
+}
+
+let dailyNotesState = createDailyNotesState()
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useRouter: () => ({ replace: replaceSpy }),
@@ -60,6 +85,18 @@ vi.mock("@/components/dashboard/dashboard-command-center", () => ({
   ),
 }))
 
+vi.mock("@/components/dashboard/daily-notes-banner", () => ({
+  DailyNotesBanner: ({ onClick }: { onClick: () => void }) => (
+    <button type="button" data-testid="daily-notes-banner" onClick={onClick}>
+      Daily Notes Banner
+    </button>
+  ),
+}))
+
+vi.mock("@/components/dashboard/daily-notes-dialog", () => ({
+  DailyNotesDialog: ({ open }: { open: boolean }) => (open ? <div role="dialog">Daily notes dialog</div> : null),
+}))
+
 vi.mock("@/components/dashboard/stats-cards", () => ({
   StatsCards: () => <div>Stats Cards</div>,
 }))
@@ -74,6 +111,14 @@ vi.mock("@/components/dashboard/profit-chart", () => ({
 
 vi.mock("@/components/dashboard/calendar-widget", () => ({
   CalendarWidget: () => <div>Calendar Widget</div>,
+}))
+
+vi.mock("@/components/scanner/economic-calendar-widget", () => ({
+  EconomicCalendarWidget: () => <div>Economic Calendar Widget</div>,
+}))
+
+vi.mock("@/components/scanner/pre-trade-check-widget", () => ({
+  PreTradeCheckWidget: () => <div>Pre-Trade Check Widget</div>,
 }))
 
 vi.mock("@/components/dashboard/open-positions-table", () => ({
@@ -119,6 +164,10 @@ vi.mock("@/hooks/use-today-setup", () => ({
     isLoading: todaySetupState.isLoading,
     refresh: vi.fn(),
   }),
+}))
+
+vi.mock("@/hooks/use-daily-notes", () => ({
+  useDailyNotes: () => dailyNotesState,
 }))
 
 function createTodaySetup(overrides: Partial<TradingSetupDetailDto> = {}): TradingSetupDetailDto {
@@ -174,7 +223,47 @@ describe("dashboard page", () => {
       setup: null,
       isLoading: false,
     }
+    dailyNotesState = createDailyNotesState()
     replaceSpy.mockReset()
+  })
+
+  it("renders the trading plan banner above the dashboard card on the homepage", () => {
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
+
+    const banner = screen.getByTestId("daily-notes-banner")
+    const commandCenter = screen.getByText("Dashboard Command Center")
+
+    expect(Boolean(banner.compareDocumentPosition(commandCenter) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+  })
+
+  it("auto-opens the trading plan dialog on the dashboard when the popup is due", async () => {
+    dailyNotesState = createDailyNotesState({ shouldShowPopup: true })
+
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Daily notes dialog")
+  })
+
+  it("opens the trading plan dialog when the homepage banner is clicked", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
+
+    await user.click(screen.getByTestId("daily-notes-banner"))
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Daily notes dialog")
   })
 
   it("shows the today setup badge only when a setup exists for today", () => {

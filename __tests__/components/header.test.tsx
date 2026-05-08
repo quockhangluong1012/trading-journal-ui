@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Header } from "@/components/header"
 import { SidebarProvider } from "@/components/ui/sidebar"
@@ -54,7 +54,27 @@ vi.mock("@/components/dashboard/daily-notes-dialog", () => ({
 }))
 
 describe("Header", () => {
-  it("shows the trading plan banner in the shared header and removes the old brand card", () => {
+  beforeEach(() => {
+    usePathnameMock.mockReset()
+    usePathnameMock.mockReturnValue("/")
+    useDailyNotesMock.mockReset()
+    useDailyNotesMock.mockImplementation(() => createDailyNotesState())
+  })
+
+  it("does not show the trading plan banner in the shared header on the dashboard", () => {
+    render(
+      <SidebarProvider>
+        <Header />
+      </SidebarProvider>
+    )
+
+    expect(screen.queryByRole("button", { name: /start your daily briefing/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/trading journal/i)).not.toBeInTheDocument()
+  })
+
+  it("shows the trading plan banner on non-dashboard trader routes", () => {
+    usePathnameMock.mockReturnValue("/history")
+
     render(
       <SidebarProvider>
         <Header />
@@ -62,11 +82,10 @@ describe("Header", () => {
     )
 
     expect(screen.getByRole("button", { name: /start your daily briefing/i })).toBeInTheDocument()
-    expect(screen.queryByText(/trading journal/i)).not.toBeInTheDocument()
   })
 
   it("hides the trading plan banner on admin routes", () => {
-    usePathnameMock.mockReturnValueOnce("/admin")
+    usePathnameMock.mockReturnValue("/admin")
 
     render(
       <SidebarProvider>
@@ -77,14 +96,19 @@ describe("Header", () => {
     expect(screen.queryByRole("button", { name: /start your daily briefing/i })).not.toBeInTheDocument()
   })
 
-  it("auto-opens the trading plan dialog on the dashboard when the popup is due", async () => {
-    useDailyNotesMock.mockReturnValueOnce(createDailyNotesState({ shouldShowPopup: true }))
+  it("opens the trading plan dialog from the header banner on non-dashboard routes", async () => {
+    const user = userEvent.setup()
+
+    usePathnameMock.mockReturnValue("/history")
+    useDailyNotesMock.mockImplementation(() => createDailyNotesState({ shouldShowPopup: true }))
 
     render(
       <SidebarProvider>
         <Header />
       </SidebarProvider>
     )
+
+    await user.click(screen.getByRole("button", { name: /start your daily briefing/i }))
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
   })

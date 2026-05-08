@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -70,14 +70,8 @@ export function Header() {
   const sectionLabel = formatSectionLabel(pathname);
   const isAdminRoute = pathname.startsWith("/admin");
   const [isDailyNotesDialogOpen, setIsDailyNotesDialogOpen] = useState(false);
-  const shouldShowTradingPlan = Boolean(user) && !isAdminRoute;
+  const shouldShowTradingPlan = Boolean(user) && !isAdminRoute && pathname !== "/";
   const dailyNotes = useDailyNotes(shouldShowTradingPlan ? user?.email ?? user?.username ?? null : null);
-
-  useEffect(() => {
-    if (pathname === "/" && shouldShowTradingPlan && dailyNotes.shouldShowPopup) {
-      setIsDailyNotesDialogOpen(true);
-    }
-  }, [dailyNotes.shouldShowPopup, pathname, shouldShowTradingPlan]);
 
   return (
     <>
