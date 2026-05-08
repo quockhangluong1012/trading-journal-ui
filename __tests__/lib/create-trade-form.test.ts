@@ -16,6 +16,7 @@ import {
 
 const createFormData = (overrides: Partial<TradeFormData> = {}): TradeFormData => ({
   asset: "BTCUSD",
+  tradingSetupId: "",
   position: PositionType.Long,
   entryPrice: "100",
   targetTier1: "120",
@@ -46,6 +47,7 @@ describe("buildCreateTradePayload", () => {
     const payload = buildCreateTradePayload({
       formData: createFormData({
         asset: " eth/usd ",
+        tradingSetupId: "21",
         position: PositionType.Short,
         entryPrice: "123.45",
         targetTier1: "120",
@@ -81,6 +83,7 @@ describe("buildCreateTradePayload", () => {
       emotionTags: [8],
       confidenceLevel: 4,
       tradeHistoryChecklists: [11, 12],
+      tradingSetupId: 21,
       tradingZoneId: 7,
       tradingSessionId: 42,
     })

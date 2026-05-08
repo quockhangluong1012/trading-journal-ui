@@ -51,6 +51,25 @@ export function plainTextToRichText(value: RichTextValue): string {
     .join("")
 }
 
+export function appendPlainTextToRichText(value: RichTextValue, appendedText: string): string {
+  const normalizedCurrent = normalizeRichTextValue(value)
+  const normalizedAppendedText = appendedText.replace(/\r\n/g, "\n").trim()
+
+  if (!normalizedAppendedText) {
+    return normalizedCurrent
+  }
+
+  if (!normalizedCurrent) {
+    return plainTextToRichText(normalizedAppendedText)
+  }
+
+  if (!looksLikeRichText(normalizedCurrent)) {
+    return plainTextToRichText(`${normalizedCurrent.trimEnd()}\n${normalizedAppendedText}`)
+  }
+
+  return `${normalizedCurrent}${plainTextToRichText(normalizedAppendedText)}`
+}
+
 export function getPlainTextFromRichText(value: RichTextValue): string {
   if (!value) {
     return ""

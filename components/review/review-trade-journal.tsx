@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  Bookmark,
   Brain,
   CheckCircle,
   ChevronDown,
@@ -36,6 +37,13 @@ function formatCurrency(value: number | null): string {
 
 function formatClosedDate(value: string | null): string {
   if (!value) return "—"
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
@@ -43,7 +51,7 @@ function formatClosedDate(value: string | null): string {
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(value))
+  }).format(date)
 }
 
 function ConfidenceMeter({ value }: { value: number }) {
@@ -111,6 +119,13 @@ function TradeJournalCard({ trade }: { trade: ReviewTrade }) {
             {trade.tradingZone ? (
               <Badge variant="outline" className="h-6 border-border/70 bg-background/80 px-2.5 text-[11px] text-muted-foreground">
                 {trade.tradingZone}
+              </Badge>
+            ) : null}
+
+            {trade.tradingSetupName ? (
+              <Badge variant="outline" className="h-6 border-primary/20 bg-primary/10 px-2.5 text-[11px] text-primary">
+                <Bookmark className="mr-0.5 h-3 w-3" />
+                {trade.tradingSetupName}
               </Badge>
             ) : null}
 
@@ -220,6 +235,18 @@ function TradeJournalCard({ trade }: { trade: ReviewTrade }) {
                   </Badge>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {trade.tradingSetupName ? (
+            <div className="space-y-2">
+              <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.15em] text-muted-foreground">
+                <Bookmark className="h-3.5 w-3.5 text-primary" />
+                Linked Setup
+              </p>
+              <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/10 px-3 py-1 text-xs text-primary">
+                {trade.tradingSetupName}
+              </Badge>
             </div>
           ) : null}
 

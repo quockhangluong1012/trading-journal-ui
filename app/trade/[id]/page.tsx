@@ -24,6 +24,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -80,6 +87,7 @@ import { TradeStatus } from "@/lib/enum/TradeStatus";
 import { PositionType } from "@/lib/enum/PositionType";
 import { api, ApiResponse } from "@/lib/api";
 import { getPlainTextFromRichText } from "@/lib/rich-text";
+import type { TradingSetupSummaryDto } from "@/lib/setup-api";
 import { AxiosResponse } from "axios";
 import { cn, getPositionTypeLabel, getTradeStatusLabel } from "@/lib/utils";
 import { OverviewMetricCard, SnapshotPill } from "@/components/trade/metric-cards";
@@ -170,6 +178,7 @@ function TradeDetailContent({ id }: { id: string }) {
     targetTier2: "",
     targetTier3: "",
     stopLoss: "",
+    tradingSetupId: "",
     analysisTags: [] as string[],
     emotionTags: [] as string[],
     confidenceLevel: 0,
@@ -185,6 +194,7 @@ function TradeDetailContent({ id }: { id: string }) {
   );
   const [apiTechTags, setApiTechTags] = useState<TechnicalAnalysisTagApi[]>([]);
   const [apiTradingZones, setApiTradingZones] = useState<TradingZoneApi[]>([]);
+  const [setupOptions, setSetupOptions] = useState<TradingSetupSummaryDto[]>([]);
   const [checklistModels, setChecklistModels] = useState<ChecklistModelApi[]>([]);
   const [selectedModelDetail, setSelectedModelDetail] = useState<ChecklistModelDetailApi | null>(null);
 
@@ -247,6 +257,14 @@ function TradeDetailContent({ id }: { id: string }) {
       })
       .catch((err) => console.error("Failed to fetch API trading zones:", err));
 
+    api
+      .get<ApiResponse<TradingSetupSummaryDto[]>>("/v1/trading-setups")
+      .then((response: AxiosResponse<ApiResponse<TradingSetupSummaryDto[]>>) => {
+        let data = response.data;
+        if (data.isSuccess) setSetupOptions(data.value);
+      })
+      .catch((err) => console.error("Failed to fetch trading setups:", err));
+
     // Fetch specific trade detail by id
     api
       .get<ApiResponse<any>>(`/v1/trade-histories/${id}`)
@@ -258,6 +276,9 @@ function TradeDetailContent({ id }: { id: string }) {
           const mappedTrade: Trade = {
             id: id,
             asset: returnedValue.asset,
+            tradingSetupId: returnedValue.tradingSetupId
+              ? returnedValue.tradingSetupId.toString()
+              : "",
             position: returnedValue.position,
             entryPrice: returnedValue.entryPrice,
             targetTier1: returnedValue.targetTier1,
@@ -317,6 +338,7 @@ function TradeDetailContent({ id }: { id: string }) {
             targetTier2: mappedTrade.targetTier2.toString(),
             targetTier3: mappedTrade.targetTier3.toString(),
             stopLoss: mappedTrade.stopLoss.toString(),
+            tradingSetupId: mappedTrade.tradingSetupId || "",
             analysisTags: mappedTrade.analysisTags || [],
             emotionTags: mappedTrade.emotionTags || [],
             confidenceLevel: mappedTrade.confidenceLevel || 0,
@@ -414,6 +436,21 @@ function TradeDetailContent({ id }: { id: string }) {
       ) ?? null
     );
   }, [apiTradingZones, trade?.tradingSession]);
+
+  const activeTradingSetupId = isEditing
+    ? formData.tradingSetupId
+    : trade?.tradingSetupId ?? "";
+
+  const selectedTradingSetup = useMemo(() => {
+    if (!activeTradingSetupId) {
+      return null;
+    }
+
+    return (
+      setupOptions.find((setup) => setup.id.toString() === activeTradingSetupId) ??
+      null
+    );
+  }, [activeTradingSetupId, setupOptions]);
 
   if (isAuthLoading) {
     return <AppShellLoader title="Loading trade" description="Retrieving your trade details." />
@@ -646,6 +683,9 @@ function TradeDetailContent({ id }: { id: string }) {
           formData.confidenceLevel > 0 ? formData.confidenceLevel : 0,
         tradeHistoryChecklists:
           formData.pretradeChecklist.map((id) => parseInt(id, 10)),
+        tradingSetupId: formData.tradingSetupId
+          ? parseInt(formData.tradingSetupId, 10)
+          : null,
         tradingZoneId: formData.tradingSession
           ? parseInt(formData.tradingSession, 10)
           : 0,
@@ -688,6 +728,7 @@ function TradeDetailContent({ id }: { id: string }) {
               targetTier2: Number.parseFloat(formData.targetTier2) || 0,
               targetTier3: Number.parseFloat(formData.targetTier3) || 0,
               stopLoss: Number.parseFloat(formData.stopLoss) || 0,
+              tradingSetupId: formData.tradingSetupId || undefined,
               analysisTags: formData.analysisTags,
               emotionTags: formData.emotionTags,
               confidenceLevel: formData.confidenceLevel,
@@ -707,6 +748,7 @@ function TradeDetailContent({ id }: { id: string }) {
         targetTier2: Number.parseFloat(formData.targetTier2) || 0,
         targetTier3: Number.parseFloat(formData.targetTier3) || 0,
         stopLoss: Number.parseFloat(formData.stopLoss) || 0,
+        tradingSetupId: formData.tradingSetupId || undefined,
         analysisTags: formData.analysisTags,
         emotionTags: formData.emotionTags,
         confidenceLevel: formData.confidenceLevel,
@@ -1202,6 +1244,84 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardHeader>
                   <CardContent className="pt-5 space-y-6">
                     {/* Zone */}
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                          <Target className="h-3.5 w-3.5" /> Linked Setup
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Link href="/setup" className="font-medium text-primary underline-offset-4 hover:underline">
+                            Manage setups
+                          </Link>
+                          <Link href="/analytics" className="font-medium text-primary underline-offset-4 hover:underline">
+                            View analytics
+                          </Link>
+                        </div>
+                      </div>
+
+                      {isEditing ? (
+                        <div className="space-y-3 rounded-xl border border-border/60 bg-secondary/15 p-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="tradingSetupId">Linked setup</Label>
+                            <Select
+                              value={formData.tradingSetupId || "none"}
+                              onValueChange={(value) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  tradingSetupId: value === "none" ? "" : value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger id="tradingSetupId" className="bg-background/80">
+                                <SelectValue placeholder="Link a saved setup" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">No linked setup</SelectItem>
+                                {setupOptions.map((setup) => (
+                                  <SelectItem key={setup.id} value={setup.id.toString()}>
+                                    <span className="flex items-center gap-2">
+                                      {setup.name}
+                                      <span className="text-[10px] text-muted-foreground">
+                                        ({setup.stepCount} steps)
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <p className="text-xs leading-relaxed text-muted-foreground">
+                            Update the linked setup here so this trade continues feeding the right playbook analytics and review journal.
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {selectedTradingSetup ? (
+                        <div className="rounded-xl border border-primary/15 bg-primary/5 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-foreground">
+                              {selectedTradingSetup.name}
+                            </p>
+                            <Badge variant="outline" className="border-primary/20 bg-background/70 text-[10px] text-muted-foreground">
+                              {selectedTradingSetup.stepCount} steps
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                            {selectedTradingSetup.description
+                              ? getPlainTextFromRichText(selectedTradingSetup.description)
+                              : "This trade is linked to a saved setup, but no setup summary has been added yet."}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          No setup linked yet. Attach one in edit mode if you want this trade to roll into setup analytics and review.
+                        </p>
+                      )}
+                    </div>
+
+                    <Separator className="bg-border/50" />
+
                     <div className="space-y-3">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                         <Clock className="h-3.5 w-3.5" /> Session

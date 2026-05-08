@@ -23,6 +23,7 @@ const CREATE_TRADE_SCREENSHOT_ALLOWED_MIME_TYPES = [
 
 export interface TradeFormData {
   asset: string
+  tradingSetupId: string
   position: PositionType
   entryPrice: string
   targetTier1: string
@@ -66,6 +67,7 @@ export interface CreateTradePayload {
   emotionTags: number[] | null
   confidenceLevel: number | null
   tradeHistoryChecklists: number[] | null
+  tradingSetupId: number | null
   tradingZoneId: number | null
   tradingSessionId: number | null
   powerOf3Phase: number | null
@@ -113,6 +115,7 @@ const parseStringIdList = (values: string[]): number[] | null => {
 
 export const getInitialTradeFormData = (now: Date = new Date()): TradeFormData => ({
   asset: "",
+  tradingSetupId: "",
   position: PositionType.Long,
   entryPrice: "",
   targetTier1: "",
@@ -229,6 +232,7 @@ export const buildCreateTradePayload = ({
   emotionTags: parseStringIdList(selectedEmotions),
   confidenceLevel: confidenceLevel > 0 ? confidenceLevel : null,
   tradeHistoryChecklists: parseStringIdList(checkedItems),
+  tradingSetupId: parseOptionalInteger(formData.tradingSetupId),
   tradingZoneId: parseOptionalInteger(tradingSession),
   tradingSessionId: parseOptionalInteger(activeSessionId),
   powerOf3Phase: ictPowerOf3 ?? null,

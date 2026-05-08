@@ -134,6 +134,8 @@ describe("CreateTradePage", () => {
           return buildReferenceResponse([])
         case "/v1/trading-zones":
           return buildReferenceResponse([])
+        case "/v1/trading-setups":
+          return buildReferenceResponse([])
         case "/v1/checklist-models/1":
           return buildReferenceResponse({ id: 1, name: "Core checklist", criteria: [] })
         default:

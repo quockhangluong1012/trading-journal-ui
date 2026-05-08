@@ -27,11 +27,12 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
 import type { DailyNoteDto, UpsertDailyNoteRequest } from "@/lib/daily-notes-api"
 import { AiEmotionDetector } from "@/components/trade/create-trade/ai-emotion-detector"
 import { SpeechToTextButton } from "@/components/ui/speech-to-text-button"
 import { api, type ApiResponse } from "@/lib/api"
+import { appendPlainTextToRichText } from "@/lib/rich-text"
 import type { EmotionTagApi } from "@/lib/trade-store"
 
 // ─── Constants ────────────────────────────────────────────────────────
@@ -187,7 +188,7 @@ export function DailyNotesDialog({
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         {/* Header with gradient accent */}
         <div className="relative shrink-0 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-accent/8 dark:from-primary/15 dark:to-accent/10" />
+          <div className="absolute inset-0 bg-linear-to-br from-primary/8 via-transparent to-accent/8 dark:from-primary/15 dark:to-accent/10" />
           <div className="absolute -top-16 -right-16 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
           <div className="absolute -bottom-8 -left-8 h-32 w-32 rounded-full bg-accent/10 blur-2xl" />
 
@@ -219,7 +220,7 @@ export function DailyNotesDialog({
         </div>
 
         {/* Scrollable form body */}
-        <ScrollArea className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="space-y-6 px-6 pb-6 pt-2">
             {/* ── Daily Bias ─────────────────────────────── */}
             <fieldset className="space-y-3">
@@ -259,13 +260,13 @@ export function DailyNotesDialog({
                 <TrendingUp className="h-4 w-4 text-primary" />
                 Market Structure Notes
               </legend>
-              <textarea
+              <Textarea
                 id="daily-notes-market-structure"
                 value={marketStructureNotes}
                 onChange={(e) => setMarketStructureNotes(e.target.value)}
                 placeholder="BOS/CHoCH observations, order flow direction, HTF structure..."
                 rows={3}
-                className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                className="rounded-xl border-border/60 bg-background text-sm shadow-none"
               />
             </fieldset>
 
@@ -275,13 +276,13 @@ export function DailyNotesDialog({
                 <Droplets className="h-4 w-4 text-primary" />
                 Key Levels &amp; Liquidity
               </legend>
-              <textarea
+              <Textarea
                 id="daily-notes-key-levels"
                 value={keyLevelsAndLiquidity}
                 onChange={(e) => setKeyLevelsAndLiquidity(e.target.value)}
                 placeholder="Important price levels, liquidity pools, FVGs, order blocks..."
                 rows={3}
-                className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                className="rounded-xl border-border/60 bg-background text-sm shadow-none"
               />
             </fieldset>
 
@@ -291,13 +292,13 @@ export function DailyNotesDialog({
                 <Newspaper className="h-4 w-4 text-primary" />
                 News &amp; Events to Watch
               </legend>
-              <textarea
+              <Textarea
                 id="daily-notes-news"
                 value={newsAndEvents}
                 onChange={(e) => setNewsAndEvents(e.target.value)}
                 placeholder="High-impact news, FOMC, NFP, CPI releases..."
                 rows={2}
-                className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                className="rounded-xl border-border/60 bg-background text-sm shadow-none"
               />
             </fieldset>
 
@@ -367,13 +368,13 @@ export function DailyNotesDialog({
                 <Brain className="h-4 w-4 text-primary" />
                 Mental State &amp; Mindset
               </legend>
-              <textarea
+              <Textarea
                 id="daily-notes-mental-state"
                 value={mentalState}
                 onChange={(e) => setMentalState(e.target.value)}
                 placeholder="How are you feeling today? Sleep quality, focus level, emotional state..."
                 rows={2}
-                className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                className="rounded-xl border-border/60 bg-background text-sm shadow-none"
               />
               <div className="rounded-xl border border-dashed border-primary/20 bg-primary/5 p-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -384,7 +385,7 @@ export function DailyNotesDialog({
                   <SpeechToTextButton
                     label="Voice note"
                     onTranscript={(transcript) =>
-                      setMentalState((current) => (current.trim() ? `${current.trimEnd()}\n${transcript}` : transcript))
+                      setMentalState((current) => appendPlainTextToRichText(current, transcript))
                     }
                   />
                 </div>
@@ -405,24 +406,24 @@ export function DailyNotesDialog({
                 <BookOpen className="h-4 w-4 text-primary" />
                 Key Rules &amp; Reminders
               </legend>
-              <textarea
+              <Textarea
                 id="daily-notes-rules"
                 value={keyRulesAndReminders}
                 onChange={(e) => setKeyRulesAndReminders(e.target.value)}
                 placeholder="Personal rules to follow, max trades per day, stop revenge trading..."
                 rows={2}
-                className="w-full rounded-xl border border-border/60 bg-background px-4 py-3 text-sm leading-relaxed placeholder:text-muted-foreground/60 focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none transition-all"
+                className="rounded-xl border-border/60 bg-background text-sm shadow-none"
               />
             </fieldset>
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Footer */}
         <DialogFooter className="relative z-10 shrink-0 border-t bg-background px-6 py-4 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)]">
           <Button variant="ghost" onClick={handleDismiss} disabled={isSaving}>
             {isEditing ? "Cancel" : "Skip for now"}
           </Button>
-          <Button onClick={handleSave} disabled={isSaving} className="gap-2 min-w-[120px]">
+          <Button onClick={handleSave} disabled={isSaving} className="min-w-32 gap-2">
             {isSaving ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
