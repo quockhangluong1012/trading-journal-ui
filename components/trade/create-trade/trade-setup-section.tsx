@@ -1,7 +1,9 @@
 import React from "react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -12,6 +14,8 @@ import {
 import { FileText, Target, TrendingDown, TrendingUp } from "lucide-react"
 import { PositionType } from "@/lib/enum/PositionType"
 import type { TradeFormData } from "@/lib/create-trade-form"
+import { getPlainTextFromRichText } from "@/lib/rich-text"
+import type { TradingSetupSummaryDto } from "@/lib/setup-api"
 import { TradeFormSection } from "./trade-form-section"
 
 export interface TradeSetupSectionProps {
@@ -19,6 +23,9 @@ export interface TradeSetupSectionProps {
   errors: Record<string, string>
   handleInputChange: (field: keyof Omit<TradeFormData, "position">, value: string) => void
   handlePositionChange: (value: string) => void
+  setupOptions: TradingSetupSummaryDto[]
+  selectedTradingSetupId: string
+  selectedTradingSetup: TradingSetupSummaryDto | null
   surfaceFieldClassName: string
 }
 
@@ -27,6 +34,9 @@ export function TradeSetupSection({
   errors,
   handleInputChange,
   handlePositionChange,
+  setupOptions,
+  selectedTradingSetupId,
+  selectedTradingSetup,
   surfaceFieldClassName,
 }: TradeSetupSectionProps) {
   return (
@@ -109,6 +119,68 @@ export function TradeSetupSection({
                 <p className="text-xs text-destructive">{errors.date}</p>
               ) : null}
             </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="tradingSetupId">Linked setup</Label>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Connect this trade to a saved setup so analytics and review flows can track the playbook it came from.
+                </p>
+              </div>
+              <Link href="/setup" className="text-xs font-medium text-primary underline-offset-4 hover:underline">
+                Manage setups
+              </Link>
+            </div>
+
+            <Select
+              value={selectedTradingSetupId || "none"}
+              onValueChange={(value) => handleInputChange("tradingSetupId", value === "none" ? "" : value)}
+            >
+              <SelectTrigger id="tradingSetupId" className={surfaceFieldClassName}>
+                <SelectValue placeholder="Link a saved setup" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No linked setup</SelectItem>
+                {setupOptions.map((setup) => (
+                  <SelectItem key={setup.id} value={setup.id.toString()}>
+                    <span className="flex items-center gap-2">
+                      {setup.name}
+                      <span className="text-[10px] text-muted-foreground">
+                        ({setup.stepCount} steps)
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedTradingSetup ? (
+              <div className="rounded-2xl border border-primary/15 bg-primary/5 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">{selectedTradingSetup.name}</p>
+                  <Badge variant="outline" className="border-primary/20 bg-background/70 text-[10px] text-muted-foreground">
+                    {selectedTradingSetup.stepCount} steps
+                  </Badge>
+                </div>
+                {selectedTradingSetup.description ? (
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    {getPlainTextFromRichText(selectedTradingSetup.description)}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                    No overview saved yet. You can still link the setup so this trade feeds the right playbook analytics.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {setupOptions.length > 0
+                  ? "Leave this empty if the trade is discretionary or the setup has not been documented yet."
+                  : "No saved setups yet. Create one in the setup manager if you want this trade linked to a playbook."}
+              </p>
+            )}
           </div>
         </div>
 

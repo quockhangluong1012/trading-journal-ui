@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  appendPlainTextToRichText,
   getPlainTextFromRichText,
   getRichTextPreview,
   looksLikeRichText,
@@ -20,6 +21,26 @@ describe("plainTextToRichText", () => {
     expect(plainTextToRichText("Line one\nLine two\n\nNext paragraph")).toBe(
       "<p>Line one<br>Line two</p><p>Next paragraph</p>",
     )
+  })
+})
+
+describe("appendPlainTextToRichText", () => {
+  it("creates rich text when appending to an empty value", () => {
+    expect(appendPlainTextToRichText("", "Voice note summary")).toBe(
+      "<p>Voice note summary</p>",
+    )
+  })
+
+  it("converts existing plain text into rich text before appending", () => {
+    expect(appendPlainTextToRichText("Existing note", "Voice note summary")).toBe(
+      "<p>Existing note<br>Voice note summary</p>",
+    )
+  })
+
+  it("appends a new paragraph when the current value is already rich text", () => {
+    expect(
+      appendPlainTextToRichText("<p>Existing <strong>bias</strong></p>", "Voice note summary"),
+    ).toBe("<p>Existing <strong>bias</strong></p><p>Voice note summary</p>")
   })
 })
 

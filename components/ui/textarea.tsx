@@ -53,7 +53,10 @@ function loadEditorModules(): Promise<EditorModules> {
           ckeditorModule.BlockQuote,
           ckeditorModule.Undo,
         ],
-        toolbar: ['undo', 'redo', '|', 'bold', 'italic', 'link', '|', 'bulletedList', 'numberedList', 'blockQuote'],
+        toolbar: {
+          items: ['undo', 'redo', '|', 'bold', 'italic', 'link', '|', 'bulletedList', 'numberedList', 'blockQuote'],
+          shouldNotGroupWhenFull: true,
+        },
       },
     }),
   )

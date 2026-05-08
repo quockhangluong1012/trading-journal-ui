@@ -89,6 +89,7 @@ export interface ReviewTrade {
   exitPrice: number | null
   confidenceLevel: number
   tradingZone?: string | null
+  tradingSetupName?: string | null
   isRuleBroken: boolean
   ruleBreakReason?: string | null
   notes?: string | null

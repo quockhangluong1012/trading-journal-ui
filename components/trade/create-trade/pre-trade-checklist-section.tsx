@@ -3,7 +3,9 @@ import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -11,8 +13,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Check, CircleAlert, ClipboardCheck } from "lucide-react"
+import { Check, CircleAlert, ClipboardCheck, Loader2, Sparkles } from "lucide-react"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
+import type { PreTradeChecklistInterpretationResult } from "@/lib/ai-insights-api"
 import { TradeFormSection } from "./trade-form-section"
 import { categoryColor, categoryLabel } from "./shared-utils"
 import type { ChecklistModelApi, ChecklistModelDetailApi } from "@/lib/trade-store"
@@ -30,6 +33,12 @@ export interface PreTradeChecklistSectionProps {
   checklistProgress: number
   errors: Record<string, string>
   toggleChecklistItem: (id: string) => void
+  checklistAiInput: string
+  setChecklistAiInput: (value: string) => void
+  checklistInterpretation: PreTradeChecklistInterpretationResult | null
+  isChecklistInterpreting: boolean
+  handleInterpretChecklist: () => void
+  handleApplyChecklistSuggestions: () => void
   surfaceFieldClassName: string
 }
 
@@ -45,6 +54,12 @@ export function PreTradeChecklistSection({
   checklistProgress,
   errors,
   toggleChecklistItem,
+  checklistAiInput,
+  setChecklistAiInput,
+  checklistInterpretation,
+  isChecklistInterpreting,
+  handleInterpretChecklist,
+  handleApplyChecklistSuggestions,
   surfaceFieldClassName,
 }: PreTradeChecklistSectionProps) {
   return (
@@ -98,6 +113,93 @@ export function PreTradeChecklistSection({
 
         {selectedModelDetail ? (
           <div className="space-y-4">
+            <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    Interpret checklist notes
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Paste your pre-trade notes in plain English and preview which checklist criteria the AI thinks they support.
+                  </p>
+                </div>
+
+                {checklistInterpretation ? (
+                  <Badge variant="outline" className={cn("rounded-full px-3 py-1 text-[11px]", checklistTone.pillClassName)}>
+                    {Math.round(checklistInterpretation.confidence * 100)}% confidence
+                  </Badge>
+                ) : null}
+              </div>
+
+              <Textarea
+                value={checklistAiInput}
+                onChange={(event) => setChecklistAiInput(event.target.value)}
+                placeholder="Example: London high got swept, bearish displacement confirmed, risk is fixed at 0.5%, and I am patient enough to wait for the retrace."
+                rows={4}
+                className={surfaceFieldClassName}
+              />
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" className="gap-2" onClick={handleInterpretChecklist} disabled={isChecklistInterpreting}>
+                  {isChecklistInterpreting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  Interpret notes
+                </Button>
+                {checklistInterpretation ? (
+                  <Button type="button" variant="outline" onClick={handleApplyChecklistSuggestions}>
+                    Apply suggestions
+                  </Button>
+                ) : null}
+              </div>
+
+              {checklistInterpretation ? (
+                <div className="space-y-3 rounded-2xl border border-border/60 bg-background/80 p-4">
+                  <p className="text-sm font-medium text-foreground">{checklistInterpretation.summary}</p>
+
+                  {checklistInterpretation.matches.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Suggested matches
+                      </p>
+                      <div className="space-y-2">
+                        {checklistInterpretation.matches.map((match) => (
+                          <div key={match.checklistId} className="rounded-xl border border-border/60 bg-muted/20 px-3 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-foreground">{match.checklistName}</span>
+                              <Badge variant="outline" className="border-border/70 bg-background/80 text-[10px] text-muted-foreground">
+                                {match.category}
+                              </Badge>
+                              <Badge variant="outline" className={cn("text-[10px]", checklistTone.pillClassName)}>
+                                {Math.round(match.confidence * 100)}%
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                              {match.rationale}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {checklistInterpretation.unmatchedInputs.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        Unmatched notes
+                      </p>
+                      <ul className="space-y-1 text-xs leading-relaxed text-muted-foreground">
+                        {checklistInterpretation.unmatchedInputs.map((entry) => (
+                          <li key={entry} className="rounded-lg bg-muted/20 px-3 py-2">
+                            {entry}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Checklist completion</span>

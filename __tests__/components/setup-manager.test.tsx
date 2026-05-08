@@ -10,6 +10,7 @@ const getTradingSetupDetailMock = vi.fn()
 const createTradingSetupMock = vi.fn()
 const updateTradingSetupMock = vi.fn()
 const deleteTradingSetupMock = vi.fn()
+const generateTradingSetupPreviewMock = vi.fn()
 const toastMock = vi.fn()
 
 vi.mock("@xyflow/react", async () => {
@@ -71,6 +72,10 @@ vi.mock("@/lib/setup-api", () => ({
   getTradingSetupDetail: (...args: unknown[]) => getTradingSetupDetailMock(...args),
   getTradingSetups: (...args: unknown[]) => getTradingSetupsMock(...args),
   updateTradingSetup: (...args: unknown[]) => updateTradingSetupMock(...args),
+}))
+
+vi.mock("@/lib/ai-insights-api", () => ({
+  generateTradingSetupPreview: (...args: unknown[]) => generateTradingSetupPreviewMock(...args),
 }))
 
 function createSetupSummary(overrides: Partial<TradingSetupSummaryDto> = {}): TradingSetupSummaryDto {
@@ -229,6 +234,58 @@ describe("SetupManager", () => {
     expect(screen.getByLabelText("Setup name")).toHaveValue("Asia range")
     expect(screen.getByText("Node toolbox")).toBeInTheDocument()
     expect(getTradingSetupDetailMock).toHaveBeenCalledWith(1)
+  })
+
+  it("loads an AI-generated draft into the canvas without saving it", async () => {
+    const user = userEvent.setup()
+    const setups = [
+      createSetupSummary({ id: 1, name: "Asia range", lastUpdatedAt: "2026-04-19T08:30:00.000Z" }),
+    ]
+
+    getTradingSetupsMock.mockResolvedValue({
+      data: {
+        isSuccess: true,
+        value: setups,
+      },
+    })
+    generateTradingSetupPreviewMock.mockResolvedValue({
+      summary: "ICT Venom flow for NY open.",
+      name: "ICT Venom Model",
+      description: "Liquidity sweep into displacement and retrace.",
+      nodes: [
+        { id: "ai-start", kind: "start", x: 100, y: 100, title: "Map session", notes: null },
+        { id: "ai-step", kind: "step", x: 360, y: 100, title: "Wait for sweep", notes: "Need clear liquidity run." },
+      ],
+      edges: [
+        { id: "ai-edge-1", source: "ai-start", target: "ai-step", label: null },
+      ],
+      assumptions: ["Assumes NY session focus."],
+      warnings: ["Review precise entry trigger before saving."],
+      confidence: 0.82,
+    })
+
+    render(<SetupManager />)
+
+    await waitFor(() => expect(getTradingSetupsMock).toHaveBeenCalledTimes(1))
+
+    await user.click(screen.getByRole("button", { name: "New setup" }))
+
+    expect(await screen.findByText("Create mode")).toBeInTheDocument()
+
+    await user.type(
+      screen.getByLabelText("Generate draft from natural language"),
+      "Build an ICT Venom model for NY open with a sweep and retrace.",
+    )
+    await user.click(screen.getByRole("button", { name: "Generate draft into canvas" }))
+
+    await waitFor(() => expect(generateTradingSetupPreviewMock).toHaveBeenCalledTimes(1))
+
+    expect(screen.getByLabelText("Setup name")).toHaveValue("ICT Venom Model")
+    expect(screen.getByText("ICT Venom flow for NY open.")).toBeInTheDocument()
+    expect(screen.getByText("Assumptions")).toBeInTheDocument()
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: "AI draft loaded",
+    }))
   })
 
   it("deletes a setup directly from the library after confirmation", async () => {

@@ -50,7 +50,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { PositionType } from "@/lib/enum/PositionType"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
 import { api, ApiResponse } from "@/lib/api"
+import {
+  interpretPreTradeChecklist,
+  type PreTradeChecklistInterpretationResult,
+} from "@/lib/ai-insights-api"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
+import type { TradingSetupSummaryDto } from "@/lib/setup-api"
 import { cn } from "@/lib/utils"
 import { AxiosResponse } from "axios"
 import { IctContextFields } from "@/components/trade/ict-trade-fields"
@@ -142,10 +147,15 @@ export function CreateTradePage({
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>([])
   const [apiTechTags, setApiTechTags] = useState<TechnicalAnalysisTagApi[]>([])
   const [apiTradingZones, setApiTradingZones] = useState<TradingZoneApi[]>([])
+  const [setupOptions, setSetupOptions] = useState<TradingSetupSummaryDto[]>([])
   const [checklistModels, setChecklistModels] = useState<ChecklistModelApi[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>("")
   const [selectedModelDetail, setSelectedModelDetail] =
     useState<ChecklistModelDetailApi | null>(null)
+  const [checklistAiInput, setChecklistAiInput] = useState("")
+  const [checklistInterpretation, setChecklistInterpretation] =
+    useState<PreTradeChecklistInterpretationResult | null>(null)
+  const [isChecklistInterpreting, setIsChecklistInterpreting] = useState(false)
   const [formData, setFormData] = useState<TradeFormData>(() => {
     const initial = getInitialTradeFormData()
     if (queryOverrides?.asset) initial.asset = queryOverrides.asset
@@ -206,6 +216,7 @@ export function CreateTradePage({
           setFormData((prev) => ({
             ...prev,
             asset: queryOverrides?.asset || tpl.asset || prev.asset,
+            tradingSetupId: tpl.tradingSetupId != null ? String(tpl.tradingSetupId) : prev.tradingSetupId,
             position: queryOverrides?.position ? (Number(queryOverrides.position) as PositionType) : (tpl.position != null ? (tpl.position as PositionType) : prev.position),
             stopLoss: queryOverrides?.sl || (tpl.defaultStopLoss != null ? String(tpl.defaultStopLoss) : prev.stopLoss),
             targetTier1: queryOverrides?.t1 || (tpl.defaultTargetTier1 != null ? String(tpl.defaultTargetTier1) : prev.targetTier1),
@@ -224,9 +235,6 @@ export function CreateTradePage({
           }
           if (tpl.defaultTechnicalAnalysisTagIds && tpl.defaultTechnicalAnalysisTagIds.length > 0) {
              setAnalysisTags(tpl.defaultTechnicalAnalysisTagIds.map(String))
-          }
-          if (tpl.tradingSetupId != null) {
-            setSelectedModelId(String(tpl.tradingSetupId))
           }
           if (tpl.defaultChecklistIds && tpl.defaultChecklistIds.length > 0) {
             setCheckedItems(tpl.defaultChecklistIds.map(String))
@@ -249,6 +257,7 @@ export function CreateTradePage({
         api.get<ApiResponse<ChecklistModelApi[]>>("/v1/checklist-models"),
         api.get<ApiResponse<TechnicalAnalysisTagApi[]>>("/v1/technical-analysis"),
         api.get<ApiResponse<TradingZoneApi[]>>("/v1/trading-zones"),
+        api.get<ApiResponse<TradingSetupSummaryDto[]>>("/v1/trading-setups"),
       ])
 
       if (!isActive) {
@@ -256,7 +265,7 @@ export function CreateTradePage({
       }
 
       const failedResources: string[] = []
-      const [emotionsResult, checklistModelsResult, technicalTagsResult, tradingZonesResult] =
+      const [emotionsResult, checklistModelsResult, technicalTagsResult, tradingZonesResult, setupsResult] =
         results
 
       if (
@@ -275,7 +284,7 @@ export function CreateTradePage({
         setChecklistModels(checklistModelsResult.value.data.value)
 
         if (checklistModelsResult.value.data.value.length > 0) {
-          setSelectedModelId(checklistModelsResult.value.data.value[0].id.toString())
+          setSelectedModelId((currentValue) => currentValue || checklistModelsResult.value.data.value[0].id.toString())
         }
       } else {
         failedResources.push("checklist models")
@@ -297,6 +306,15 @@ export function CreateTradePage({
         setApiTradingZones(tradingZonesResult.value.data.value)
       } else {
         failedResources.push("trading zones")
+      }
+
+      if (
+        setupsResult.status === "fulfilled" &&
+        setupsResult.value.data.isSuccess
+      ) {
+        setSetupOptions(setupsResult.value.data.value)
+      } else {
+        failedResources.push("trading setups")
       }
 
       if (failedResources.length > 0) {
@@ -322,6 +340,7 @@ export function CreateTradePage({
 
     setSelectedModelDetail(null)
     setApiChecklists([])
+    setChecklistInterpretation(null)
 
     if (!selectedModelId) {
       return
@@ -387,6 +406,76 @@ export function CreateTradePage({
         return nextErrors
       })
     }
+  }
+
+  const handleInterpretChecklist = async () => {
+    if (!selectedModelId) {
+      toast({
+        variant: "destructive",
+        title: "Select a checklist model",
+        description: "Choose the checklist model you want the notes mapped against.",
+      })
+      return
+    }
+
+    if (!checklistAiInput.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Add a short checklist note",
+        description: "Describe the setup in plain English before asking AI to interpret it.",
+      })
+      return
+    }
+
+    try {
+      setIsChecklistInterpreting(true)
+
+      const result = await interpretPreTradeChecklist({
+        checklistModelId: Number(selectedModelId),
+        input: checklistAiInput,
+      })
+
+      setChecklistInterpretation(result)
+
+      toast({
+        title: "Checklist suggestions ready",
+        description: result.summary,
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Unable to interpret checklist notes",
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+      })
+    } finally {
+      setIsChecklistInterpreting(false)
+    }
+  }
+
+  const handleApplyChecklistSuggestions = () => {
+    if (!checklistInterpretation) {
+      return
+    }
+
+    const nextChecklistIds = Array.from(new Set([
+      ...checkedItems,
+      ...checklistInterpretation.suggestedChecklistIds.map(String),
+    ]))
+
+    setCheckedItems(nextChecklistIds)
+
+    if (errors.checklist) {
+      setErrors((prev) => {
+        const nextErrors = { ...prev }
+        delete nextErrors.checklist
+        return nextErrors
+      })
+    }
+
+    toast({
+      title: "Checklist suggestions applied",
+      description: `Added ${checklistInterpretation.suggestedChecklistIds.length} suggested item${checklistInterpretation.suggestedChecklistIds.length === 1 ? "" : "s"}.`,
+    })
   }
 
   const getValidationErrors = () => {
@@ -538,6 +627,7 @@ export function CreateTradePage({
 
       addTrade({
         asset: formData.asset.toUpperCase().trim(),
+        tradingSetupId: formData.tradingSetupId || undefined,
         position: Number(formData.position),
         entryPrice: Number.parseFloat(formData.entryPrice),
         targetTier1: Number.parseFloat(formData.targetTier1) || 0,
@@ -694,6 +784,10 @@ export function CreateTradePage({
     (zone) => zone.id.toString() === tradingSession,
   )
   const selectedTradingZoneName = selectedTradingZone?.name ?? null
+  const selectedTradingSetup = useMemo(
+    () => setupOptions.find((setup) => setup.id.toString() === formData.tradingSetupId) ?? null,
+    [formData.tradingSetupId, setupOptions],
+  )
   const selectedChecklistModel = checklistModels.find(
     (model) => model.id.toString() === selectedModelId,
   )
@@ -1008,6 +1102,9 @@ export function CreateTradePage({
               errors={errors}
               handleInputChange={handleInputChange}
               handlePositionChange={handlePositionChange}
+              setupOptions={setupOptions}
+              selectedTradingSetupId={formData.tradingSetupId}
+              selectedTradingSetup={selectedTradingSetup}
               surfaceFieldClassName={surfaceFieldClassName}
             />
 
@@ -1044,6 +1141,12 @@ export function CreateTradePage({
               checklistProgress={checklistProgress}
               errors={errors}
               toggleChecklistItem={toggleChecklistItem}
+              checklistAiInput={checklistAiInput}
+              setChecklistAiInput={setChecklistAiInput}
+              checklistInterpretation={checklistInterpretation}
+              isChecklistInterpreting={isChecklistInterpreting}
+              handleInterpretChecklist={handleInterpretChecklist}
+              handleApplyChecklistSuggestions={handleApplyChecklistSuggestions}
               surfaceFieldClassName={surfaceFieldClassName}
             />
 

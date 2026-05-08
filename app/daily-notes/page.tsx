@@ -19,7 +19,9 @@ import { DailyNotesDialog } from "@/components/dashboard/daily-notes-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SafeHtml } from "@/components/ui/safe-html";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getPlainTextFromRichText, getRichTextPreview } from "@/lib/rich-text";
 import {
   Compass,
   TrendingUp,
@@ -106,6 +108,7 @@ function NoteCard({
   const dateObj = new Date(note.noteDate + "T00:00:00");
   const dayLabel = dateObj.toLocaleDateString("en-US", { weekday: "short" });
   const dateLabel = dateObj.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const mentalStatePreview = getRichTextPreview(note.mentalState, 120);
 
   return (
     <button
@@ -156,10 +159,10 @@ function NoteCard({
             )}
           </div>
 
-          {note.mentalState && (
+          {mentalStatePreview && (
             <p className="line-clamp-1 text-xs text-muted-foreground">
               <Brain className="mr-1 inline h-3 w-3" />
-              {note.mentalState}
+              {mentalStatePreview}
             </p>
           )}
         </div>
@@ -232,7 +235,7 @@ function NoteDetailPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         {sections.map((s) => {
-          if (!s.value?.trim()) return null;
+          if (!getPlainTextFromRichText(s.value).trim()) return null;
           const Icon = s.icon;
           return (
             <div key={s.label} className="space-y-1.5">
@@ -240,9 +243,10 @@ function NoteDetailPanel({
                 <Icon className="h-3.5 w-3.5 text-primary" />
                 {s.label}
               </p>
-              <p className="whitespace-pre-wrap rounded-xl border border-border/40 bg-background/60 px-3 py-2.5 text-sm leading-relaxed text-foreground">
-                {s.value}
-              </p>
+              <SafeHtml
+                html={s.value}
+                className="rounded-xl border border-border/40 bg-background/60 px-3 py-2.5 text-sm leading-relaxed text-foreground [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+              />
             </div>
           );
         })}

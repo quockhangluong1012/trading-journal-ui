@@ -33,6 +33,7 @@ export interface TradeHistory {
 export interface Trade {
   id: string;
   asset: string;
+  tradingSetupId?: string;
   position: PositionType;
   entryPrice: number;
   targetTier1: number;

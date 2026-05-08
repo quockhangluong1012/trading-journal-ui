@@ -1,5 +1,60 @@
 import { api, type ApiResponse } from "./api"
 
+export interface TradingSetupGenerationRequest {
+  prompt: string
+  maxNodes?: number
+  dedupeAgainstExisting?: boolean
+}
+
+export interface TradingSetupGenerationNode {
+  id: string
+  kind: string
+  x: number
+  y: number
+  title: string
+  notes: string | null
+}
+
+export interface TradingSetupGenerationEdge {
+  id: string
+  source: string
+  target: string
+  label: string | null
+}
+
+export interface TradingSetupGenerationResult {
+  summary: string
+  name: string
+  description: string | null
+  nodes: TradingSetupGenerationNode[]
+  edges: TradingSetupGenerationEdge[]
+  assumptions: string[]
+  warnings: string[]
+  confidence: number
+}
+
+export interface PreTradeChecklistInterpretationRequest {
+  checklistModelId: number
+  input: string
+}
+
+export interface PreTradeChecklistInterpretationMatch {
+  checklistId: number
+  checklistName: string
+  category: string
+  rationale: string
+  confidence: number
+}
+
+export interface PreTradeChecklistInterpretationResult {
+  checklistModelId: number
+  summary: string
+  confidence: number
+  suggestedChecklistIds: number[]
+  matches: PreTradeChecklistInterpretationMatch[]
+  unmatchedInputs: string[]
+}
+
 export interface NaturalLanguageTradeSearchResult {
   asset: string | null
   position: "Long" | "Short" | null
@@ -171,5 +226,33 @@ export async function generateEconomicImpactPrediction(
 
 export async function analyzeChartScreenshot(request: ChartScreenshotAnalysisRequest): Promise<ChartScreenshotAnalysisResult> {
   const response = await api.post<ApiResponse<ChartScreenshotAnalysisResult>>("/v1/ai-validation/analyze-chart", request)
+  return response.data.value
+}
+
+export async function generateTradingSetupPreview(
+  request: TradingSetupGenerationRequest,
+): Promise<TradingSetupGenerationResult> {
+  const response = await api.post<ApiResponse<TradingSetupGenerationResult>>("/v1/ai-playbook/generate-setup", {
+    prompt: request.prompt,
+    maxNodes: request.maxNodes ?? 8,
+    dedupeAgainstExisting: request.dedupeAgainstExisting ?? true,
+  })
+
+  if (!response.data.isSuccess) {
+    throw new Error("Unable to generate a setup preview right now.")
+  }
+
+  return response.data.value
+}
+
+export async function interpretPreTradeChecklist(
+  request: PreTradeChecklistInterpretationRequest,
+): Promise<PreTradeChecklistInterpretationResult> {
+  const response = await api.post<ApiResponse<PreTradeChecklistInterpretationResult>>("/v1/ai-validation/interpret-checklist", request)
+
+  if (!response.data.isSuccess) {
+    throw new Error("Unable to interpret the checklist notes right now.")
+  }
+
   return response.data.value
 }

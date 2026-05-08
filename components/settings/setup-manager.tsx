@@ -25,6 +25,7 @@ import {
   Save,
   Search,
   SlidersHorizontal,
+  Sparkles,
   Trash2,
 } from "lucide-react"
 
@@ -52,6 +53,10 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import {
+  generateTradingSetupPreview,
+  type TradingSetupGenerationResult,
+} from "@/lib/ai-insights-api"
 import { attachToken } from "@/lib/api"
 import {
   createTradingSetup,
@@ -192,6 +197,33 @@ function buildDraftFlowState() {
   }
 }
 
+function buildFlowStateFromAiPreview(preview: TradingSetupGenerationResult) {
+  const nodes: SetupDiagramNode[] = preview.nodes.map((node) => ({
+    id: node.id,
+    kind: isSetupNodeKind(node.kind) ? node.kind : "step",
+    title: node.title,
+    notes: node.notes ?? null,
+    position: {
+      x: node.x,
+      y: node.y,
+    },
+  }))
+
+  const edges: SetupDiagramEdge[] = preview.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    label: edge.label ?? null,
+  }))
+
+  return {
+    name: preview.name.trim() || "AI Setup Draft",
+    description: (preview.description ?? preview.summary).trim(),
+    nodes,
+    edges,
+  }
+}
+
 function getNodeMinimapColor(node: SetupFlowNode) {
   switch (node.data.kind) {
     case "start":
@@ -248,6 +280,9 @@ export function SetupManager() {
   const [isDirty, setIsDirty] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [pendingDeleteSetup, setPendingDeleteSetup] = useState<PendingDeleteSetup | null>(null)
+  const [aiPrompt, setAiPrompt] = useState("")
+  const [isGeneratingAiSetup, setIsGeneratingAiSetup] = useState(false)
+  const [aiGeneratedSetup, setAiGeneratedSetup] = useState<TradingSetupGenerationResult | null>(null)
 
   const visibleSetups = useMemo(() => getVisibleTradingSetups(setups, search), [search, setups])
 
@@ -281,6 +316,8 @@ export function SetupManager() {
     setEdges(nextDraft.edges)
     setActiveNodeId(nextDraft.diagram.nodes[1]?.id ?? nextDraft.diagram.nodes[0]?.id ?? null)
     setIsDirty(false)
+    setAiPrompt("")
+    setAiGeneratedSetup(null)
   }, [setEdges, setNodes])
 
   const confirmDiscardChanges = useCallback((nextAction: string) => {
@@ -304,6 +341,8 @@ export function SetupManager() {
     setEdges(toFlowEdges(detail.edges))
     setActiveNodeId(detail.nodes[0]?.id ?? null)
     setIsDirty(false)
+    setAiPrompt("")
+    setAiGeneratedSetup(null)
   }, [setEdges, setNodes])
 
   const loadSetups = useCallback(async () => {
@@ -566,6 +605,78 @@ export function SetupManager() {
     setEdges((currentEdges) => currentEdges.filter((edge) => edge.source !== activeNodeId && edge.target !== activeNodeId))
     setActiveNodeId(nextActiveNodeId)
   }, [activeNodeId, isEditable, markDirty, setEdges, setNodes])
+
+  const handleGenerateAiSetup = useCallback(async () => {
+    const trimmedPrompt = aiPrompt.trim()
+
+    if (!trimmedPrompt) {
+      toast({
+        title: "Add a setup prompt",
+        description: "Describe the setup in plain English before generating a draft.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (typeof window !== "undefined" && (hasSavedSetup || isDirty)) {
+      const shouldReplace = window.confirm(
+        hasSavedSetup
+          ? "Replace the current setup in the editor with a new AI-generated draft? Your saved version will not change until you click Save setup."
+          : "Replace the current draft in the canvas with a new AI-generated version?",
+      )
+
+      if (!shouldReplace) {
+        return
+      }
+    }
+
+    try {
+      setIsGeneratingAiSetup(true)
+
+      const preview = await generateTradingSetupPreview({
+        prompt: trimmedPrompt,
+        maxNodes: 8,
+        dedupeAgainstExisting: true,
+      })
+
+      const nextFlowState = buildFlowStateFromAiPreview(preview)
+      const validationIssues = validateSetupDiagram({
+        nodes: nextFlowState.nodes,
+        edges: nextFlowState.edges,
+      })
+
+      if (validationIssues[0]) {
+        toast({
+          title: "AI draft needs another try",
+          description: validationIssues[0].message,
+          variant: "destructive",
+        })
+        return
+      }
+
+      setName(nextFlowState.name)
+      setDescription(nextFlowState.description)
+      setNodes(toFlowNodes(nextFlowState.nodes))
+      setEdges(toFlowEdges(nextFlowState.edges))
+      setActiveNodeId(nextFlowState.nodes[0]?.id ?? null)
+      setAiGeneratedSetup(preview)
+      setIsDirty(true)
+      setIsWorkspacePanelOpen(true)
+
+      toast({
+        title: "AI draft loaded",
+        description: "Review the generated flow on the canvas before saving it to your library.",
+      })
+    } catch (error) {
+      toast({
+        title: "Unable to generate setup draft",
+        description: getErrorDescription(error, "Try rephrasing the setup in one or two concrete sentences."),
+        variant: "destructive",
+      })
+    } finally {
+      setIsGeneratingAiSetup(false)
+    }
+  }, [aiPrompt, hasSavedSetup, isDirty, setEdges, setNodes, toast])
 
   const handleSave = useCallback(async () => {
     const trimmedName = name.trim()
@@ -1089,6 +1200,74 @@ export function SetupManager() {
                       placeholder="Describe the context, timing, and overall idea behind this setup."
                       rows={4}
                     />
+                  </div>
+
+                  <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                    <div className="space-y-1">
+                      <label htmlFor="setup-ai-prompt" className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        Generate draft from natural language
+                      </label>
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Describe the playbook in plain English. The AI result loads into the canvas as an unsaved draft so you can review it before saving.
+                      </p>
+                    </div>
+
+                    <Textarea
+                      id="setup-ai-prompt"
+                      value={aiPrompt}
+                      onChange={(event) => setAiPrompt(event.target.value)}
+                      placeholder="Example: Build an ICT Venom model for NY open where price sweeps liquidity, confirms displacement, waits for retrace, and targets the session range expansion."
+                      rows={4}
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" className="gap-2" onClick={() => void handleGenerateAiSetup()} disabled={isGeneratingAiSetup}>
+                        {isGeneratingAiSetup ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        Generate draft into canvas
+                      </Button>
+                    </div>
+
+                    {aiGeneratedSetup ? (
+                      <div className="space-y-3 rounded-2xl border border-border/70 bg-background/80 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-foreground">{aiGeneratedSetup.summary}</p>
+                          <Badge variant="outline" className="border-primary/20 bg-primary/5 text-[10px] text-primary">
+                            {Math.round(aiGeneratedSetup.confidence * 100)}% confidence
+                          </Badge>
+                        </div>
+
+                        {aiGeneratedSetup.assumptions.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                              Assumptions
+                            </p>
+                            <ul className="space-y-1 text-xs leading-relaxed text-muted-foreground">
+                              {aiGeneratedSetup.assumptions.map((assumption) => (
+                                <li key={assumption} className="rounded-lg bg-muted/20 px-3 py-2">
+                                  {assumption}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+
+                        {aiGeneratedSetup.warnings.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                              Review before saving
+                            </p>
+                            <ul className="space-y-1 text-xs leading-relaxed text-muted-foreground">
+                              {aiGeneratedSetup.warnings.map((warning) => (
+                                <li key={warning} className="rounded-lg bg-muted/20 px-3 py-2">
+                                  {warning}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </>
               )}
