@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils"
 import {
   type PlaybookOverview, type PlaybookSetupCard,
-  SETUP_STATUS_LABELS, GRADE_COLORS,
+  GRADE_COLORS,
   retireSetup, reactivateSetup,
 } from "@/lib/playbook-api"
 import { AnalyticsFilter, FILTER_LABELS } from "@/lib/analytics-api"
@@ -34,6 +34,10 @@ interface PlaybookDashboardProps {
 
 const fmt = (v: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(v)
+
+const POSITIVE_TEXT_CLASS = "text-success"
+const WARNING_TEXT_CLASS = "text-warning"
+const NEGATIVE_TEXT_CLASS = "text-destructive"
 
 function GradeBadge({ grade }: { grade: string }) {
   const colors = GRADE_COLORS[grade] || GRADE_COLORS["N/A"]
@@ -66,8 +70,8 @@ function SetupCard({ setup, onViewDetail, onCompare, onRetire, onReactivate }: {
   onReactivate: () => void
 }) {
   const isRetired = setup.status === 4
-  const pnlColor = setup.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"
-  const wrColor = setup.winRate >= 55 ? "text-emerald-400" : setup.winRate >= 45 ? "text-amber-400" : "text-red-400"
+  const pnlColor = setup.totalPnl >= 0 ? POSITIVE_TEXT_CLASS : NEGATIVE_TEXT_CLASS
+  const wrColor = setup.winRate >= 55 ? POSITIVE_TEXT_CLASS : setup.winRate >= 45 ? WARNING_TEXT_CLASS : NEGATIVE_TEXT_CLASS
 
   return (
     <Card className={cn(
@@ -90,7 +94,7 @@ function SetupCard({ setup, onViewDetail, onCompare, onRetire, onReactivate }: {
             <div className="flex items-center gap-2">
               <h3 className="truncate text-base font-semibold text-foreground">{setup.setupName}</h3>
               {isRetired && (
-                <Badge variant="outline" className="shrink-0 border-red-500/30 bg-red-500/10 text-red-400 text-[10px]">
+                <Badge variant="outline" className="shrink-0 border-destructive/30 bg-destructive/10 text-[10px] text-destructive">
                   <Skull className="mr-1 h-3 w-3" />Retired
                 </Badge>
               )}
@@ -115,11 +119,11 @@ function SetupCard({ setup, onViewDetail, onCompare, onRetire, onReactivate }: {
                   <GitCompare className="mr-2 h-4 w-4" />Compare
                 </DropdownMenuItem>
                 {isRetired ? (
-                  <DropdownMenuItem onClick={onReactivate} className="text-emerald-400">
+                  <DropdownMenuItem onClick={onReactivate} className={POSITIVE_TEXT_CLASS}>
                     <RefreshCw className="mr-2 h-4 w-4" />Reactivate
                   </DropdownMenuItem>
                 ) : (
-                  <DropdownMenuItem onClick={onRetire} className="text-red-400">
+                  <DropdownMenuItem onClick={onRetire} className={NEGATIVE_TEXT_CLASS}>
                     <Skull className="mr-2 h-4 w-4" />Retire setup
                   </DropdownMenuItem>
                 )}
@@ -132,12 +136,12 @@ function SetupCard({ setup, onViewDetail, onCompare, onRetire, onReactivate }: {
           <StatPill label="Trades" value={String(setup.totalTrades)} icon={Crosshair} />
           <StatPill label="Win Rate" value={`${setup.winRate.toFixed(1)}%`} icon={Target} color={wrColor} />
           <StatPill label="P&L" value={fmt(setup.totalPnl)} icon={setup.totalPnl >= 0 ? TrendingUp : TrendingDown} color={pnlColor} />
-          <StatPill label="Expectancy" value={fmt(setup.expectancy)} icon={Zap} color={setup.expectancy > 0 ? "text-emerald-400" : "text-red-400"} />
+          <StatPill label="Expectancy" value={fmt(setup.expectancy)} icon={Zap} color={setup.expectancy > 0 ? POSITIVE_TEXT_CLASS : NEGATIVE_TEXT_CLASS} />
         </div>
 
         <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Award className="h-3 w-3" />PF: <span className={cn("font-semibold", setup.profitFactor >= 1.5 ? "text-emerald-400" : setup.profitFactor >= 1 ? "text-amber-400" : "text-red-400")}>
+            <Award className="h-3 w-3" />PF: <span className={cn("font-semibold", setup.profitFactor >= 1.5 ? POSITIVE_TEXT_CLASS : setup.profitFactor >= 1 ? WARNING_TEXT_CLASS : NEGATIVE_TEXT_CLASS)}>
               {setup.profitFactor >= 1e15 ? "∞" : setup.profitFactor.toFixed(2)}
             </span>
           </span>
@@ -171,16 +175,16 @@ function OverviewHeader({ overview }: { overview: PlaybookOverview }) {
               <span className="text-xs text-muted-foreground">Setups:</span>
               <span className="text-sm font-bold text-foreground">{overview.totalSetups}</span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
-              <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+            <div className="flex items-center gap-1.5 rounded-xl border border-success/20 bg-success/10 px-3 py-2">
+              <Sparkles className="h-3.5 w-3.5 text-success" />
               <span className="text-xs text-muted-foreground">Active:</span>
-              <span className="text-sm font-bold text-emerald-400">{overview.activeSetups}</span>
+              <span className="text-sm font-bold text-success">{overview.activeSetups}</span>
             </div>
             {overview.retiredSetups > 0 && (
-              <div className="flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2">
-                <Skull className="h-3.5 w-3.5 text-red-400" />
+              <div className="flex items-center gap-1.5 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-2">
+                <Skull className="h-3.5 w-3.5 text-destructive" />
                 <span className="text-xs text-muted-foreground">Retired:</span>
-                <span className="text-sm font-bold text-red-400">{overview.retiredSetups}</span>
+                <span className="text-sm font-bold text-destructive">{overview.retiredSetups}</span>
               </div>
             )}
           </div>
@@ -189,17 +193,17 @@ function OverviewHeader({ overview }: { overview: PlaybookOverview }) {
         {(overview.topSetupName || overview.worstSetupName) && (
           <div className="mt-4 flex flex-wrap gap-3">
             {overview.topSetupName && (
-              <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2">
-                <Trophy className="h-4 w-4 text-emerald-400" />
+              <div className="flex items-center gap-2 rounded-xl border border-success/20 bg-success/5 px-4 py-2">
+                <Trophy className="h-4 w-4 text-success" />
                 <span className="text-xs text-muted-foreground">Top performer:</span>
-                <span className="text-sm font-semibold text-emerald-400">{overview.topSetupName}</span>
+                <span className="text-sm font-semibold text-success">{overview.topSetupName}</span>
               </div>
             )}
             {overview.worstSetupName && (
-              <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-2">
-                <Shield className="h-4 w-4 text-red-400" />
+              <div className="flex items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-2">
+                <Shield className="h-4 w-4 text-destructive" />
                 <span className="text-xs text-muted-foreground">Needs review:</span>
-                <span className="text-sm font-semibold text-red-400">{overview.worstSetupName}</span>
+                <span className="text-sm font-semibold text-destructive">{overview.worstSetupName}</span>
               </div>
             )}
           </div>
@@ -332,7 +336,7 @@ export function PlaybookDashboard({ overview, isLoading, range, rangeOptions, on
           {retiredSetups.length > 0 && (
             <div>
               <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                <Skull className="h-4 w-4 text-red-400" />Retired Setups
+                <Skull className="h-4 w-4 text-destructive" />Retired Setups
                 <span className="font-normal">({retiredSetups.length})</span>
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

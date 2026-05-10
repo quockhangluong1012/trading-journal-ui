@@ -15,6 +15,7 @@ import { AiEconomicImpactCard } from "@/components/dashboard/ai-economic-impact-
 import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
+import { AssetBreakdownChart } from "@/components/dashboard/asset-breakdown-chart"
 import { CalendarWidget } from "@/components/dashboard/calendar-widget"
 import { EconomicCalendarWidget } from "@/components/scanner/economic-calendar-widget"
 import { PreTradeCheckWidget } from "@/components/scanner/pre-trade-check-widget"
@@ -64,6 +65,7 @@ function DashboardContent() {
     stats,
     winLossData,
     profitTrajectory,
+    assetBreakdown,
     openPositions,
     isLoading: isDashboardLoading,
     isRefreshing,
@@ -181,7 +183,7 @@ function DashboardContent() {
           sessionControl={<ActiveSessionWidget />}
         />
 
-        <StatsCards filter={filter} stats={stats} isLoading={isDashboardLoading} />
+        <StatsCards stats={stats} isLoading={isDashboardLoading} />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <TiltGaugeWidget />
@@ -198,6 +200,23 @@ function DashboardContent() {
         <div className="grid gap-6 lg:grid-cols-2">
           <ProfitChart filter={filter} profitTrajectory={profitTrajectory} isLoading={isDashboardLoading} />
           <WinLossChart filter={filter} data={winLossData} isLoading={isDashboardLoading} />
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <AssetBreakdownChart
+            title="P&L by Asset"
+            description="Net performance grouped by instrument"
+            data={assetBreakdown}
+            metric="pnl"
+            isLoading={isDashboardLoading}
+          />
+          <AssetBreakdownChart
+            title="Trades by Asset"
+            description="Trade count grouped by instrument"
+            data={assetBreakdown}
+            metric="count"
+            isLoading={isDashboardLoading}
+          />
         </div>
 
         <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />

@@ -1,11 +1,22 @@
+import type { AssetBreakdown } from "@/lib/analytics-api"
 import { TradeHistory } from "@/app/types/trade"
 import { PositionType } from "@/lib/enum/PositionType"
 
-export interface DashboardStats {
+export interface DashboardBaseStats {
   totalPnL: number
   winRate: number
   totalTrades: number
   openPositions: number
+}
+
+export interface DashboardRiskUsage {
+  dailyLimitUsedPercent: number
+  weeklyCapUsedPercent: number
+}
+
+export interface DashboardStats extends DashboardBaseStats, DashboardRiskUsage {
+  expectancy: number
+  profitFactor: number
 }
 
 export interface ProfitTrajectoryPoint {
@@ -21,6 +32,15 @@ export interface ProfitChartPoint {
 export interface DailyPerformancePoint {
   date: string
   pnl: number
+}
+
+export type AssetBreakdownMetric = "pnl" | "count"
+
+export interface AssetBreakdownChartDataResult {
+  chartData: AssetBreakdown[]
+  totalPnl: number
+  totalTrades: number
+  leadingAsset: AssetBreakdown | null
 }
 
 export interface OutcomeStreak {
@@ -91,6 +111,10 @@ function roundToOneDecimal(value: number): number {
   return Math.round(value * 10) / 10
 }
 
+function roundToTwoDecimals(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
 function normalizeDateKey(dateValue: string): string | null {
   const parsedDate = new Date(dateValue)
 
@@ -115,6 +139,23 @@ function getPluralizedLabel(count: number, singular: string, plural: string): st
   return count === 1 ? singular : plural
 }
 
+function normalizeAssetBreakdown(items: AssetBreakdown[]): AssetBreakdown[] {
+  return items
+    .filter(
+      (item) =>
+        typeof item.asset === "string" &&
+        item.asset.trim().length > 0 &&
+        isFiniteNumber(item.pnl) &&
+        Number.isFinite(item.count),
+    )
+    .map((item) => ({
+      asset: item.asset.trim(),
+      pnl: item.pnl,
+      count: item.count,
+      winRate: isFiniteNumber(item.winRate) ? item.winRate : 0,
+    }))
+}
+
 function normalizeProfitTrajectory(points: ProfitTrajectoryPoint[]): Array<{ date: string; pnL: number }> {
   return points
     .filter((point) => typeof point.date === "string" && normalizeDateKey(point.date) && isFiniteNumber(point.pnL))
@@ -123,6 +164,55 @@ function normalizeProfitTrajectory(points: ProfitTrajectoryPoint[]): Array<{ dat
       pnL: point.pnL as number,
     }))
     .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime())
+}
+
+export function calculateExpectancy(points: ProfitTrajectoryPoint[]): number {
+  const normalizedPoints = normalizeProfitTrajectory(points)
+
+  if (normalizedPoints.length === 0) {
+    return 0
+  }
+
+  const totalPnL = normalizedPoints.reduce((sum, point) => sum + point.pnL, 0)
+
+  return roundToTwoDecimals(totalPnL / normalizedPoints.length)
+}
+
+export function calculateProfitFactor(points: ProfitTrajectoryPoint[]): number {
+  const normalizedPoints = normalizeProfitTrajectory(points)
+
+  if (normalizedPoints.length === 0) {
+    return 0
+  }
+
+  const grossProfit = normalizedPoints
+    .filter((point) => point.pnL > 0)
+    .reduce((sum, point) => sum + point.pnL, 0)
+  const grossLoss = Math.abs(
+    normalizedPoints
+      .filter((point) => point.pnL < 0)
+      .reduce((sum, point) => sum + point.pnL, 0),
+  )
+
+  if (grossLoss === 0) {
+    return grossProfit > 0 ? Number.POSITIVE_INFINITY : 0
+  }
+
+  return roundToTwoDecimals(grossProfit / grossLoss)
+}
+
+export function buildDashboardStats(
+  baseStats: DashboardBaseStats,
+  profitTrajectory: ProfitTrajectoryPoint[],
+  riskUsage: Partial<DashboardRiskUsage> = {},
+): DashboardStats {
+  return {
+    ...baseStats,
+    expectancy: calculateExpectancy(profitTrajectory),
+    profitFactor: calculateProfitFactor(profitTrajectory),
+    dailyLimitUsedPercent: riskUsage.dailyLimitUsedPercent ?? 0,
+    weeklyCapUsedPercent: riskUsage.weeklyCapUsedPercent ?? 0,
+  }
 }
 
 function getBestAndWorstDay(dailyPerformance: DailyPerformancePoint[]): {
@@ -261,6 +351,52 @@ export function buildProfitChartData(points: ProfitTrajectoryPoint[]): ProfitCha
     chartData,
     totalPnL: cumulativeProfit,
     dailyPerformance,
+  }
+}
+
+export function buildAssetBreakdownChartData(
+  items: AssetBreakdown[],
+  metric: AssetBreakdownMetric,
+): AssetBreakdownChartDataResult {
+  const normalizedItems = normalizeAssetBreakdown(items)
+  const totalPnl = normalizedItems.reduce((sum, item) => sum + item.pnl, 0)
+  const totalTrades = normalizedItems.reduce((sum, item) => sum + item.count, 0)
+
+  const chartData = [...normalizedItems].sort((left, right) => {
+    if (metric === "pnl") {
+      // Rank assets by total impact first so large losses remain visible near the top.
+      const absolutePnlDelta = Math.abs(right.pnl) - Math.abs(left.pnl)
+
+      if (absolutePnlDelta !== 0) {
+        return absolutePnlDelta
+      }
+
+      if (right.count !== left.count) {
+        return right.count - left.count
+      }
+
+      return left.asset.localeCompare(right.asset)
+    }
+
+    if (right.count !== left.count) {
+      return right.count - left.count
+    }
+
+    // When trade counts tie, surface the asset with the larger P&L impact.
+    const absolutePnlDelta = Math.abs(right.pnl) - Math.abs(left.pnl)
+
+    if (absolutePnlDelta !== 0) {
+      return absolutePnlDelta
+    }
+
+    return left.asset.localeCompare(right.asset)
+  })
+
+  return {
+    chartData,
+    totalPnl,
+    totalTrades,
+    leadingAsset: chartData[0] ?? null,
   }
 }
 

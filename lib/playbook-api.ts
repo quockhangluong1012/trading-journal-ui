@@ -92,12 +92,12 @@ export const SETUP_STATUS_LABELS: Record<number, string> = {
 }
 
 export const GRADE_COLORS: Record<string, string> = {
-  A: "text-emerald-400 bg-emerald-500/15 border-emerald-500/30",
-  B: "text-blue-400 bg-blue-500/15 border-blue-500/30",
-  C: "text-amber-400 bg-amber-500/15 border-amber-500/30",
-  D: "text-orange-400 bg-orange-500/15 border-orange-500/30",
-  F: "text-red-400 bg-red-500/15 border-red-500/30",
-  "N/A": "text-muted-foreground bg-secondary/40 border-border",
+  A: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-400",
+  B: "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-400",
+  C: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400",
+  D: "border-orange-500/25 bg-orange-500/10 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/15 dark:text-orange-400",
+  F: "border-red-500/25 bg-red-500/10 text-red-700 dark:border-red-500/30 dark:bg-red-500/15 dark:text-red-400",
+  "N/A": "border-border bg-secondary/50 text-slate-600 dark:bg-secondary/40 dark:text-muted-foreground",
 }
 
 // --- API calls ---

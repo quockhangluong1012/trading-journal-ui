@@ -109,6 +109,10 @@ vi.mock("@/components/dashboard/profit-chart", () => ({
   ProfitChart: () => <div>Profit Chart</div>,
 }))
 
+vi.mock("@/components/dashboard/asset-breakdown-chart", () => ({
+  AssetBreakdownChart: ({ title }: { title: string }) => <div>{title}</div>,
+}))
+
 vi.mock("@/components/dashboard/calendar-widget", () => ({
   CalendarWidget: () => <div>Calendar Widget</div>,
 }))
@@ -146,9 +150,14 @@ vi.mock("@/hooks/use-dashboard-overview", () => ({
       winRate: 0,
       totalTrades: 0,
       openPositions: 0,
+      expectancy: 0,
+      profitFactor: 0,
+      dailyLimitUsedPercent: 0,
+      weeklyCapUsedPercent: 0,
     },
     winLossData: [],
     profitTrajectory: [],
+    assetBreakdown: [],
     openPositions: [],
     isLoading: false,
     isRefreshing: false,
@@ -300,5 +309,16 @@ describe("dashboard page", () => {
     await user.click(screen.getByText(/wait for the reclaim candle\./i))
 
     expect(screen.getByTestId("today-setup-dialog")).toHaveTextContent("London breakout")
+  })
+
+  it("renders both asset breakdown charts on the dashboard", () => {
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
+
+    expect(screen.getByText("P&L by Asset")).toBeInTheDocument()
+    expect(screen.getByText("Trades by Asset")).toBeInTheDocument()
   })
 })
