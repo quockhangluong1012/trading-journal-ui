@@ -24,6 +24,10 @@ interface PlaybookDetailViewProps {
 const fmt = (v: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(v)
 
+const POSITIVE_TEXT_CLASS = "text-success"
+const WARNING_TEXT_CLASS = "text-warning"
+const NEGATIVE_TEXT_CLASS = "text-destructive"
+
 function RulesSection({ title, icon: Icon, content, isEditing, editValue, onEditChange }: {
   title: string; icon: React.ElementType; content: string | null; isEditing: boolean; editValue: string; onEditChange: (v: string) => void
 }) {
@@ -159,7 +163,7 @@ export function PlaybookDetailView({ setupId, performance, onClose, onSaved }: P
         <div className="flex items-center gap-3">
           <Badge variant="outline" className={cn(
             "text-xs",
-            isRetired ? "border-red-500/30 bg-red-500/10 text-red-400" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+            isRetired ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-success/30 bg-success/10 text-success"
           )}>
             {SETUP_STATUS_LABELS[detail.status] ?? "Unknown"}
           </Badge>
@@ -171,7 +175,7 @@ export function PlaybookDetailView({ setupId, performance, onClose, onSaved }: P
         </div>
         <div className="flex items-center gap-2">
           {saved && (
-            <span className="flex items-center gap-1 text-xs text-emerald-400 animate-in fade-in">
+            <span className="animate-in fade-in flex items-center gap-1 text-xs text-success">
               <Check className="h-3.5 w-3.5" />Saved
             </span>
           )}
@@ -196,13 +200,13 @@ export function PlaybookDetailView({ setupId, performance, onClose, onSaved }: P
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="rounded-xl border border-border/50 bg-secondary/15 p-3 text-center">
             <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Win Rate</p>
-            <p className={cn("mt-1 text-lg font-bold", performance.winRate >= 55 ? "text-emerald-400" : performance.winRate >= 45 ? "text-amber-400" : "text-red-400")}>
+            <p className={cn("mt-1 text-lg font-bold", performance.winRate >= 55 ? POSITIVE_TEXT_CLASS : performance.winRate >= 45 ? WARNING_TEXT_CLASS : NEGATIVE_TEXT_CLASS)}>
               {performance.winRate.toFixed(1)}%
             </p>
           </div>
           <div className="rounded-xl border border-border/50 bg-secondary/15 p-3 text-center">
             <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Total P&L</p>
-            <p className={cn("mt-1 text-lg font-bold", performance.totalPnl >= 0 ? "text-emerald-400" : "text-red-400")}>
+            <p className={cn("mt-1 text-lg font-bold", performance.totalPnl >= 0 ? POSITIVE_TEXT_CLASS : NEGATIVE_TEXT_CLASS)}>
               {fmt(performance.totalPnl)}
             </p>
           </div>
@@ -214,7 +218,7 @@ export function PlaybookDetailView({ setupId, performance, onClose, onSaved }: P
           </div>
           <div className="rounded-xl border border-border/50 bg-secondary/15 p-3 text-center">
             <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Expectancy</p>
-            <p className={cn("mt-1 text-lg font-bold", performance.expectancy > 0 ? "text-emerald-400" : "text-red-400")}>
+            <p className={cn("mt-1 text-lg font-bold", performance.expectancy > 0 ? POSITIVE_TEXT_CLASS : NEGATIVE_TEXT_CLASS)}>
               {fmt(performance.expectancy)}
             </p>
           </div>
@@ -249,8 +253,8 @@ export function PlaybookDetailView({ setupId, performance, onClose, onSaved }: P
       {isRetired && detail.retiredReason && (
         <>
           <Separator className="bg-border/50" />
-          <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-            <h4 className="text-sm font-semibold text-red-400">Retirement Reason</h4>
+          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+            <h4 className="text-sm font-semibold text-destructive">Retirement Reason</h4>
             <p className="mt-1 text-sm text-foreground/80">{detail.retiredReason}</p>
             {detail.retiredDate && (
               <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">

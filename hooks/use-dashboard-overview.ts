@@ -2,22 +2,33 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { TradeHistory, WinLossData } from "@/app/types/trade"
+import type { AssetBreakdown } from "@/lib/analytics-api"
 import { api, ApiPaginatedResponse, ApiResponse } from "@/lib/api"
-import { DashboardStats, ProfitTrajectoryPoint } from "@/lib/dashboard-insights"
+import {
+  buildDashboardStats,
+  type DashboardBaseStats,
+  type DashboardRiskUsage,
+  type DashboardStats,
+  type ProfitTrajectoryPoint,
+} from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
+import { fetchRiskDashboard } from "@/lib/risk-api"
 
-const EMPTY_STATS: DashboardStats = {
+const EMPTY_BASE_STATS: DashboardBaseStats = {
   totalPnL: 0,
   winRate: 0,
   totalTrades: 0,
   openPositions: 0,
 }
 
+const EMPTY_STATS: DashboardStats = buildDashboardStats(EMPTY_BASE_STATS, [])
+
 interface DashboardOverviewState {
   stats: DashboardStats
   winLossData: WinLossData[]
   profitTrajectory: ProfitTrajectoryPoint[]
+  assetBreakdown: AssetBreakdown[]
   openPositions: TradeHistory[]
   isLoading: boolean
   isRefreshing: boolean
@@ -29,6 +40,7 @@ interface DashboardOverviewResult {
   stats: DashboardStats
   winLossData: WinLossData[]
   profitTrajectory: ProfitTrajectoryPoint[]
+  assetBreakdown: AssetBreakdown[]
   openPositions: TradeHistory[]
   isLoading: boolean
   isRefreshing: boolean
@@ -60,13 +72,28 @@ function getFromDateForFilter(filter: DashboardFilter): string | null {
 }
 
 function normalizeStatsResponse(
-  responseData: DashboardStats | ApiResponse<DashboardStats>,
-): DashboardStats {
-  if (typeof responseData === "object" && responseData !== null && "isSuccess" in responseData) {
-    return responseData.isSuccess ? responseData.value : EMPTY_STATS
+  responseData: unknown,
+): DashboardBaseStats {
+  if (isApiResponse<DashboardBaseStats>(responseData)) {
+    return responseData.isSuccess ? responseData.value : EMPTY_BASE_STATS
   }
 
-  return responseData
+  return responseData as DashboardBaseStats
+}
+
+function isApiResponse<T>(responseData: unknown): responseData is ApiResponse<T> {
+  return typeof responseData === "object" && responseData !== null && "isSuccess" in responseData && "value" in responseData
+}
+
+function hasRiskUsage(value: unknown): value is DashboardRiskUsage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "dailyLimitUsedPercent" in value &&
+    typeof value.dailyLimitUsedPercent === "number" &&
+    "weeklyCapUsedPercent" in value &&
+    typeof value.weeklyCapUsedPercent === "number"
+  )
 }
 
 export function useDashboardOverview(
@@ -79,6 +106,7 @@ export function useDashboardOverview(
     stats: EMPTY_STATS,
     winLossData: [],
     profitTrajectory: [],
+    assetBreakdown: [],
     openPositions: [],
     isLoading: true,
     isRefreshing: false,
@@ -108,12 +136,15 @@ export function useDashboardOverview(
     openPosParams.set("page", "1")
     openPosParams.set("pageSize", "10")
 
-    const [statsResult, winLossResult, profitTrajectoryResult, openPositionsResult] =
+    const totalRequests = 6
+    const [statsResult, winLossResult, profitTrajectoryResult, assetBreakdownResult, openPositionsResult, riskDashboardResult] =
       await Promise.allSettled([
-        api.get<DashboardStats | ApiResponse<DashboardStats>>(`/v1/dashboard/statistics?filter=${filter}`),
+        api.get<DashboardBaseStats | ApiResponse<DashboardBaseStats>>(`/v1/dashboard/statistics?filter=${filter}`),
         api.get<ApiResponse<WinLossData[]>>(`/v1/dashboard/win-loss-ratio?filter=${filter}`),
         api.get<ApiResponse<ProfitTrajectoryPoint[]>>(`/v1/dashboard/profit-trajectory?filter=${filter}`),
+        api.get<ApiResponse<AssetBreakdown[]>>(`/v1/dashboard/asset-breakdown?filter=${filter}`),
         api.get<ApiPaginatedResponse<TradeHistory>>(`/v1/trade-histories?${openPosParams.toString()}`),
+        fetchRiskDashboard(),
       ])
 
     if (currentRequestId !== requestIdRef.current) {
@@ -128,9 +159,14 @@ export function useDashboardOverview(
         isLoading: false,
         isRefreshing: false,
       }
+      let nextBaseStats: DashboardBaseStats = previous.stats
+      const nextRiskUsage: Partial<DashboardRiskUsage> = {
+        dailyLimitUsedPercent: previous.stats.dailyLimitUsedPercent,
+        weeklyCapUsedPercent: previous.stats.weeklyCapUsedPercent,
+      }
 
       if (statsResult.status === "fulfilled") {
-        nextState.stats = normalizeStatsResponse(statsResult.value.data)
+        nextBaseStats = normalizeStatsResponse(statsResult.value.data)
       } else {
         failedParts.push("statistics")
       }
@@ -153,6 +189,15 @@ export function useDashboardOverview(
         failedParts.push("profit trajectory")
       }
 
+      if (assetBreakdownResult.status === "fulfilled" && assetBreakdownResult.value.data.isSuccess) {
+        nextState.assetBreakdown = assetBreakdownResult.value.data.value
+      } else if (
+        assetBreakdownResult.status === "rejected" ||
+        !assetBreakdownResult.value.data.isSuccess
+      ) {
+        failedParts.push("asset breakdown")
+      }
+
       if (
         openPositionsResult.status === "fulfilled" &&
         openPositionsResult.value.data.isSuccess
@@ -165,11 +210,20 @@ export function useDashboardOverview(
         failedParts.push("open positions")
       }
 
+      if (riskDashboardResult.status === "fulfilled" && hasRiskUsage(riskDashboardResult.value)) {
+        nextRiskUsage.dailyLimitUsedPercent = riskDashboardResult.value.dailyLimitUsedPercent
+        nextRiskUsage.weeklyCapUsedPercent = riskDashboardResult.value.weeklyCapUsedPercent
+      } else {
+        failedParts.push("risk dashboard")
+      }
+
+      nextState.stats = buildDashboardStats(nextBaseStats, nextState.profitTrajectory, nextRiskUsage)
+
       nextState.syncWarning =
         failedParts.length > 0
           ? `Some dashboard data could not be refreshed: ${failedParts.join(", ")}.`
           : null
-      nextState.lastUpdatedAt = failedParts.length === 4 ? previous.lastUpdatedAt : new Date()
+      nextState.lastUpdatedAt = failedParts.length === totalRequests ? previous.lastUpdatedAt : new Date()
 
       return nextState
     })
@@ -187,6 +241,7 @@ export function useDashboardOverview(
     stats: state.stats,
     winLossData: state.winLossData,
     profitTrajectory: state.profitTrajectory,
+    assetBreakdown: state.assetBreakdown,
     openPositions: state.openPositions,
     isLoading: state.isLoading,
     isRefreshing: state.isRefreshing,
