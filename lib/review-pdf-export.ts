@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import type { ReviewData, ReviewTrade } from "./review-api"
+import { formatTradePrice } from "./trade-price-format"
 
 const COLORS = {
   primary: [99, 102, 241] as [number, number, number],
@@ -203,8 +204,8 @@ export async function generateReviewPdf(
         fmtDate(t.closedDate),
         t.asset,
         t.position,
-        t.entryPrice.toFixed(2),
-        t.exitPrice?.toFixed(2) ?? "—",
+        formatTradePrice(t.entryPrice),
+        formatTradePrice(t.exitPrice),
         fmtCurrency(t.pnl),
         confidenceLabels[t.confidenceLevel] ?? "—",
         t.tradingZone ?? "—",

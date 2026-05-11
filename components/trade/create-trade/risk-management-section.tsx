@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, Gauge, Shield } from "lucide-react"
 import type { TradeFormData } from "@/lib/create-trade-form"
+import { TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
 import { TradeFormSection } from "./trade-form-section"
 import { TradeSummaryStat } from "./trade-summary-stat"
 
@@ -54,8 +55,8 @@ export function RiskManagementSection({
             <Input
               id="stopLoss"
               type="number"
-              step="0.01"
-              placeholder="0.00"
+              step={TRADE_PRICE_INPUT_STEP}
+              placeholder="0.00000"
               value={formData.stopLoss}
               onChange={(event) => handleInputChange("stopLoss", event.target.value)}
               className={cn(surfaceFieldClassName, errors.stopLoss && "border-destructive")}

@@ -62,6 +62,10 @@ describe("buildCreateTradePayload", () => {
       checkedItems: ["11", "12"],
       tradingSession: "7",
       activeSessionId: "42",
+      ictPowerOf3: 1,
+      ictDailyBias: 0,
+      ictMarketStructure: 1,
+      ictPremiumDiscount: 2,
     })
 
     expect(payload).toMatchObject({
@@ -86,6 +90,10 @@ describe("buildCreateTradePayload", () => {
       tradingSetupId: 21,
       tradingZoneId: 7,
       tradingSessionId: 42,
+      powerOf3Phase: 1,
+      dailyBias: 0,
+      marketStructure: 1,
+      premiumDiscount: 2,
     })
   })
 })

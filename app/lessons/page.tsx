@@ -70,7 +70,7 @@ export default function LessonsPage() {
   }, [user, fetchDashboard])
 
   if (isLoading) {
-    return <AppShellLoader title="Loading lessons" description="Preparing your lessons & discipline dashboard." />
+    return <AppShellLoader title="Loading knowledge library" description="Preparing your lessons and discipline dashboard." />
   }
 
   if (!user) {
@@ -81,10 +81,10 @@ export default function LessonsPage() {
     <>
       <AppPageShell className="selection:bg-primary/20" contentClassName="space-y-6">
           <AppPageIntro
-            badge="Learning workspace"
+            badge="Knowledge workspace"
             icon={<BookOpen className="h-6 w-6" />}
-            title="Lessons & Discipline"
-            description="Track what you learn from losses, stay disciplined, and grow as a trader."
+            title="Knowledge Library & Discipline"
+            description="Turn lessons into a tagged knowledge library, track study status, and stay disciplined in execution."
             actions={
               <Button
                 onClick={() => setIsCreateOpen(true)}
@@ -116,7 +116,7 @@ export default function LessonsPage() {
               <TabsList className="grid w-full max-w-lg grid-cols-3 mx-auto bg-muted/50 backdrop-blur-md border border-border/50">
                 <TabsTrigger value="lessons" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                   <BookOpen className="h-4 w-4" />
-                  <span className="hidden sm:inline">Lessons</span>
+                  <span className="hidden sm:inline">Library</span>
                 </TabsTrigger>
                 <TabsTrigger value="rules" className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm">
                   <Shield className="h-4 w-4" />

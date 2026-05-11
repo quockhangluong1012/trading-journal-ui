@@ -128,6 +128,10 @@ function buildTradeDetail() {
     selectedChecklists: [],
     riskGuardrail: null,
     aiSummary: null,
+    powerOf3Phase: null,
+    dailyBias: null,
+    marketStructure: null,
+    premiumDiscount: null,
   }
 }
 
@@ -236,5 +240,76 @@ describe("trade detail page", () => {
         tradingSetupId: "9",
       }),
     )
+  })
+
+  it("renders ICT edit controls and saves updated ICT context", async () => {
+    const user = userEvent.setup()
+    const module = await import("../../app/trade/[id]/page")
+    const TradeDetailPage = module.default
+
+    render(
+      <Suspense fallback={<div>Suspending trade detail</div>}>
+        <TradeDetailPage params={createResolvedParams("1")} />
+      </Suspense>,
+    )
+
+    expect(await screen.findByText("Morning Venom Model")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /edit trade/i }))
+
+    expect(await screen.findByText(/ICT Context/i)).toBeInTheDocument()
+    expect(screen.getByText(/Daily Bias/i)).toBeInTheDocument()
+    expect(screen.getByText(/Power of 3 \(AMD\) Phase/i)).toBeInTheDocument()
+    expect(screen.getByText(/Market Structure/i)).toBeInTheDocument()
+    expect(screen.getByText(/Premium \/ Discount/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Bearish" }))
+    await user.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() => {
+      expect(apiPutMock).toHaveBeenCalledWith(
+        "/v1/trade-histories",
+        expect.objectContaining({
+          dailyBias: 1,
+        }),
+      )
+    })
+
+    expect(updateTradeMock).toHaveBeenCalledWith(
+      "1",
+      expect.objectContaining({
+        dailyBias: 1,
+      }),
+    )
+  })
+
+  it("resets unsaved ICT edits when edit mode is canceled", async () => {
+    const user = userEvent.setup()
+    const module = await import("../../app/trade/[id]/page")
+    const TradeDetailPage = module.default
+
+    render(
+      <Suspense fallback={<div>Suspending trade detail</div>}>
+        <TradeDetailPage params={createResolvedParams("1")} />
+      </Suspense>,
+    )
+
+    expect(await screen.findByText("Morning Venom Model")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /edit trade/i }))
+    await user.click(screen.getByRole("button", { name: "Bearish" }))
+    await user.click(screen.getByRole("button", { name: /cancel/i }))
+
+    await user.click(screen.getByRole("button", { name: /edit trade/i }))
+    await user.click(screen.getByRole("button", { name: /save changes/i }))
+
+    await waitFor(() => {
+      expect(apiPutMock).toHaveBeenCalledWith(
+        "/v1/trade-histories",
+        expect.objectContaining({
+          dailyBias: null,
+        }),
+      )
+    })
   })
 })

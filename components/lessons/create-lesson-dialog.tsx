@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider"
 import { toast } from "@/hooks/use-toast"
 import {
   createLesson,
+  parseLessonTags,
   LessonCategory,
   LessonSeverity,
   LessonCategoryLabels,
@@ -32,6 +33,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
   const [severity, setSeverity] = useState<string>(String(LessonSeverity.Moderate))
   const [keyTakeaway, setKeyTakeaway] = useState("")
   const [actionItems, setActionItems] = useState("")
+  const [tagsInput, setTagsInput] = useState("")
   const [impactScore, setImpactScore] = useState(5)
 
   const resetForm = () => {
@@ -41,6 +43,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
     setSeverity(String(LessonSeverity.Moderate))
     setKeyTakeaway("")
     setActionItems("")
+    setTagsInput("")
     setImpactScore(5)
   }
 
@@ -61,6 +64,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
         actionItems: actionItems.trim() || null,
         impactScore,
         linkedTradeIds: null,
+        tags: parseLessonTags(tagsInput),
       }
 
       await createLesson(data)
@@ -80,7 +84,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
         <DialogHeader>
           <DialogTitle className="text-lg">New Lesson Learned</DialogTitle>
           <DialogDescription>
-            Capture what you learned from a mistake to avoid repeating it.
+            Capture what you learned, tag it, and keep it ready for faster review.
           </DialogDescription>
         </DialogHeader>
 
@@ -135,6 +139,19 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="lesson-tags">Tags</Label>
+            <Input
+              id="lesson-tags"
+              placeholder="e.g., AMD, NQ, London open"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Use comma-separated tags to turn lessons into a searchable knowledge library.
+            </p>
+          </div>
+
           {/* Content */}
           <div className="space-y-2">
             <Label htmlFor="lesson-content">Detailed Description *</Label>
@@ -143,7 +160,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
               placeholder="Describe what happened, why it was wrong, and what you should have done instead..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="min-h-[120px]"
+              className="min-h-30"
             />
           </div>
 
@@ -155,7 +172,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
               placeholder="What will you do differently next time?"
               value={actionItems}
               onChange={(e) => setActionItems(e.target.value)}
-              className="min-h-[80px]"
+              className="min-h-20"
               maxLength={2000}
             />
           </div>
@@ -185,7 +202,7 @@ export function CreateLessonDialog({ open, onOpenChange, onSuccess }: Props) {
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="bg-gradient-to-r from-amber-500 to-orange-600 text-white"
+              className="bg-linear-to-r from-amber-500 to-orange-600 text-white"
             >
               {isSubmitting ? "Saving..." : "Save Lesson"}
             </Button>

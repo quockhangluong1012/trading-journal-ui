@@ -26,6 +26,8 @@ import { toast } from "@/hooks/use-toast"
 import {
   getLessonDetail, updateLesson, deleteLesson, unlinkTradeFromLesson,
   linkTradesToLesson,
+  formatLessonTags,
+  parseLessonTags,
   LessonCategoryLabels, LessonSeverityLabels, LessonStatusLabels,
   LessonCategory, LessonSeverity, LessonStatus,
   type LessonLearnedDetailDto, type UpdateLessonRequest,
@@ -61,6 +63,7 @@ export default function LessonDetailPage() {
   const [editCategory, setEditCategory] = useState("")
   const [editSeverity, setEditSeverity] = useState("")
   const [editStatus, setEditStatus] = useState("")
+  const [editTagsInput, setEditTagsInput] = useState("")
   const [editKeyTakeaway, setEditKeyTakeaway] = useState("")
   const [editActionItems, setEditActionItems] = useState("")
   const [editImpactScore, setEditImpactScore] = useState(5)
@@ -89,6 +92,7 @@ export default function LessonDetailPage() {
     setEditCategory(String(lesson.category))
     setEditSeverity(String(lesson.severity))
     setEditStatus(String(lesson.status))
+    setEditTagsInput(formatLessonTags(lesson.tags))
     setEditKeyTakeaway(lesson.keyTakeaway ?? "")
     setEditActionItems(lesson.actionItems ?? "")
     setEditImpactScore(lesson.impactScore)
@@ -109,6 +113,7 @@ export default function LessonDetailPage() {
         keyTakeaway: editKeyTakeaway.trim() || null,
         actionItems: editActionItems.trim() || null,
         impactScore: editImpactScore,
+        tags: parseLessonTags(editTagsInput),
       }
       await updateLesson(lesson.id, data)
       toast({ title: "Lesson updated" })
@@ -162,7 +167,7 @@ export default function LessonDetailPage() {
   return (
     <AppPageShell contentClassName="max-w-4xl py-4 sm:py-6 lg:py-8">
           <Button variant="ghost" className="mb-6 gap-2 text-muted-foreground" onClick={() => router.push("/lessons")}>
-            <ArrowLeft className="h-4 w-4" /> Back to Lessons
+            <ArrowLeft className="h-4 w-4" /> Back to Knowledge Library
           </Button>
 
           {isLoading || !lesson ? (
@@ -186,6 +191,11 @@ export default function LessonDetailPage() {
                     <Badge variant="outline" className="text-xs">
                       {LessonCategoryLabels[lesson.category]}
                     </Badge>
+                    {lesson.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        #{tag}
+                      </Badge>
+                    ))}
                   </div>
                   <h1 className="text-2xl font-bold text-foreground">{lesson.title}</h1>
                   <p className="mt-1 text-xs text-muted-foreground flex items-center gap-3">
@@ -307,11 +317,12 @@ export default function LessonDetailPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2"><Label>Category</Label><Select value={editCategory} onValueChange={setEditCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(LessonCategoryLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-2"><Label>Severity</Label><Select value={editSeverity} onValueChange={setEditSeverity}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(LessonSeverityLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2"><Label>Status</Label><Select value={editStatus} onValueChange={setEditStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(LessonStatusLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label>Study Status</Label><Select value={editStatus} onValueChange={setEditStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(LessonStatusLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select></div>
             </div>
+            <div className="space-y-2"><Label>Tags</Label><Input value={editTagsInput} onChange={(e) => setEditTagsInput(e.target.value)} placeholder="AMD, NQ, London open" /></div>
             <div className="space-y-2"><Label>Key Takeaway</Label><Input value={editKeyTakeaway} onChange={(e) => setEditKeyTakeaway(e.target.value)} maxLength={500} /></div>
-            <div className="space-y-2"><Label>Content</Label><Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="min-h-[120px]" /></div>
-            <div className="space-y-2"><Label>Action Items</Label><Textarea value={editActionItems} onChange={(e) => setEditActionItems(e.target.value)} className="min-h-[80px]" /></div>
+            <div className="space-y-2"><Label>Content</Label><Textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="min-h-30" /></div>
+            <div className="space-y-2"><Label>Action Items</Label><Textarea value={editActionItems} onChange={(e) => setEditActionItems(e.target.value)} className="min-h-20" /></div>
             <div className="space-y-3">
               <div className="flex items-center justify-between"><Label>Impact Score</Label><span className="text-sm font-semibold text-primary">{editImpactScore}/10</span></div>
               <Slider value={[editImpactScore]} onValueChange={([v]) => setEditImpactScore(v)} min={1} max={10} step={1} />

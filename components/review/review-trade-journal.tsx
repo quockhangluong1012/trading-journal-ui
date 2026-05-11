@@ -20,6 +20,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { SafeHtml } from "@/components/ui/safe-html"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ReviewTrade } from "@/lib/review-api"
+import { formatTradePrice } from "@/lib/trade-price-format"
 import { cn } from "@/lib/utils"
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -140,7 +141,7 @@ function TradeJournalCard({ trade }: { trade: ReviewTrade }) {
           {/* Meta row */}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
             <span>{formatClosedDate(trade.closedDate)}</span>
-            <span>Entry {trade.entryPrice.toFixed(2)} → Exit {trade.exitPrice?.toFixed(2) ?? "—"}</span>
+            <span>Entry {formatTradePrice(trade.entryPrice)} → Exit {formatTradePrice(trade.exitPrice)}</span>
             <ConfidenceMeter value={trade.confidenceLevel} />
           </div>
 

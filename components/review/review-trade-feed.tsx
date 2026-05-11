@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { ReviewTrade } from "@/lib/review-api"
+import { formatTradePrice } from "@/lib/trade-price-format"
 import { cn } from "@/lib/utils"
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -36,11 +37,7 @@ function formatClosedDate(value: string | null): string {
 }
 
 function formatPrice(value: number | null): string {
-  if (value === null) {
-    return "—"
-  }
-
-  return value.toFixed(2)
+  return formatTradePrice(value)
 }
 
 function ConfidenceMeter({ value }: { value: number }) {

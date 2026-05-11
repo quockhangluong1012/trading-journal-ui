@@ -1,5 +1,6 @@
 import { Trade } from "@/lib/trade-store";
 import { PositionType } from "@/lib/enum/PositionType";
+import { formatTradePrice } from "@/lib/trade-price-format";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shield, Target, DollarSign } from "lucide-react";
 
@@ -88,7 +89,7 @@ export function PriceLevelBar({
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Stop Loss: ${trade.stopLoss.toLocaleString()}</p>
+              <p>Stop Loss: {formatTradePrice(trade.stopLoss)}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -107,7 +108,7 @@ export function PriceLevelBar({
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Entry: ${trade.entryPrice.toLocaleString()}</p>
+              <p>Entry: {formatTradePrice(trade.entryPrice)}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -129,7 +130,7 @@ export function PriceLevelBar({
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>T1: ${trade.targetTier1.toLocaleString()}</p>
+                <p>T1: {formatTradePrice(trade.targetTier1)}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -151,7 +152,7 @@ export function PriceLevelBar({
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>T2: ${trade.targetTier2.toLocaleString()}</p>
+                <p>T2: {formatTradePrice(trade.targetTier2)}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -173,7 +174,7 @@ export function PriceLevelBar({
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>T3: ${trade.targetTier3.toLocaleString()}</p>
+                <p>T3: {formatTradePrice(trade.targetTier3)}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -194,7 +195,7 @@ export function PriceLevelBar({
               </div>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Current: ${currentPrice.toLocaleString()}</p>
+              <p>Current: {formatTradePrice(currentPrice)}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

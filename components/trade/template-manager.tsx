@@ -53,6 +53,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import { formatTradePrice, TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
 import { cn } from "@/lib/utils"
 import {
   type TradeTemplateDto,
@@ -280,8 +281,8 @@ function TemplateFormDialog({
               <Input
                 id="template-sl"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={form.defaultStopLoss}
                 onChange={(e) => patch("defaultStopLoss", e.target.value)}
               />
@@ -291,8 +292,8 @@ function TemplateFormDialog({
               <Input
                 id="template-t1"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={form.defaultTargetTier1}
                 onChange={(e) => patch("defaultTargetTier1", e.target.value)}
               />
@@ -302,8 +303,8 @@ function TemplateFormDialog({
               <Input
                 id="template-t2"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={form.defaultTargetTier2}
                 onChange={(e) => patch("defaultTargetTier2", e.target.value)}
               />
@@ -313,8 +314,8 @@ function TemplateFormDialog({
               <Input
                 id="template-t3"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={form.defaultTargetTier3}
                 onChange={(e) => patch("defaultTargetTier3", e.target.value)}
               />
@@ -480,13 +481,13 @@ function TemplateCard({
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">SL</p>
               <p className="text-sm font-semibold text-foreground">
-                {template.defaultStopLoss ?? "—"}
+                {formatTradePrice(template.defaultStopLoss)}
               </p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">T1</p>
               <p className="text-sm font-semibold text-foreground">
-                {template.defaultTargetTier1 ?? "—"}
+                {formatTradePrice(template.defaultTargetTier1)}
               </p>
             </div>
             <div>
