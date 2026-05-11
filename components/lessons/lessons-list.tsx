@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { format, parseISO } from "date-fns"
-import { Search, ChevronRight, SlidersHorizontal } from "lucide-react"
+import { Search, ChevronRight, Link2, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -12,12 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   searchLessons,
+  parseLessonTags,
   LessonCategory,
   LessonSeverity,
   LessonStatus,
+  LessonSortOption,
   LessonCategoryLabels,
   LessonSeverityLabels,
   LessonStatusLabels,
+  LessonSortLabels,
   type LessonLearnedDto,
   type SearchLessonsRequest,
 } from "@/lib/lessons-api"
@@ -47,19 +50,53 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
   const [totalItems, setTotalItems] = useState(0)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState("")
+  const [tagFilter, setTagFilter] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [severityFilter, setSeverityFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [minimumImpactScore, setMinimumImpactScore] = useState("")
+  const [linkedTradesOnly, setLinkedTradesOnly] = useState(false)
+  const [sortBy, setSortBy] = useState<string>(String(LessonSortOption.Newest))
   const pageSize = 10
+
+  const hasActiveFilters =
+    categoryFilter !== "all" ||
+    severityFilter !== "all" ||
+    statusFilter !== "all" ||
+    searchTerm.trim().length > 0 ||
+    tagFilter.trim().length > 0 ||
+    minimumImpactScore.trim().length > 0 ||
+    linkedTradesOnly ||
+    sortBy !== String(LessonSortOption.Newest)
+
+  const clearFilters = () => {
+    setSearchTerm("")
+    setTagFilter("")
+    setCategoryFilter("all")
+    setSeverityFilter("all")
+    setStatusFilter("all")
+    setMinimumImpactScore("")
+    setLinkedTradesOnly(false)
+    setSortBy(String(LessonSortOption.Newest))
+    setPage(1)
+  }
 
   const fetchLessons = useCallback(async () => {
     try {
       setIsLoading(true)
-      const req: SearchLessonsRequest = { page, pageSize }
+      const req: SearchLessonsRequest = {
+        page,
+        pageSize,
+        sortBy: Number(sortBy),
+      }
       if (categoryFilter !== "all") req.category = Number(categoryFilter)
       if (severityFilter !== "all") req.severity = Number(severityFilter)
       if (statusFilter !== "all") req.status = Number(statusFilter)
       if (searchTerm.trim()) req.searchTerm = searchTerm.trim()
+      if (minimumImpactScore.trim()) req.minimumImpactScore = Number(minimumImpactScore)
+      if (linkedTradesOnly) req.linkedTradesOnly = true
+      const tags = parseLessonTags(tagFilter)
+      if (tags.length > 0) req.tags = tags
 
       const res = await searchLessons(req)
       setLessons(res.data.value.values)
@@ -69,7 +106,7 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
     } finally {
       setIsLoading(false)
     }
-  }, [page, categoryFilter, severityFilter, statusFilter, searchTerm])
+  }, [page, categoryFilter, severityFilter, statusFilter, searchTerm, tagFilter, minimumImpactScore, linkedTradesOnly, sortBy])
 
   useEffect(() => { void fetchLessons() }, [fetchLessons, refreshTrigger])
 
@@ -79,19 +116,26 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
     <Card className="glass-card">
       <CardHeader className="pb-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base font-semibold">All Lessons</CardTitle>
+          <CardTitle className="text-base font-semibold">Knowledge Library</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder="Search notes, takeaways, or themes..."
                 className="h-9 w-48 pl-8 text-sm"
+                maxLength={200}
                 value={searchTerm}
                 onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
               />
             </div>
+            <Input
+              placeholder="Tags: AMD, NQ"
+              className="h-9 w-40 text-xs"
+              value={tagFilter}
+              onChange={(e) => { setTagFilter(e.target.value); setPage(1) }}
+            />
             <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1) }}>
-              <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-35 text-xs"><SelectValue placeholder="Category" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 {Object.entries(LessonCategoryLabels).map(([k, v]) => (
@@ -100,7 +144,7 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
               </SelectContent>
             </Select>
             <Select value={severityFilter} onValueChange={(v) => { setSeverityFilter(v); setPage(1) }}>
-              <SelectTrigger className="h-9 w-[120px] text-xs"><SelectValue placeholder="Severity" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-30 text-xs"><SelectValue placeholder="Severity" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Severity</SelectItem>
                 {Object.entries(LessonSeverityLabels).map(([k, v]) => (
@@ -109,16 +153,82 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
-              <SelectTrigger className="h-9 w-[120px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-35 text-xs"><SelectValue placeholder="Study status" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="all">All Study Status</SelectItem>
                 {Object.entries(LessonStatusLabels).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={10}
+              placeholder="Impact 1-10"
+              className="h-9 w-28 text-xs"
+              value={minimumImpactScore}
+              onChange={(event) => {
+                const value = event.target.value
+
+                if (value === "") {
+                  setMinimumImpactScore("")
+                  setPage(1)
+                  return
+                }
+
+                const parsedValue = Number(value)
+                if (Number.isNaN(parsedValue)) {
+                  return
+                }
+
+                const clampedValue = Math.max(1, Math.min(10, parsedValue))
+                setMinimumImpactScore(String(clampedValue))
+                setPage(1)
+              }}
+            />
+            <Select value={sortBy} onValueChange={(value) => { setSortBy(value); setPage(1) }}>
+              <SelectTrigger className="h-9 w-38 text-xs"><SelectValue placeholder="Sort by" /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(LessonSortLabels).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant={linkedTradesOnly ? "default" : "outline"}
+              size="sm"
+              className="h-9 gap-1.5 text-xs"
+              onClick={() => {
+                setLinkedTradesOnly((currentValue) => !currentValue)
+                setPage(1)
+              }}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Linked trades only
+            </Button>
+            {hasActiveFilters && (
+              <Button type="button" variant="ghost" size="sm" className="h-9 gap-1 text-xs" onClick={clearFilters}>
+                <X className="h-3.5 w-3.5" />
+                Clear filters
+              </Button>
+            )}
           </div>
         </div>
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            {searchTerm.trim() && <Badge variant="outline">Search: {searchTerm.trim()}</Badge>}
+            {tagFilter.trim() && <Badge variant="outline">Tags: {parseLessonTags(tagFilter).join(", ")}</Badge>}
+            {categoryFilter !== "all" && <Badge variant="outline">Category: {LessonCategoryLabels[Number(categoryFilter) as LessonCategory]}</Badge>}
+            {severityFilter !== "all" && <Badge variant="outline">Severity: {LessonSeverityLabels[Number(severityFilter) as LessonSeverity]}</Badge>}
+            {statusFilter !== "all" && <Badge variant="outline">Study: {LessonStatusLabels[Number(statusFilter) as LessonStatus]}</Badge>}
+            {minimumImpactScore.trim() && <Badge variant="outline">Impact {minimumImpactScore}+</Badge>}
+            {linkedTradesOnly && <Badge variant="outline">Linked trades only</Badge>}
+            {sortBy !== String(LessonSortOption.Newest) && <Badge variant="outline">Sort: {LessonSortLabels[Number(sortBy) as LessonSortOption]}</Badge>}
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -127,7 +237,11 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
           </div>
         ) : lessons.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <p className="text-sm text-muted-foreground">No lessons found. Start by creating your first lesson!</p>
+            <p className="text-sm text-muted-foreground">
+              {hasActiveFilters
+                ? "No library entries match these filters. Clear them or widen the search."
+                : "No lessons found. Start by creating your first lesson!"}
+            </p>
           </div>
         ) : (
           <>
@@ -157,7 +271,17 @@ export function LessonsList({ onRefreshDashboard, refreshTrigger = 0 }: Props) {
                           • {lesson.linkedTradesCount} trade{lesson.linkedTradesCount > 1 ? "s" : ""}
                         </span>
                       )}
+                      {lesson.tags.map((tag) => (
+                        <Badge key={`${lesson.id}-${tag}`} variant="secondary" className="text-[10px] px-1.5 py-0">
+                          #{tag}
+                        </Badge>
+                      ))}
                     </div>
+                    {lesson.keyTakeaway && (
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                        {lesson.keyTakeaway}
+                      </p>
+                    )}
                   </div>
                   <div className="hidden sm:flex flex-col items-end gap-1">
                     <div className="flex items-center gap-1">

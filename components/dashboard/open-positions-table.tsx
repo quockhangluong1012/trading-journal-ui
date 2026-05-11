@@ -22,6 +22,7 @@ import { EmotionTag, TradeHistory } from "@/app/types/trade"
 import { EmotionType } from "@/lib/enum/EmotionType"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildCreateTradeHref } from "@/lib/create-trade-form"
+import { formatTradePrice } from "@/lib/trade-price-format"
 import { useToast } from "@/hooks/use-toast"
 
 function getFromDateForFilter(filter: DashboardFilter): string | null {
@@ -95,14 +96,6 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
 
     void fetchOpenPositions()
   }, [fetchOpenPositions, providedLoading, providedOpenPositions, refreshKey])
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-    }).format(value)
-  }
 
   const getPositionTypeLabel = (position: PositionType) => {
       switch (position) {
@@ -237,7 +230,7 @@ export function OpenPositionsTable({ refreshKey, filter, openPositions: provided
                         </div>
                       </TableCell>
                       <TableCell className="text-foreground">
-                        {formatCurrency(trade.entryPrice)}
+                        {formatTradePrice(trade.entryPrice)}
                       </TableCell>
                       <TableCell className="">
                         <Link href={`/trade/${trade.id}`}>

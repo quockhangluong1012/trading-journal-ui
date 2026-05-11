@@ -209,12 +209,15 @@ export function IctContextFields({
         <Label className="text-xs font-medium text-muted-foreground">Power of 3 (AMD) Phase</Label>
         <Select
           value={powerOf3Phase !== null ? powerOf3Phase.toString() : ""}
-          onValueChange={(v) => onPowerOf3Change(v ? parseInt(v) : null)}
+          onValueChange={(value) =>
+            onPowerOf3Change(value && value !== "none" ? Number.parseInt(value, 10) : null)
+          }
         >
           <SelectTrigger className={fieldClass}>
             <SelectValue placeholder="Select AMD phase" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="none">Not set</SelectItem>
             {PO3_OPTIONS.map((opt) => (
               <SelectItem key={opt.value} value={opt.value.toString()}>
                 <span className="flex items-center gap-2">
@@ -234,12 +237,15 @@ export function IctContextFields({
           <Label className="text-xs font-medium text-muted-foreground">Market Structure</Label>
           <Select
             value={marketStructure !== null ? marketStructure.toString() : ""}
-            onValueChange={(v) => onMarketStructureChange(v ? parseInt(v) : null)}
+            onValueChange={(value) =>
+              onMarketStructureChange(value && value !== "none" ? Number.parseInt(value, 10) : null)
+            }
           >
             <SelectTrigger className={fieldClass}>
               <SelectValue placeholder="Select structure" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">Not set</SelectItem>
               {STRUCTURE_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value.toString()}>
                   <span className="flex items-center gap-2">
@@ -257,12 +263,15 @@ export function IctContextFields({
           <Label className="text-xs font-medium text-muted-foreground">Premium / Discount</Label>
           <Select
             value={premiumDiscount !== null ? premiumDiscount.toString() : ""}
-            onValueChange={(v) => onPremiumDiscountChange(v ? parseInt(v) : null)}
+            onValueChange={(value) =>
+              onPremiumDiscountChange(value && value !== "none" ? Number.parseInt(value, 10) : null)
+            }
           >
             <SelectTrigger className={fieldClass}>
               <SelectValue placeholder="Select PD zone" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">Not set</SelectItem>
               {PD_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value.toString()}>
                   <span className="flex items-center gap-2">

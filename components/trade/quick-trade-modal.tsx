@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils"
 import { api, ApiResponse } from "@/lib/api"
 import { PositionType } from "@/lib/enum/PositionType"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
+import { TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
 import { type TradeTemplateDto, getTemplates } from "@/lib/template-api"
 import { TradingZoneApi } from "@/components/create-trade-page"
 
@@ -305,8 +306,8 @@ export function QuickTradeModal({ open, onOpenChange, prefillTemplate }: QuickTr
               <Input
                 id="quick-trade-entry"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={entryPrice}
                 onChange={(e) => setEntryPrice(e.target.value)}
               />
@@ -316,8 +317,8 @@ export function QuickTradeModal({ open, onOpenChange, prefillTemplate }: QuickTr
               <Input
                 id="quick-trade-sl"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={stopLoss}
                 onChange={(e) => setStopLoss(e.target.value)}
               />
@@ -327,8 +328,8 @@ export function QuickTradeModal({ open, onOpenChange, prefillTemplate }: QuickTr
               <Input
                 id="quick-trade-t1"
                 type="number"
-                step="any"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={targetTier1}
                 onChange={(e) => setTargetTier1(e.target.value)}
               />

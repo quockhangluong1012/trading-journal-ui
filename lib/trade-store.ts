@@ -75,6 +75,10 @@ export interface Trade {
   tradingSession?: string
   sessionId?: string
   pretradeChecklist?: string[]
+  powerOf3Phase?: number | null
+  dailyBias?: number | null
+  marketStructure?: number | null
+  premiumDiscount?: number | null
   riskGuardrails?: {
     accountEquity?: number
     riskPercentage?: number

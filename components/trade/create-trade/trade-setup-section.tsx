@@ -16,6 +16,7 @@ import { PositionType } from "@/lib/enum/PositionType"
 import type { TradeFormData } from "@/lib/create-trade-form"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
 import type { TradingSetupSummaryDto } from "@/lib/setup-api"
+import { TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
 import { TradeFormSection } from "./trade-form-section"
 
 export interface TradeSetupSectionProps {
@@ -95,8 +96,8 @@ export function TradeSetupSection({
               <Input
                 id="entryPrice"
                 type="number"
-                step="0.01"
-                placeholder="0.00"
+                step={TRADE_PRICE_INPUT_STEP}
+                placeholder="0.00000"
                 value={formData.entryPrice}
                 onChange={(event) => handleInputChange("entryPrice", event.target.value)}
                 className={cn(surfaceFieldClassName, errors.entryPrice && "border-destructive")}
@@ -196,7 +197,7 @@ export function TradeSetupSection({
               <Input
                 id="targetTier1"
                 type="number"
-                step="0.01"
+                step={TRADE_PRICE_INPUT_STEP}
                 placeholder="Conservative"
                 value={formData.targetTier1}
                 onChange={(event) => handleInputChange("targetTier1", event.target.value)}
@@ -209,7 +210,7 @@ export function TradeSetupSection({
               <Input
                 id="targetTier2"
                 type="number"
-                step="0.01"
+                step={TRADE_PRICE_INPUT_STEP}
                 placeholder="Moderate"
                 value={formData.targetTier2}
                 onChange={(event) => handleInputChange("targetTier2", event.target.value)}
@@ -222,7 +223,7 @@ export function TradeSetupSection({
               <Input
                 id="targetTier3"
                 type="number"
-                step="0.01"
+                step={TRADE_PRICE_INPUT_STEP}
                 placeholder="Aggressive"
                 value={formData.targetTier3}
                 onChange={(event) => handleInputChange("targetTier3", event.target.value)}

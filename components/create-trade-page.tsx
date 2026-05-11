@@ -646,6 +646,10 @@ export function CreateTradePage({
         analysisTags: analysisTags.length > 0 ? analysisTags : undefined,
         tradingSession: tradingSession || undefined,
         pretradeChecklist: checkedItems.length > 0 ? checkedItems : undefined,
+        powerOf3Phase: ictPowerOf3 ?? null,
+        dailyBias: ictDailyBias ?? null,
+        marketStructure: ictMarketStructure ?? null,
+        premiumDiscount: ictPremiumDiscount ?? null,
       })
 
       onSuccess?.()

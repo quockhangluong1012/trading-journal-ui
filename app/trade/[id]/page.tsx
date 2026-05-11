@@ -88,11 +88,13 @@ import { PositionType } from "@/lib/enum/PositionType";
 import { api, ApiResponse } from "@/lib/api";
 import { getPlainTextFromRichText } from "@/lib/rich-text";
 import type { TradingSetupSummaryDto } from "@/lib/setup-api";
+import { formatTradePrice, TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
 import { AxiosResponse } from "axios";
 import { cn, getPositionTypeLabel, getTradeStatusLabel } from "@/lib/utils";
 import { OverviewMetricCard, SnapshotPill } from "@/components/trade/metric-cards";
 import { PriceLevelBar } from "@/components/trade/price-level-bar";
 import { TradeStatusAlert } from "@/components/trade/trade-status-alert";
+import { IctContextFields } from "@/components/trade/ict-trade-fields";
 import { TradeDetailSkeleton } from "@/components/trade/trade-detail-skeleton";
 import { useAuth } from "@/lib/auth-context"
 import { usePathname } from "next/navigation"
@@ -144,6 +146,55 @@ const getConfidenceLabel = (confidenceLevel?: number): string => {
   }
 };
 
+const powerOf3PhaseLabels: Record<number, string> = {
+  0: "Accumulation",
+  1: "Manipulation",
+  2: "Distribution",
+}
+
+const dailyBiasLabels: Record<number, string> = {
+  0: "Bullish",
+  1: "Bearish",
+  2: "Neutral",
+}
+
+const marketStructureLabels: Record<number, string> = {
+  0: "BOS",
+  1: "CHoCH",
+  2: "HH",
+  3: "HL",
+  4: "LH",
+  5: "LL",
+}
+
+const premiumDiscountLabels: Record<number, string> = {
+  0: "Premium",
+  1: "Discount",
+  2: "Equilibrium",
+}
+
+const buildFormDataFromTrade = (trade: Trade) => ({
+  notes: trade.notes,
+  targetTier1: trade.targetTier1.toString(),
+  targetTier2: trade.targetTier2.toString(),
+  targetTier3: trade.targetTier3.toString(),
+  stopLoss: trade.stopLoss.toString(),
+  tradingSetupId: trade.tradingSetupId || "",
+  analysisTags: trade.analysisTags || [],
+  emotionTags: trade.emotionTags || [],
+  confidenceLevel: trade.confidenceLevel || 0,
+  tradingSession: trade.tradingSession || "",
+  screenshots: trade.screenshots || [],
+  pretradeChecklist: trade.pretradeChecklist || [],
+  pnl:
+    trade.pnl !== undefined && trade.pnl !== null ? trade.pnl.toString() : "",
+  aiSummary: trade.aiSummary || "",
+  powerOf3Phase: trade.powerOf3Phase ?? null,
+  dailyBias: trade.dailyBias ?? null,
+  marketStructure: trade.marketStructure ?? null,
+  premiumDiscount: trade.premiumDiscount ?? null,
+})
+
 function TradeDetailContent({ id }: { id: string }) {
   const { user, isLoading: isAuthLoading } = useAuth()
   const router = useRouter();
@@ -187,6 +238,10 @@ function TradeDetailContent({ id }: { id: string }) {
     pretradeChecklist: [] as string[],
     pnl: "",
     aiSummary: "",
+    powerOf3Phase: null as number | null,
+    dailyBias: null as number | null,
+    marketStructure: null as number | null,
+    premiumDiscount: null as number | null,
   });
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([]);
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>(
@@ -318,6 +373,10 @@ function TradeDetailContent({ id }: { id: string }) {
                   c.toString(),
                 )
               : [],
+            powerOf3Phase: returnedValue.powerOf3Phase ?? null,
+            dailyBias: returnedValue.dailyBias ?? null,
+            marketStructure: returnedValue.marketStructure ?? null,
+            premiumDiscount: returnedValue.premiumDiscount ?? null,
             riskGuardrails: returnedValue.riskGuardrail
               ? {
                   accountEquity: returnedValue.riskGuardrail.accountEquity,
@@ -332,22 +391,7 @@ function TradeDetailContent({ id }: { id: string }) {
           };
           setTrade(mappedTrade);
           // Setup form default data for editing
-          setFormData({
-            notes: mappedTrade.notes,
-            targetTier1: mappedTrade.targetTier1.toString(),
-            targetTier2: mappedTrade.targetTier2.toString(),
-            targetTier3: mappedTrade.targetTier3.toString(),
-            stopLoss: mappedTrade.stopLoss.toString(),
-            tradingSetupId: mappedTrade.tradingSetupId || "",
-            analysisTags: mappedTrade.analysisTags || [],
-            emotionTags: mappedTrade.emotionTags || [],
-            confidenceLevel: mappedTrade.confidenceLevel || 0,
-            tradingSession: mappedTrade.tradingSession || "",
-            screenshots: mappedTrade.screenshots || [],
-            pretradeChecklist: mappedTrade.pretradeChecklist || [],
-            pnl: mappedTrade.pnl !== undefined && mappedTrade.pnl !== null ? mappedTrade.pnl.toString() : "",
-            aiSummary: mappedTrade.aiSummary || "",
-          });
+          setFormData(buildFormDataFromTrade(mappedTrade));
         } else {
           setTrade(null);
         }
@@ -540,7 +584,7 @@ function TradeDetailContent({ id }: { id: string }) {
   const quickStats = [
     {
       label: "Stop Loss",
-      value: formatCurrency(trade.stopLoss),
+      value: formatTradePrice(trade.stopLoss),
       helper: metrics
         ? `${metrics.riskPercent.toFixed(1)}% risk from entry`
         : "Planned downside protection.",
@@ -582,7 +626,7 @@ function TradeDetailContent({ id }: { id: string }) {
   const headlineMetrics = [
     {
       label: "Entry Price",
-      value: formatCurrency(trade.entryPrice),
+      value: formatTradePrice(trade.entryPrice),
       helper: metrics
         ? `${metrics.riskPercent.toFixed(1)}% planned risk to stop`
         : "Original execution price.",
@@ -593,7 +637,7 @@ function TradeDetailContent({ id }: { id: string }) {
       label: isOpenTrade ? "Current Price" : "Exit Price",
       value:
         displayedPrice != null
-          ? formatCurrency(displayedPrice)
+          ? formatTradePrice(displayedPrice)
           : isOpenTrade
             ? "Awaiting close"
             : "Exit price not recorded",
@@ -692,6 +736,10 @@ function TradeDetailContent({ id }: { id: string }) {
         tradingSessionId: trade.sessionId
           ? parseInt(trade.sessionId, 10)
           : null,
+        powerOf3Phase: formData.powerOf3Phase,
+        dailyBias: formData.dailyBias,
+        marketStructure: formData.marketStructure,
+        premiumDiscount: formData.premiumDiscount,
         riskGuardrail: trade.riskGuardrails
           ? {
               accountEquity: trade.riskGuardrails.accountEquity || null,
@@ -737,6 +785,10 @@ function TradeDetailContent({ id }: { id: string }) {
               pretradeChecklist: formData.pretradeChecklist,
               pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : undefined,
               aiSummary: formData.aiSummary,
+              powerOf3Phase: formData.powerOf3Phase,
+              dailyBias: formData.dailyBias,
+              marketStructure: formData.marketStructure,
+              premiumDiscount: formData.premiumDiscount,
             }
           : prev,
       );
@@ -757,6 +809,10 @@ function TradeDetailContent({ id }: { id: string }) {
         pretradeChecklist: formData.pretradeChecklist,
         pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : undefined,
         aiSummary: formData.aiSummary,
+        powerOf3Phase: formData.powerOf3Phase,
+        dailyBias: formData.dailyBias,
+        marketStructure: formData.marketStructure,
+        premiumDiscount: formData.premiumDiscount,
       });
 
       setIsEditing(false);
@@ -795,6 +851,11 @@ function TradeDetailContent({ id }: { id: string }) {
     });
 
     e.target.value = "";
+  };
+
+  const handleCancelEdit = () => {
+    setFormData(buildFormDataFromTrade(trade));
+    setIsEditing(false);
   };
 
   const handleClose = async () => {
@@ -992,7 +1053,7 @@ function TradeDetailContent({ id }: { id: string }) {
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={() => setIsEditing(false)}
+                      onClick={handleCancelEdit}
                       disabled={isSaving}
                       className="min-w-27.5 bg-background/70"
                     >
@@ -1084,7 +1145,7 @@ function TradeDetailContent({ id }: { id: string }) {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 pb-6">
-                      <PriceLevelBar trade={trade} currentPrice={currentPrice} />
+                      <PriceLevelBar trade={trade} currentPrice={trade.exitPrice ? trade.exitPrice : currentPrice} />
                     </CardContent>
                   </Card>
                 )}
@@ -1221,7 +1282,7 @@ function TradeDetailContent({ id }: { id: string }) {
                       <div key={idx} className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/20 p-3">
                         <div>
                           <div className="text-xs text-muted-foreground mb-0.5">{target.label}</div>
-                          <div className="text-sm font-bold text-foreground">{formatCurrency(target.value)}</div>
+                          <div className="text-sm font-bold text-foreground">{formatTradePrice(target.value)}</div>
                         </div>
                         {target.rr ? (
                           <Badge variant="outline" className="bg-background font-mono">{target.rr.toFixed(1)}R</Badge>
@@ -1357,6 +1418,82 @@ function TradeDetailContent({ id }: { id: string }) {
                           <p className="text-sm text-muted-foreground">No tags selected</p>
                         )}
                       </div>
+                    </div>
+
+                    <Separator className="bg-border/50" />
+
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                        <Layers className="h-3.5 w-3.5" /> ICT Context
+                      </h4>
+
+                      {isEditing ? (
+                        <div className="rounded-xl border border-border/60 bg-secondary/15 p-4">
+                          <IctContextFields
+                            powerOf3Phase={formData.powerOf3Phase}
+                            dailyBias={formData.dailyBias}
+                            marketStructure={formData.marketStructure}
+                            premiumDiscount={formData.premiumDiscount}
+                            onPowerOf3Change={(value) =>
+                              setFormData((prev) => ({ ...prev, powerOf3Phase: value }))
+                            }
+                            onDailyBiasChange={(value) =>
+                              setFormData((prev) => ({ ...prev, dailyBias: value }))
+                            }
+                            onMarketStructureChange={(value) =>
+                              setFormData((prev) => ({ ...prev, marketStructure: value }))
+                            }
+                            onPremiumDiscountChange={(value) =>
+                              setFormData((prev) => ({ ...prev, premiumDiscount: value }))
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {[
+                            {
+                              label: "Daily Bias",
+                              value:
+                                trade.dailyBias != null
+                                  ? dailyBiasLabels[trade.dailyBias] ?? "Not set"
+                                  : "Not set",
+                            },
+                            {
+                              label: "Power of 3 (AMD) Phase",
+                              value:
+                                trade.powerOf3Phase != null
+                                  ? powerOf3PhaseLabels[trade.powerOf3Phase] ?? "Not set"
+                                  : "Not set",
+                            },
+                            {
+                              label: "Market Structure",
+                              value:
+                                trade.marketStructure != null
+                                  ? marketStructureLabels[trade.marketStructure] ?? "Not set"
+                                  : "Not set",
+                            },
+                            {
+                              label: "Premium / Discount",
+                              value:
+                                trade.premiumDiscount != null
+                                  ? premiumDiscountLabels[trade.premiumDiscount] ?? "Not set"
+                                  : "Not set",
+                            },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className="rounded-lg border border-border/50 bg-secondary/20 p-3"
+                            >
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {item.label}
+                              </div>
+                              <div className="mt-1 text-sm font-medium text-foreground">
+                                {item.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <Separator className="bg-border/50" />
@@ -1724,12 +1861,12 @@ function TradeDetailContent({ id }: { id: string }) {
                 <div className="rounded-lg bg-secondary/50 p-3">
                   <p className="text-muted-foreground">Entry Price</p>
                   <p className="font-medium">
-                    {formatCurrency(trade.entryPrice)}
+                    {formatTradePrice(trade.entryPrice)}
                   </p>
                 </div>
                 <div className="rounded-lg bg-secondary/50 p-3">
                   <p className="text-muted-foreground">Current Price</p>
-                  <p className="font-medium">{formatCurrency(currentPrice)}</p>
+                  <p className="font-medium">{formatTradePrice(currentPrice)}</p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -1737,7 +1874,7 @@ function TradeDetailContent({ id }: { id: string }) {
                 <Input
                   id="exitPrice"
                   type="number"
-                  step="0.01"
+                  step={TRADE_PRICE_INPUT_STEP}
                   placeholder={currentPrice.toString()}
                   value={exitPrice}
                   onChange={(e) => setExitPrice(e.target.value)}

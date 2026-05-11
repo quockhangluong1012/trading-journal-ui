@@ -78,6 +78,7 @@ import { exportTrades, ExportFormat } from "@/lib/export-api"
 import type { NaturalLanguageTradeSearchResult } from "@/lib/ai-insights-api"
 import { AiHistorySearchBar } from "@/components/trade/ai-history-search-bar"
 import { mapAiTradeSearchToHistoryFilters } from "@/lib/history-ai-filters"
+import { formatTradePrice } from "@/lib/trade-price-format"
 
 type SortField = "date" | "pnl" | "asset"
 type SortDirection = "asc" | "desc"
@@ -635,10 +636,10 @@ function HistoryContent() {
                           )}
                         </TableCell>
                         <TableCell className="text-right text-foreground">
-                          {formatCurrency(trade.entryPrice)}
+                          {formatTradePrice(trade.entryPrice)}
                         </TableCell>
                         <TableCell className="text-right text-foreground">
-                          {trade.exitPrice ? formatCurrency(trade.exitPrice) : "-"}
+                          {trade.exitPrice ? formatTradePrice(trade.exitPrice) : "-"}
                         </TableCell>
                         <TableCell
                           className={`text-right font-medium ${

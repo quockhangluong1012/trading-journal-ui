@@ -67,6 +67,10 @@ interface UpdateTradeRequest {
   tradeHistoryChecklists: number[]
   tradingZoneId: number
   tradingSessionId?: number
+  powerOf3Phase?: number | null
+  dailyBias?: number | null
+  marketStructure?: number | null
+  premiumDiscount?: number | null
 }
 
 // ─── API Response Mapping ───────────────────────────────────────────────
@@ -93,6 +97,10 @@ interface TradeApiResponseDto {
   tradingZoneId?: number
   tradingSessionId?: number
   tradeChecklists?: { pretradeChecklistId: number }[]
+  powerOf3Phase?: number | null
+  dailyBias?: number | null
+  marketStructure?: number | null
+  premiumDiscount?: number | null
 }
 
 function mapTradeFromApi(t: TradeApiResponseDto): Trade {
@@ -126,6 +134,10 @@ function mapTradeFromApi(t: TradeApiResponseDto): Trade {
     pretradeChecklist: t.tradeChecklists?.map(
       (c) => c.pretradeChecklistId.toString()
     ),
+    powerOf3Phase: t.powerOf3Phase ?? null,
+    dailyBias: t.dailyBias ?? null,
+    marketStructure: t.marketStructure ?? null,
+    premiumDiscount: t.premiumDiscount ?? null,
   }
 }
 
@@ -259,6 +271,10 @@ export const useTradeApiStore = create<TradeApiStore>((set, get) => ({
         tradingSessionId: merged.sessionId
           ? parseInt(merged.sessionId, 10)
           : undefined,
+        powerOf3Phase: merged.powerOf3Phase ?? null,
+        dailyBias: merged.dailyBias ?? null,
+        marketStructure: merged.marketStructure ?? null,
+        premiumDiscount: merged.premiumDiscount ?? null,
       }
 
       const res = await api.put<ApiResponse<boolean>>(

@@ -27,6 +27,15 @@ export enum LessonStatus {
   Archived = 3,
 }
 
+export enum LessonSortOption {
+  Newest = 0,
+  Oldest = 1,
+  HighestImpact = 2,
+  LowestImpact = 3,
+  MostLinkedTrades = 4,
+  TitleAsc = 5,
+}
+
 export const LessonCategoryLabels: Record<LessonCategory, string> = {
   [LessonCategory.RiskManagement]: "Risk Management",
   [LessonCategory.EntryTiming]: "Entry Timing",
@@ -52,6 +61,15 @@ export const LessonStatusLabels: Record<LessonStatus, string> = {
   [LessonStatus.Archived]: "Archived",
 };
 
+export const LessonSortLabels: Record<LessonSortOption, string> = {
+  [LessonSortOption.Newest]: "Newest first",
+  [LessonSortOption.Oldest]: "Oldest first",
+  [LessonSortOption.HighestImpact]: "Highest impact",
+  [LessonSortOption.LowestImpact]: "Lowest impact",
+  [LessonSortOption.MostLinkedTrades]: "Most linked trades",
+  [LessonSortOption.TitleAsc]: "Title A-Z",
+};
+
 // ─── DTOs ─────────────────────────────────────────────────────────────
 
 export interface LessonLearnedDto {
@@ -60,6 +78,7 @@ export interface LessonLearnedDto {
   category: LessonCategory;
   severity: LessonSeverity;
   status: LessonStatus;
+  tags: string[];
   keyTakeaway: string | null;
   impactScore: number;
   linkedTradesCount: number;
@@ -85,6 +104,7 @@ export interface LessonLearnedDetailDto {
   category: LessonCategory;
   severity: LessonSeverity;
   status: LessonStatus;
+  tags: string[];
   keyTakeaway: string | null;
   actionItems: string | null;
   impactScore: number;
@@ -156,6 +176,7 @@ export interface CreateLessonRequest {
   actionItems: string | null;
   impactScore: number;
   linkedTradeIds: number[] | null;
+  tags: string[] | null;
 }
 
 export interface UpdateLessonRequest {
@@ -168,15 +189,52 @@ export interface UpdateLessonRequest {
   keyTakeaway: string | null;
   actionItems: string | null;
   impactScore: number;
+  tags: string[] | null;
 }
 
 export interface SearchLessonsRequest {
   category?: LessonCategory | null;
   severity?: LessonSeverity | null;
   status?: LessonStatus | null;
+  minimumImpactScore?: number | null;
+  linkedTradesOnly?: boolean;
+  sortBy?: LessonSortOption | null;
+  tags?: string[] | null;
   searchTerm?: string | null;
   page: number;
   pageSize: number;
+}
+
+export function parseLessonTags(rawValue: string): string[] {
+  const seen = new Set<string>()
+  const tags: string[] = []
+
+  for (const rawTag of rawValue.split(",")) {
+    const tag = rawTag.trim().slice(0, 32)
+
+    if (!tag) {
+      continue
+    }
+
+    if (tags.length >= 8) {
+      break
+    }
+
+    // Match backend case-insensitive tag deduplication.
+    const dedupeKey = tag.toLowerCase()
+    if (seen.has(dedupeKey)) {
+      continue
+    }
+
+    seen.add(dedupeKey)
+    tags.push(tag)
+  }
+
+  return tags
+}
+
+export function formatLessonTags(tags: string[] | null | undefined): string {
+  return tags?.join(", ") ?? ""
 }
 
 export interface CreateDisciplineRuleRequest {
