@@ -6,7 +6,6 @@ import {
   Copy,
   Edit3,
   FileText,
-  Heart,
   Loader2,
   MoreHorizontal,
   Plus,
@@ -53,7 +52,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { formatTradePrice, TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
+import type { TechnicalAnalysisTagApi, TradingZoneApi } from "@/components/create-trade-page"
+import { api, type ApiResponse } from "@/lib/api"
+import { PositionType } from "@/lib/enum/PositionType"
+import { getTradingSetups, type TradingSetupSummaryDto } from "@/lib/setup-api"
 import { cn } from "@/lib/utils"
 import {
   type TradeTemplateDto,
@@ -63,9 +65,6 @@ import {
   updateTemplate,
   deleteTemplate,
 } from "@/lib/template-api"
-import { PositionType } from "@/lib/enum/PositionType"
-import { api, ApiResponse } from "@/lib/api"
-import { TradingZoneApi } from "@/components/create-trade-page"
 
 // ─── Template Form ─────────────────────────────────────────────────────
 
@@ -75,28 +74,26 @@ interface TemplateFormData {
   asset: string
   position: string
   tradingZoneId: string
-  defaultStopLoss: string
-  defaultTargetTier1: string
-  defaultTargetTier2: string
-  defaultTargetTier3: string
+  tradingSetupId: string
+  defaultTechnicalAnalysisTagIds: string[]
   defaultConfidenceLevel: string
   defaultNotes: string
   isFavorite: boolean
 }
 
-const emptyForm: TemplateFormData = {
-  name: "",
-  description: "",
-  asset: "",
-  position: "",
-  tradingZoneId: "",
-  defaultStopLoss: "",
-  defaultTargetTier1: "",
-  defaultTargetTier2: "",
-  defaultTargetTier3: "",
-  defaultConfidenceLevel: "",
-  defaultNotes: "",
-  isFavorite: false,
+function createEmptyForm(): TemplateFormData {
+  return {
+    name: "",
+    description: "",
+    asset: "",
+    position: "",
+    tradingZoneId: "",
+    tradingSetupId: "",
+    defaultTechnicalAnalysisTagIds: [],
+    defaultConfidenceLevel: "",
+    defaultNotes: "",
+    isFavorite: false,
+  }
 }
 
 function fromDto(dto: TradeTemplateDto): TemplateFormData {
@@ -106,10 +103,8 @@ function fromDto(dto: TradeTemplateDto): TemplateFormData {
     asset: dto.asset ?? "",
     position: dto.position != null ? String(dto.position) : "",
     tradingZoneId: dto.tradingZoneId != null ? String(dto.tradingZoneId) : "",
-    defaultStopLoss: dto.defaultStopLoss != null ? String(dto.defaultStopLoss) : "",
-    defaultTargetTier1: dto.defaultTargetTier1 != null ? String(dto.defaultTargetTier1) : "",
-    defaultTargetTier2: dto.defaultTargetTier2 != null ? String(dto.defaultTargetTier2) : "",
-    defaultTargetTier3: dto.defaultTargetTier3 != null ? String(dto.defaultTargetTier3) : "",
+    tradingSetupId: dto.tradingSetupId != null ? String(dto.tradingSetupId) : "",
+    defaultTechnicalAnalysisTagIds: dto.defaultTechnicalAnalysisTagIds?.map(String) ?? [],
     defaultConfidenceLevel: dto.defaultConfidenceLevel != null ? String(dto.defaultConfidenceLevel) : "",
     defaultNotes: dto.defaultNotes ?? "",
     isFavorite: dto.isFavorite,
@@ -117,8 +112,17 @@ function fromDto(dto: TradeTemplateDto): TemplateFormData {
 }
 
 function toRequest(form: TemplateFormData): CreateTemplateRequest {
-  const parseNum = (v: string) => { const n = Number.parseFloat(v); return Number.isFinite(n) ? n : null }
   const parseInt = (v: string) => { const n = Number.parseInt(v, 10); return Number.isFinite(n) ? n : null }
+  const technicalAnalysisTagIds = form.defaultTechnicalAnalysisTagIds.reduce<number[]>((ids, value) => {
+    const parsed = Number.parseInt(value, 10)
+
+    if (Number.isFinite(parsed)) {
+      ids.push(parsed)
+    }
+
+    return ids
+  }, [])
+
   return {
     name: form.name.trim(),
     description: form.description.trim() || null,
@@ -126,16 +130,16 @@ function toRequest(form: TemplateFormData): CreateTemplateRequest {
     position: parseInt(form.position),
     tradingZoneId: parseInt(form.tradingZoneId),
     tradingSessionId: null,
-    tradingSetupId: null,
-    defaultStopLoss: parseNum(form.defaultStopLoss),
-    defaultTargetTier1: parseNum(form.defaultTargetTier1),
-    defaultTargetTier2: parseNum(form.defaultTargetTier2),
-    defaultTargetTier3: parseNum(form.defaultTargetTier3),
+    tradingSetupId: parseInt(form.tradingSetupId),
+    defaultStopLoss: null,
+    defaultTargetTier1: null,
+    defaultTargetTier2: null,
+    defaultTargetTier3: null,
     defaultConfidenceLevel: parseInt(form.defaultConfidenceLevel),
     defaultNotes: form.defaultNotes.trim() || null,
     defaultChecklistIds: null,
     defaultEmotionTagIds: null,
-    defaultTechnicalAnalysisTagIds: null,
+    defaultTechnicalAnalysisTagIds: technicalAnalysisTagIds.length > 0 ? technicalAnalysisTagIds : null,
     isFavorite: form.isFavorite,
   }
 }
@@ -154,24 +158,36 @@ function TemplateFormDialog({
   open,
   onOpenChange,
   editingTemplate,
+  prefillTemplate,
   zones,
+  setupOptions,
+  technicalAnalysisTags,
   onSaved,
 }: {
   open: boolean
   onOpenChange: (v: boolean) => void
   editingTemplate: TradeTemplateDto | null
+  prefillTemplate: TradeTemplateDto | null
   zones: TradingZoneApi[]
+  setupOptions: TradingSetupSummaryDto[]
+  technicalAnalysisTags: TechnicalAnalysisTagApi[]
   onSaved: () => void
 }) {
   const { toast } = useToast()
-  const [form, setForm] = useState<TemplateFormData>(emptyForm)
+  const [form, setForm] = useState<TemplateFormData>(() => createEmptyForm())
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     if (open) {
-      setForm(editingTemplate ? fromDto(editingTemplate) : emptyForm)
+      setForm(
+        editingTemplate
+          ? fromDto(editingTemplate)
+          : prefillTemplate
+            ? fromDto(prefillTemplate)
+            : createEmptyForm(),
+      )
     }
-  }, [open, editingTemplate])
+  }, [open, editingTemplate, prefillTemplate])
 
   const handleSubmit = async () => {
     if (!form.name.trim()) {
@@ -197,8 +213,17 @@ function TemplateFormDialog({
     }
   }
 
-  const patch = (field: keyof TemplateFormData, value: string | boolean) =>
+  const patch = <K extends keyof TemplateFormData>(field: K, value: TemplateFormData[K]) =>
     setForm((prev) => ({ ...prev, [field]: value }))
+
+  const toggleTechnicalAnalysisTag = (tagId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      defaultTechnicalAnalysisTagIds: prev.defaultTechnicalAnalysisTagIds.includes(tagId)
+        ? prev.defaultTechnicalAnalysisTagIds.filter((value) => value !== tagId)
+        : [...prev.defaultTechnicalAnalysisTagIds, tagId],
+    }))
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -217,7 +242,7 @@ function TemplateFormDialog({
           {/* Name & Description */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Template Name *</Label>
+              <Label htmlFor="template-name">Template Name *</Label>
               <Input
                 id="template-name"
                 placeholder='e.g. "EURUSD London OB Long"'
@@ -226,7 +251,7 @@ function TemplateFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Description</Label>
+              <Label htmlFor="template-description">Description</Label>
               <Input
                 id="template-description"
                 placeholder="When to use this template"
@@ -239,7 +264,7 @@ function TemplateFormDialog({
           {/* Asset & Direction */}
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label>Asset</Label>
+              <Label htmlFor="template-asset">Asset</Label>
               <Input
                 id="template-asset"
                 placeholder="EURUSD, BTCUSD..."
@@ -248,7 +273,7 @@ function TemplateFormDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Direction</Label>
+              <Label htmlFor="template-position">Direction</Label>
               <Select value={form.position} onValueChange={(v) => patch("position", v)}>
                 <SelectTrigger id="template-position">
                   <SelectValue placeholder="Any direction" />
@@ -260,7 +285,7 @@ function TemplateFormDialog({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Trading Zone</Label>
+              <Label htmlFor="template-zone">Trading Zone</Label>
               <Select value={form.tradingZoneId} onValueChange={(v) => patch("tradingZoneId", v)}>
                 <SelectTrigger id="template-zone">
                   <SelectValue placeholder="Select zone" />
@@ -274,58 +299,22 @@ function TemplateFormDialog({
             </div>
           </div>
 
-          {/* Targets & SL */}
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Stop Loss</Label>
-              <Input
-                id="template-sl"
-                type="number"
-                step={TRADE_PRICE_INPUT_STEP}
-                placeholder="0.00000"
-                value={form.defaultStopLoss}
-                onChange={(e) => patch("defaultStopLoss", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Target T1</Label>
-              <Input
-                id="template-t1"
-                type="number"
-                step={TRADE_PRICE_INPUT_STEP}
-                placeholder="0.00000"
-                value={form.defaultTargetTier1}
-                onChange={(e) => patch("defaultTargetTier1", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Target T2</Label>
-              <Input
-                id="template-t2"
-                type="number"
-                step={TRADE_PRICE_INPUT_STEP}
-                placeholder="0.00000"
-                value={form.defaultTargetTier2}
-                onChange={(e) => patch("defaultTargetTier2", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Target T3</Label>
-              <Input
-                id="template-t3"
-                type="number"
-                step={TRADE_PRICE_INPUT_STEP}
-                placeholder="0.00000"
-                value={form.defaultTargetTier3}
-                onChange={(e) => patch("defaultTargetTier3", e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Confidence & Favorite */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>Confidence Level</Label>
+              <Label htmlFor="template-setup">Linked Setup</Label>
+              <Select value={form.tradingSetupId} onValueChange={(value) => patch("tradingSetupId", value)}>
+                <SelectTrigger id="template-setup">
+                  <SelectValue placeholder="Select a setup" />
+                </SelectTrigger>
+                <SelectContent>
+                  {setupOptions.map((setup) => (
+                    <SelectItem key={setup.id} value={String(setup.id)}>{setup.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="template-confidence">Confidence Level</Label>
               <Select value={form.defaultConfidenceLevel} onValueChange={(v) => patch("defaultConfidenceLevel", v)}>
                 <SelectTrigger id="template-confidence">
                   <SelectValue placeholder="Select level" />
@@ -337,26 +326,68 @@ function TemplateFormDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant={form.isFavorite ? "default" : "outline"}
-                className="w-full gap-2"
-                onClick={() => patch("isFavorite", !form.isFavorite)}
-              >
-                <Star className={cn("h-4 w-4", form.isFavorite && "fill-current")} />
-                {form.isFavorite ? "Favorited" : "Mark as Favorite"}
-              </Button>
+          </div>
+
+          <fieldset className="space-y-3">
+            <div>
+              <legend className="text-sm font-medium text-foreground">Technical Analysis Tags</legend>
+              <p id="template-technical-tags-description" className="mt-1 text-xs text-muted-foreground">
+                Pick the structural confirmations that make this template valid.
+              </p>
             </div>
+
+            {technicalAnalysisTags.length > 0 ? (
+              <div className="flex flex-wrap gap-2" aria-describedby="template-technical-tags-description">
+                {technicalAnalysisTags.map((tag) => {
+                  const isSelected = form.defaultTechnicalAnalysisTagIds.includes(String(tag.id))
+
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      aria-label={`${isSelected ? "Remove" : "Add"} ${tag.name} technical analysis tag`}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleTechnicalAnalysisTag(String(tag.id))}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(0,0,0,0.1)]",
+                        isSelected
+                          ? "border-primary/50 bg-primary/20 text-primary ring-2 ring-primary/30 shadow-[0_0_15px_rgba(79,70,229,0.2)]"
+                          : "border-white/10 bg-background/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary",
+                      )}
+                      title={tag.description || undefined}
+                    >
+                      {tag.name}
+                      {tag.shortName ? ` (${tag.shortName})` : ""}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                No technical analysis tags available yet.
+              </div>
+            )}
+          </fieldset>
+
+          <div className="flex items-end">
+            <Button
+              type="button"
+              variant={form.isFavorite ? "default" : "outline"}
+              className="w-full gap-2 sm:w-auto"
+              onClick={() => patch("isFavorite", !form.isFavorite)}
+            >
+              <Star className={cn("h-4 w-4", form.isFavorite && "fill-current")} />
+              {form.isFavorite ? "Favorited" : "Mark as Favorite"}
+            </Button>
           </div>
 
           {/* Notes */}
           <div className="space-y-2">
-            <Label>Default Notes</Label>
+            <Label htmlFor="template-notes">Default Notes</Label>
             <Textarea
               id="template-notes"
               placeholder="Pre-filled notes when using this template..."
-              className="min-h-[80px]"
+              className="min-h-20"
               value={form.defaultNotes}
               onChange={(e) => patch("defaultNotes", e.target.value)}
             />
@@ -379,12 +410,16 @@ function TemplateFormDialog({
 
 function TemplateCard({
   template,
+  setupName,
+  technicalAnalysisTagCount,
   onEdit,
   onDelete,
   onDuplicate,
   onUse,
 }: {
   template: TradeTemplateDto
+  setupName: string | null
+  technicalAnalysisTagCount: number
   onEdit: () => void
   onDelete: () => void
   onDuplicate: () => void
@@ -474,21 +509,27 @@ function TemplateCard({
                 {template.tradingZoneName}
               </Badge>
             )}
+            {setupName && (
+              <Badge variant="outline" className="rounded-full border-sky-500/20 bg-sky-500/5 text-xs font-medium text-sky-500">
+                {setupName}
+              </Badge>
+            )}
           </div>
 
           {/* Metrics row */}
           <div className="grid grid-cols-3 gap-2 rounded-xl border border-border/30 bg-muted/30 p-2.5 text-center">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">SL</p>
-              <p className="text-sm font-semibold text-foreground">
-                {formatTradePrice(template.defaultStopLoss)}
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Setup</p>
+              <p
+                className={cn("truncate text-sm font-semibold", !setupName && "text-muted-foreground")}
+                title={setupName ?? undefined}
+              >
+                {setupName ?? "None"}
               </p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">T1</p>
-              <p className="text-sm font-semibold text-foreground">
-                {formatTradePrice(template.defaultTargetTier1)}
-              </p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tags</p>
+              <p className="text-sm font-semibold text-foreground">{technicalAnalysisTagCount}</p>
             </div>
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Uses</p>
@@ -517,25 +558,57 @@ export function TemplateManager({ onUseTemplate }: { onUseTemplate?: (template: 
   const { toast } = useToast()
   const [templates, setTemplates] = useState<TradeTemplateDto[]>([])
   const [zones, setZones] = useState<TradingZoneApi[]>([])
+  const [setupOptions, setSetupOptions] = useState<TradingSetupSummaryDto[]>([])
+  const [technicalAnalysisTags, setTechnicalAnalysisTags] = useState<TechnicalAnalysisTagApi[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<TradeTemplateDto | null>(null)
+  const [prefillTemplate, setPrefillTemplate] = useState<TradeTemplateDto | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<TradeTemplateDto | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setIsLoading(true)
     try {
-      const [tplRes, zoneRes] = await Promise.allSettled([
+      const [tplRes, zoneRes, setupRes, technicalTagRes] = await Promise.allSettled([
         getTemplates(),
         api.get<ApiResponse<TradingZoneApi[]>>("/v1/trading-zones"),
+        getTradingSetups(),
+        api.get<ApiResponse<TechnicalAnalysisTagApi[]>>("/v1/technical-analysis"),
       ])
+      const failedResources: string[] = []
+
       if (tplRes.status === "fulfilled" && tplRes.value.data.isSuccess) {
         setTemplates(tplRes.value.data.value)
+      } else {
+        failedResources.push("templates")
       }
+
       if (zoneRes.status === "fulfilled" && zoneRes.value.data.isSuccess) {
         setZones(zoneRes.value.data.value)
+      } else {
+        failedResources.push("trading zones")
+      }
+
+      if (setupRes.status === "fulfilled" && setupRes.value.data.isSuccess) {
+        setSetupOptions(setupRes.value.data.value)
+      } else {
+        failedResources.push("setups")
+      }
+
+      if (technicalTagRes.status === "fulfilled" && technicalTagRes.value.data.isSuccess) {
+        setTechnicalAnalysisTags(technicalTagRes.value.data.value)
+      } else {
+        failedResources.push("technical analysis tags")
+      }
+
+      if (failedResources.length > 0) {
+        toast({
+          variant: "destructive",
+          title: "Some template data failed to load",
+          description: `Could not load ${failedResources.join(", ")}.`,
+        })
       }
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to load templates." })
@@ -557,23 +630,33 @@ export function TemplateManager({ onUseTemplate }: { onUseTemplate?: (template: 
   })
 
   const handleEdit = (tpl: TradeTemplateDto) => {
+    setPrefillTemplate(null)
     setEditingTemplate(tpl)
     setDialogOpen(true)
   }
 
   const handleCreate = () => {
     setEditingTemplate(null)
+    setPrefillTemplate(null)
     setDialogOpen(true)
   }
 
   const handleDuplicate = (tpl: TradeTemplateDto) => {
-    const dup = { ...tpl, id: 0, name: `${tpl.name} (Copy)` } as TradeTemplateDto
     setEditingTemplate(null)
+    setPrefillTemplate({
+      ...tpl,
+      name: `${tpl.name} (Copy)`,
+    })
     setDialogOpen(true)
-    // Pre-fill form with duplicate data after dialog opens
-    setTimeout(() => {
-      setEditingTemplate(dup)
-    }, 50)
+  }
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    setDialogOpen(nextOpen)
+
+    if (!nextOpen) {
+      setEditingTemplate(null)
+      setPrefillTemplate(null)
+    }
   }
 
   const handleDelete = async () => {
@@ -651,16 +734,24 @@ export function TemplateManager({ onUseTemplate }: { onUseTemplate?: (template: 
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <AnimatePresence mode="popLayout">
-            {filtered.map((tpl) => (
-              <TemplateCard
-                key={tpl.id}
-                template={tpl}
-                onEdit={() => handleEdit(tpl)}
-                onDelete={() => setDeleteConfirm(tpl)}
-                onDuplicate={() => handleDuplicate(tpl)}
-                onUse={() => handleUse(tpl)}
-              />
-            ))}
+            {filtered.map((tpl) => {
+              const setupName = tpl.tradingSetupId != null
+                ? setupOptions.find((setup) => setup.id === tpl.tradingSetupId)?.name ?? null
+                : null
+
+              return (
+                <TemplateCard
+                  key={tpl.id}
+                  template={tpl}
+                  setupName={setupName}
+                  technicalAnalysisTagCount={tpl.defaultTechnicalAnalysisTagIds?.length ?? 0}
+                  onEdit={() => handleEdit(tpl)}
+                  onDelete={() => setDeleteConfirm(tpl)}
+                  onDuplicate={() => handleDuplicate(tpl)}
+                  onUse={() => handleUse(tpl)}
+                />
+              )
+            })}
           </AnimatePresence>
         </div>
       )}
@@ -668,9 +759,12 @@ export function TemplateManager({ onUseTemplate }: { onUseTemplate?: (template: 
       {/* Form dialog */}
       <TemplateFormDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         editingTemplate={editingTemplate}
+        prefillTemplate={prefillTemplate}
         zones={zones}
+        setupOptions={setupOptions}
+        technicalAnalysisTags={technicalAnalysisTags}
         onSaved={() => void load()}
       />
 
