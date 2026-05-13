@@ -1,9 +1,19 @@
-import React from "react"
+import React, { useMemo, useState } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Select,
   SelectContent,
@@ -11,13 +21,49 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { FileText, Target, TrendingDown, TrendingUp } from "lucide-react"
+import {
+  Check,
+  ChevronsUpDown,
+  FileText,
+  Plus,
+  Target,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react"
 import { PositionType } from "@/lib/enum/PositionType"
 import type { TradeFormData } from "@/lib/create-trade-form"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
 import type { TradingSetupSummaryDto } from "@/lib/setup-api"
 import { TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
+import { useTrades } from "@/lib/trade-context"
 import { TradeFormSection } from "./trade-form-section"
+
+const RECENT_ASSET_LIMIT = 8
+
+function getTradeTimestamp(date: string): number {
+  const timestamp = Date.parse(date)
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+function getRecentAssetOptions(trades: { asset: string; date: string }[]): string[] {
+  const seenAssets = new Set<string>()
+
+  return [...trades]
+    .sort((leftTrade, rightTrade) => getTradeTimestamp(rightTrade.date) - getTradeTimestamp(leftTrade.date))
+    .map((trade) => trade.asset.trim())
+    .filter(Boolean)
+    .filter((asset) => {
+      const normalizedAsset = asset.toUpperCase()
+
+      if (seenAssets.has(normalizedAsset)) {
+        return false
+      }
+
+      seenAssets.add(normalizedAsset)
+      return true
+    })
+    .slice(0, RECENT_ASSET_LIMIT)
+}
 
 export interface TradeSetupSectionProps {
   formData: TradeFormData
@@ -40,6 +86,33 @@ export function TradeSetupSection({
   selectedTradingSetup,
   surfaceFieldClassName,
 }: TradeSetupSectionProps) {
+  const { trades } = useTrades()
+  const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false)
+  const [assetSearchQuery, setAssetSearchQuery] = useState("")
+
+  const recentAssetOptions = useMemo(() => getRecentAssetOptions(trades), [trades])
+
+  const trimmedAssetSearchQuery = assetSearchQuery.trim()
+  const normalizedAssetSearchQuery = trimmedAssetSearchQuery.toUpperCase()
+  const normalizedSelectedAsset = formData.asset.trim().toUpperCase()
+  const hasExactRecentAssetMatch = recentAssetOptions.some(
+    (asset) => asset.toUpperCase() === normalizedAssetSearchQuery,
+  )
+
+  const handleAssetPickerOpenChange = (nextOpen: boolean) => {
+    setIsAssetPickerOpen(nextOpen)
+
+    if (!nextOpen) {
+      setAssetSearchQuery("")
+    }
+  }
+
+  const handleAssetSelection = (nextAsset: string) => {
+    handleInputChange("asset", nextAsset.trim())
+    setAssetSearchQuery("")
+    setIsAssetPickerOpen(false)
+  }
+
   return (
     <TradeFormSection
       title="Trade Setup"
@@ -51,13 +124,81 @@ export function TradeSetupSection({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="asset">Asset Name</Label>
-              <Input
-                id="asset"
-                placeholder="e.g., BTC/USD, AAPL, ETH"
-                value={formData.asset}
-                onChange={(event) => handleInputChange("asset", event.target.value)}
-                className={cn(surfaceFieldClassName, errors.asset && "border-destructive")}
-              />
+              <Popover open={isAssetPickerOpen} onOpenChange={handleAssetPickerOpenChange}>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="asset"
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-label="Asset Name"
+                    aria-expanded={isAssetPickerOpen}
+                    className={cn(
+                      "h-9 w-full justify-between px-3 font-normal",
+                      !formData.asset && "text-muted-foreground",
+                      surfaceFieldClassName,
+                      errors.asset && "border-destructive",
+                    )}
+                  >
+                    <span className="truncate">
+                      {formData.asset || "Select or add an asset"}
+                    </span>
+                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-(--radix-popover-trigger-width) p-0">
+                  <Command>
+                    <CommandInput
+                      aria-label="Search or add asset"
+                      autoFocus
+                      placeholder="Search recent assets or add a new one"
+                      value={assetSearchQuery}
+                      onValueChange={setAssetSearchQuery}
+                    />
+                    <CommandList>
+                      {trimmedAssetSearchQuery && !hasExactRecentAssetMatch ? (
+                        <CommandGroup heading="Use custom asset">
+                          <CommandItem
+                            value={`use-${trimmedAssetSearchQuery}`}
+                            onSelect={() => handleAssetSelection(trimmedAssetSearchQuery)}
+                          >
+                            <Plus className="h-4 w-4 text-primary" />
+                            <span className="truncate">Use &quot;{trimmedAssetSearchQuery}&quot;</span>
+                          </CommandItem>
+                        </CommandGroup>
+                      ) : null}
+
+                      {recentAssetOptions.length > 0 ? (
+                        <CommandGroup heading="Recent assets">
+                          {recentAssetOptions.map((asset) => (
+                            <CommandItem
+                              key={asset}
+                              value={asset}
+                              onSelect={() => handleAssetSelection(asset)}
+                            >
+                              <Check
+                                className={cn(
+                                  "h-4 w-4",
+                                  asset.toUpperCase() === normalizedSelectedAsset
+                                    ? "opacity-100"
+                                    : "opacity-0",
+                                )}
+                              />
+                              <span className="truncate">{asset}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      ) : null}
+
+                      <CommandEmpty>
+                        {trimmedAssetSearchQuery
+                          ? `No recent assets match "${trimmedAssetSearchQuery}".`
+                          : "No recent assets yet. Type to add one."}
+                      </CommandEmpty>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {errors.asset ? (
                 <p className="text-xs text-destructive">{errors.asset}</p>
               ) : null}

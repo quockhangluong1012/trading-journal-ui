@@ -2,7 +2,9 @@ import { renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
+import { PositionType } from "@/lib/enum/PositionType"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
+import { TradeStatus } from "@/lib/enum/TradeStatus"
 
 const apiGetMock = vi.fn()
 
@@ -15,6 +17,26 @@ vi.mock("@/lib/api", () => ({
 describe("useDashboardOverview", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  const createTradeHistory = (overrides: Record<string, unknown> = {}) => ({
+    id: "trade-1",
+    asset: "NQ",
+    position: PositionType.Long,
+    status: TradeStatus.Closed,
+    date: "2026-05-12T14:30:00.000Z",
+    pnl: 120,
+    notes: "<p>Captured the liquidity sweep before entry.</p>",
+    emotionTags: [],
+    closedDate: "2026-05-12T15:00:00.000Z",
+    confidenceLevel: 4,
+    entryPrice: 21240,
+    exitPrice: 21264,
+    stopLoss: 21220,
+    targetTier1: 21264,
+    targetTier2: 0,
+    targetTier3: 0,
+    ...overrides,
   })
 
   it("enriches dashboard stats with expectancy, profit factor, and daily limit usage", async () => {
@@ -192,5 +214,125 @@ describe("useDashboardOverview", () => {
     expect(result.current.stats.dailyLimitUsedPercent).toBe(0)
     expect(result.current.stats.weeklyCapUsedPercent).toBe(0)
     expect(result.current.syncWarning).toContain("risk dashboard")
+  })
+
+  it("surfaces all filtered trades with missing notes and ignores trades with meaningful note content", async () => {
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === "/v1/dashboard/statistics?filter=4") {
+        return Promise.resolve({
+          data: {
+            totalPnL: 200,
+            winRate: 66.7,
+            totalTrades: 4,
+            openPositions: 1,
+          },
+        })
+      }
+
+      if (url === "/v1/dashboard/win-loss-ratio?filter=4") {
+        return Promise.resolve({
+          data: {
+            isSuccess: true,
+            value: [],
+          },
+        })
+      }
+
+      if (url === "/v1/dashboard/profit-trajectory?filter=4") {
+        return Promise.resolve({
+          data: {
+            isSuccess: true,
+            value: [],
+          },
+        })
+      }
+
+      if (url === "/v1/dashboard/asset-breakdown?filter=4") {
+        return Promise.resolve({
+          data: {
+            isSuccess: true,
+            value: [],
+          },
+        })
+      }
+
+      if (url.includes("status=1")) {
+        return Promise.resolve({
+          data: {
+            isSuccess: true,
+            value: {
+              values: [createTradeHistory({ id: "open-1", status: TradeStatus.Open, notes: "Waiting for confirmation" })],
+            },
+          },
+        })
+      }
+
+      if (url.startsWith("/v1/trade-histories?")) {
+        return Promise.resolve({
+          data: {
+            isSuccess: true,
+            value: {
+              values: [
+                createTradeHistory({
+                  id: "missing-older",
+                  asset: "MNQ",
+                  date: "2026-05-10T14:30:00.000Z",
+                  notes: "   ",
+                }),
+                createTradeHistory({
+                  id: "with-notes",
+                  asset: "NQ",
+                  date: "2026-05-11T14:30:00.000Z",
+                }),
+                createTradeHistory({
+                  id: "missing-newer",
+                  asset: "ES",
+                  date: "2026-05-12T14:30:00.000Z",
+                  notes: "<p><br></p>",
+                }),
+              ],
+            },
+          },
+        })
+      }
+
+      if (url === "/v1/risk/dashboard") {
+        return Promise.resolve({
+          data: {
+            value: {
+              accountBalance: 10000,
+              dailyLossLimitPercent: 2,
+              weeklyDrawdownCapPercent: 5,
+              maxOpenPositions: 3,
+              dailyPnl: -120,
+              dailyPnlPercent: -1.2,
+              weeklyPnl: 340,
+              weeklyPnlPercent: 3.4,
+              todayTradeCount: 2,
+              openPositionCount: 1,
+              weekTradeCount: 6,
+              todayWins: 1,
+              todayLosses: 1,
+              dailyLimitUsedPercent: 48,
+              weeklyCapUsedPercent: 62,
+              isDailyLimitBreached: false,
+              isWeeklyCapBreached: false,
+              alerts: [],
+            },
+          },
+        })
+      }
+
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+
+    const { result } = renderHook(() => useDashboardOverview(DashboardFilter.All))
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    expect(result.current.tradesMissingNotes.map((trade) => trade.id)).toEqual(["missing-newer", "missing-older"])
+    expect(apiGetMock).toHaveBeenCalledWith(expect.stringContaining("missingNotesOnly=true"))
   })
 })

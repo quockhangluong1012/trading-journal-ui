@@ -4,7 +4,10 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import DashboardPage from "../../app/page"
+import type { TradeHistory } from "@/app/types/trade"
 import type { TradingSetupDetailDto } from "@/lib/setup-api"
+import { PositionType } from "@/lib/enum/PositionType"
+import { TradeStatus } from "@/lib/enum/TradeStatus"
 import { SidebarProvider } from "@/components/ui/sidebar"
 
 const replaceSpy = vi.fn()
@@ -57,6 +60,79 @@ function createDailyNotesState(overrides: Partial<DailyNotesState> = {}): DailyN
 }
 
 let dailyNotesState = createDailyNotesState()
+
+type DashboardOverviewState = {
+  stats: {
+    totalPnL: number
+    winRate: number
+    totalTrades: number
+    openPositions: number
+    expectancy: number
+    profitFactor: number
+    dailyLimitUsedPercent: number
+    weeklyCapUsedPercent: number
+  }
+  winLossData: []
+  profitTrajectory: []
+  assetBreakdown: []
+  openPositions: TradeHistory[]
+  tradesMissingNotes: TradeHistory[]
+  isLoading: boolean
+  isRefreshing: boolean
+  lastUpdatedAt: Date | null
+  syncWarning: string | null
+  refresh: ReturnType<typeof vi.fn>
+}
+
+function createTradeHistory(overrides: Partial<TradeHistory> = {}): TradeHistory {
+  return {
+    id: "trade-1",
+    asset: "NQ",
+    position: PositionType.Long,
+    status: TradeStatus.Closed,
+    date: new Date("2026-05-12T14:30:00.000Z"),
+    pnl: 110,
+    notes: "<p>Captured the reclaim and managed risk.</p>",
+    emotionTags: [],
+    closedDate: new Date("2026-05-12T15:10:00.000Z"),
+    confidenceLevel: 4,
+    entryPrice: 21240,
+    exitPrice: 21262,
+    stopLoss: 21220,
+    targetTier1: 21262,
+    targetTier2: 0,
+    targetTier3: 0,
+    ...overrides,
+  }
+}
+
+function createDashboardOverviewState(overrides: Partial<DashboardOverviewState> = {}): DashboardOverviewState {
+  return {
+    stats: {
+      totalPnL: 0,
+      winRate: 0,
+      totalTrades: 0,
+      openPositions: 0,
+      expectancy: 0,
+      profitFactor: 0,
+      dailyLimitUsedPercent: 0,
+      weeklyCapUsedPercent: 0,
+    },
+    winLossData: [],
+    profitTrajectory: [],
+    assetBreakdown: [],
+    openPositions: [],
+    tradesMissingNotes: [],
+    isLoading: false,
+    isRefreshing: false,
+    lastUpdatedAt: null,
+    syncWarning: null,
+    refresh: vi.fn(),
+    ...overrides,
+  }
+}
+
+let dashboardOverviewState = createDashboardOverviewState()
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -129,6 +205,26 @@ vi.mock("@/components/dashboard/open-positions-table", () => ({
   OpenPositionsTable: () => <div>Open Positions</div>,
 }))
 
+vi.mock("@/components/psychology/tilt-gauge-widget", () => ({
+  TiltGaugeWidget: () => <div>Tilt Gauge Widget</div>,
+}))
+
+vi.mock("@/components/psychology/streak-widget", () => ({
+  StreakWidget: () => <div>Streak Widget</div>,
+}))
+
+vi.mock("@/components/psychology/karma-widget", () => ({
+  KarmaWidget: () => <div>Karma Widget</div>,
+}))
+
+vi.mock("@/components/dashboard/killzones-widget", () => ({
+  KillzonesWidget: () => <div>Killzones Widget</div>,
+}))
+
+vi.mock("@/components/dashboard/macro-times-widget", () => ({
+  MacroTimesWidget: () => <div>Macro Times Widget</div>,
+}))
+
 vi.mock("@/components/session/active-session-widget", () => ({
   ActiveSessionWidget: () => <div>Active Session</div>,
 }))
@@ -144,27 +240,7 @@ vi.mock("@/lib/auth-context", () => ({
 }))
 
 vi.mock("@/hooks/use-dashboard-overview", () => ({
-  useDashboardOverview: () => ({
-    stats: {
-      totalPnL: 0,
-      winRate: 0,
-      totalTrades: 0,
-      openPositions: 0,
-      expectancy: 0,
-      profitFactor: 0,
-      dailyLimitUsedPercent: 0,
-      weeklyCapUsedPercent: 0,
-    },
-    winLossData: [],
-    profitTrajectory: [],
-    assetBreakdown: [],
-    openPositions: [],
-    isLoading: false,
-    isRefreshing: false,
-    lastUpdatedAt: null,
-    syncWarning: null,
-    refresh: vi.fn(),
-  }),
+  useDashboardOverview: () => dashboardOverviewState,
 }))
 
 vi.mock("@/hooks/use-today-setup", () => ({
@@ -233,6 +309,7 @@ describe("dashboard page", () => {
       isLoading: false,
     }
     dailyNotesState = createDailyNotesState()
+    dashboardOverviewState = createDashboardOverviewState()
     replaceSpy.mockReset()
   })
 
@@ -312,13 +389,65 @@ describe("dashboard page", () => {
   })
 
   it("renders both asset breakdown charts on the dashboard", () => {
+    const user = userEvent.setup()
+
     render(
       <SidebarProvider>
         <DashboardPage />
       </SidebarProvider>
     )
 
-    expect(screen.getByText("P&L by Asset")).toBeInTheDocument()
-    expect(screen.getByText("Trades by Asset")).toBeInTheDocument()
+    return user.click(screen.getByRole("tab", { name: /performance/i })).then(() => {
+      expect(screen.getByText("P&L by Asset")).toBeVisible()
+      expect(screen.getByText("Trades by Asset")).toBeVisible()
+    })
+  })
+
+  it("organizes the dashboard into overview, performance, psychology, and planning tabs", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
+
+    expect(screen.getByRole("tab", { name: /overview/i })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /performance/i })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /psychology/i })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /planning/i })).toBeInTheDocument()
+    expect(screen.getByText("Stats Cards")).toBeVisible()
+
+    await user.click(screen.getByRole("tab", { name: /psychology/i }))
+    expect(screen.getByText("Tilt Gauge Widget")).toBeVisible()
+    expect(screen.getByText("Karma Widget")).toBeVisible()
+
+    await user.click(screen.getByRole("tab", { name: /planning/i }))
+    expect(screen.getByText("Killzones Widget")).toBeVisible()
+    expect(screen.getByText("Pre-Trade Check Widget")).toBeVisible()
+  })
+
+  it("lists trades that still need notes with links to the trade detail page", () => {
+    dashboardOverviewState = createDashboardOverviewState({
+      tradesMissingNotes: [
+        createTradeHistory({ id: "trade-1", asset: "NQ", notes: "" }),
+        createTradeHistory({
+          id: "trade-2",
+          asset: "MNQ",
+          date: new Date("2026-05-11T14:30:00.000Z"),
+          notes: "<p><br></p>",
+        }),
+      ],
+    })
+
+    render(
+      <SidebarProvider>
+        <DashboardPage />
+      </SidebarProvider>
+    )
+
+    expect(screen.getByText(/trades needing notes/i)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /add notes for nq trade/i })).toHaveAttribute("href", "/trade/trade-1")
+    expect(screen.getByRole("link", { name: /add notes for mnq trade/i })).toHaveAttribute("href", "/trade/trade-2")
   })
 })

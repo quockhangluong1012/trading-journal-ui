@@ -11,7 +11,7 @@ import { TodaySetupDialog } from "@/components/dashboard/today-setup-dialog"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { DashboardCommandCenter } from "@/components/dashboard/dashboard-command-center"
-import { AiEconomicImpactCard } from "@/components/dashboard/ai-economic-impact-card"
+import { MissingTradeNotesCard } from "@/components/dashboard/missing-trade-notes-card"
 import { StatsCards } from "@/components/dashboard/stats-cards"
 import { WinLossChart } from "@/components/dashboard/win-loss-chart"
 import { ProfitChart } from "@/components/dashboard/profit-chart"
@@ -29,6 +29,7 @@ import { KarmaWidget } from "@/components/psychology/karma-widget"
 import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDailyNotes } from "@/hooks/use-daily-notes"
 import { useDashboardOverview } from "@/hooks/use-dashboard-overview"
 import { useTodaySetup } from "@/hooks/use-today-setup"
@@ -67,6 +68,7 @@ function DashboardContent() {
     profitTrajectory,
     assetBreakdown,
     openPositions,
+    tradesMissingNotes,
     isLoading: isDashboardLoading,
     isRefreshing,
     lastUpdatedAt,
@@ -183,52 +185,78 @@ function DashboardContent() {
           sessionControl={<ActiveSessionWidget />}
         />
 
-        <StatsCards stats={stats} isLoading={isDashboardLoading} />
+        <Tabs defaultValue="overview" className="space-y-5">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-3xl border border-border/60 bg-background/70 p-2 shadow-sm sm:grid-cols-4">
+            <TabsTrigger id="dashboard-tab-overview" value="overview" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger id="dashboard-tab-performance" value="performance" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              Performance
+            </TabsTrigger>
+            <TabsTrigger id="dashboard-tab-psychology" value="psychology" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              Psychology
+            </TabsTrigger>
+            <TabsTrigger id="dashboard-tab-planning" value="planning" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+              Planning
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <TiltGaugeWidget />
-          <StreakWidget />
-        </div>
+          <TabsContent value="overview" aria-labelledby="dashboard-tab-overview" className="space-y-6">
+            <StatsCards stats={stats} isLoading={isDashboardLoading} />
 
-        <KarmaWidget />
+            <div className="grid gap-6 xl:grid-cols-2">
+              <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
+              <MissingTradeNotesCard trades={tradesMissingNotes} isLoading={isDashboardLoading} />
+            </div>
+          </TabsContent>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <KillzonesWidget />
-          <MacroTimesWidget />
-        </div>
+          <TabsContent value="performance" aria-labelledby="dashboard-tab-performance" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ProfitChart filter={filter} profitTrajectory={profitTrajectory} isLoading={isDashboardLoading} />
+              <WinLossChart filter={filter} data={winLossData} isLoading={isDashboardLoading} />
+            </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <ProfitChart filter={filter} profitTrajectory={profitTrajectory} isLoading={isDashboardLoading} />
-          <WinLossChart filter={filter} data={winLossData} isLoading={isDashboardLoading} />
-        </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <AssetBreakdownChart
+                title="P&L by Asset"
+                description="Net performance grouped by instrument"
+                data={assetBreakdown}
+                metric="pnl"
+                isLoading={isDashboardLoading}
+              />
+              <AssetBreakdownChart
+                title="Trades by Asset"
+                description="Trade count grouped by instrument"
+                data={assetBreakdown}
+                metric="count"
+                isLoading={isDashboardLoading}
+              />
+            </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <AssetBreakdownChart
-            title="P&L by Asset"
-            description="Net performance grouped by instrument"
-            data={assetBreakdown}
-            metric="pnl"
-            isLoading={isDashboardLoading}
-          />
-          <AssetBreakdownChart
-            title="Trades by Asset"
-            description="Trade count grouped by instrument"
-            data={assetBreakdown}
-            metric="count"
-            isLoading={isDashboardLoading}
-          />
-        </div>
+            <CalendarWidget filter={filter} />
+          </TabsContent>
 
-        <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
+          <TabsContent value="psychology" aria-labelledby="dashboard-tab-psychology" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <TiltGaugeWidget />
+              <StreakWidget />
+            </div>
 
-        <AiEconomicImpactCard symbols={openPositions.map((position) => position.asset)} />
+            <KarmaWidget />
+          </TabsContent>
 
-        <CalendarWidget filter={filter} />
+          <TabsContent value="planning" aria-labelledby="dashboard-tab-planning" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <KillzonesWidget />
+              <MacroTimesWidget />
+            </div>
 
-        <div className="w-full space-y-4">
-          <PreTradeCheckWidget compact />
-          <EconomicCalendarWidget />
-        </div>
+            <div className="w-full space-y-4">
+              <PreTradeCheckWidget compact />
+              <EconomicCalendarWidget />
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <TodaySetupDialog
