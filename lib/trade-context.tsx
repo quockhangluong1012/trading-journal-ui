@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { useAuth } from "@/lib/auth-context"
 import { useTradeApiStore } from "@/lib/stores/use-trade-api-store"
 import { useSessionStore, type UserSession } from "@/lib/stores/use-session-store"
 import { samplePsychologyEntries, type PsychologyEntry } from "./trade-store"
@@ -21,9 +22,9 @@ import { Trade } from "@/app/types/trade"
 interface TradeContextType {
   trades: Trade[]
   addTrade: (trade: Omit<Trade, "id">) => void
-  updateTrade: (id: string, trade: Partial<Trade>) => void
-  deleteTrade: (id: string) => void
-  closeTrade: (id: string, exitPrice: number) => void
+  updateTrade: (id: string, trade: Partial<Trade>) => Promise<void>
+  deleteTrade: (id: string) => Promise<void>
+  closeTrade: (id: string, exitPrice: number) => Promise<void>
 
   // User Sessions
   userSessions: UserSession[]
@@ -40,19 +41,42 @@ interface TradeContextType {
 const TradeContext = createContext<TradeContextType | undefined>(undefined)
 
 export function TradeProvider({ children }: { children: ReactNode }) {
+  const { user, isAuthLoading } = useAuth()
+
   // ── Zustand Stores ──
   const [psychologyEntries, setPsychologyEntries] = useState<PsychologyEntry[]>(
     samplePsychologyEntries,
-  );
-  const tradeStore = useTradeApiStore()
-  const sessionStore = useSessionStore()
+  )
+  const trades = useTradeApiStore((state) => state.trades)
+  const loadAllTrades = useTradeApiStore((state) => state.loadAllTrades)
+  const updateTradeInStore = useTradeApiStore((state) => state.updateTrade)
+  const deleteTradeInStore = useTradeApiStore((state) => state.deleteTrade)
+  const closeTradeInStore = useTradeApiStore((state) => state.closeTrade)
+  const addTradeToLocal = useTradeApiStore((state) => state.addTradeToLocal)
+  const resetTrades = useTradeApiStore((state) => state.reset)
 
-  // ── Load data from API on mount ──
+  const userSessions = useSessionStore((state) => state.sessions)
+  const activeSession = useSessionStore((state) => state.activeSession)
+  const loadSessions = useSessionStore((state) => state.loadSessions)
+  const startSessionInStore = useSessionStore((state) => state.startSession)
+  const endSessionInStore = useSessionStore((state) => state.endSession)
+  const resetSessions = useSessionStore((state) => state.reset)
+
+  // ── Load data from API after auth has hydrated ──
   useEffect(() => {
-    //tradeStore.loadAllTrades()
-    //sessionStore.loadSessions()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (isAuthLoading) {
+      return
+    }
+
+    if (!user) {
+      resetTrades()
+      resetSessions()
+      return
+    }
+
+    void loadAllTrades()
+    void loadSessions()
+  }, [isAuthLoading, loadAllTrades, loadSessions, resetSessions, resetTrades, user])
 
   // ── Trade CRUD (delegates to API store) ──
   const addTrade = (trade: Omit<Trade, "id">) => {
@@ -62,11 +86,11 @@ export function TradeProvider({ children }: { children: ReactNode }) {
       ...trade,
       id: Date.now().toString(),
     }
-    tradeStore.addTradeToLocal(newTrade)
+    addTradeToLocal(newTrade)
   }
 
   const updateTrade = async (id: string, updates: Partial<Trade>) => {
-    const success = await tradeStore.updateTrade(id, updates)
+    const success = await updateTradeInStore(id, updates)
     if (success) {
       toast({ title: "Trade updated", description: "Your trade has been updated." })
     } else {
@@ -75,7 +99,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   }
 
   const deleteTrade = async (id: string) => {
-    const success = await tradeStore.deleteTrade(id)
+    const success = await deleteTradeInStore(id)
     if (success) {
       toast({ title: "Trade deleted", description: "Trade has been removed." })
     } else {
@@ -84,13 +108,13 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   }
 
   const closeTrade = async (id: string, exitPrice: number) => {
-    const trade = tradeStore.trades.find((t) => t.id === id)
+    const trade = trades.find((storedTrade) => storedTrade.id === id)
     if (!trade) return
 
     const multiplier = trade.position === PositionType.Long ? 1 : -1
     const pnl = (exitPrice - trade.entryPrice) * multiplier * 100
 
-    const success = await tradeStore.closeTrade(id, exitPrice, pnl)
+    const success = await closeTradeInStore(id, exitPrice, pnl)
     if (success) {
       toast({ title: "Trade closed", description: `PnL: $${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}` })
     } else {
@@ -101,7 +125,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   // ── Session (delegates to session store) ──
   const startSession = async () => {
     try {
-      await sessionStore.startSession()
+      await startSessionInStore()
       toast({ title: "Session started", description: "Your trading session has begun. Good luck!" })
     } catch {
       toast({ title: "Failed to start session", description: "Could not create session. Please try again.", variant: "destructive" })
@@ -110,7 +134,7 @@ export function TradeProvider({ children }: { children: ReactNode }) {
 
   const endSession = async (note: string, duration: string) => {
     try {
-      await sessionStore.endSession(note, duration)
+      await endSessionInStore(note, duration)
       toast({ title: "Session ended", description: "Your trading session has been saved." })
     } catch {
       toast({ title: "Failed to end session", description: "Could not end session. Please try again.", variant: "destructive" })
@@ -122,9 +146,9 @@ export function TradeProvider({ children }: { children: ReactNode }) {
     const newEntry: PsychologyEntry = {
       ...entry,
       id: `p-${Date.now()}`,
-    };
-    setPsychologyEntries((prev) => [...prev, newEntry]);
-  };
+    }
+    setPsychologyEntries((prev) => [...prev, newEntry])
+  }
 
   const updatePsychologyEntry = (
     id: string,
@@ -132,23 +156,23 @@ export function TradeProvider({ children }: { children: ReactNode }) {
   ) => {
     setPsychologyEntries((prev) =>
       prev.map((entry) => (entry.id === id ? { ...entry, ...updates } : entry)),
-    );
-  };
+    )
+  }
 
   const deletePsychologyEntry = (id: string) => {
-    setPsychologyEntries((prev) => prev.filter((entry) => entry.id !== id));
-  };
+    setPsychologyEntries((prev) => prev.filter((entry) => entry.id !== id))
+  }
 
   return (
     <TradeContext.Provider
       value={{
-        trades: tradeStore.trades,
+        trades,
         addTrade,
         updateTrade,
         deleteTrade,
         closeTrade,
-        userSessions: sessionStore.sessions,
-        activeSession: sessionStore.activeSession,
+        userSessions,
+        activeSession,
         startSession,
         endSession,
         psychologyEntries,
