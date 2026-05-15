@@ -52,11 +52,11 @@ function StatPill({ label, value, icon: Icon, color = "text-foreground" }: {
   label: string; value: string; icon: ElementType; color?: string
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-secondary/20 px-3 py-2">
-      <Icon className={cn("h-3.5 w-3.5", color)} />
-      <div className="flex flex-col">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
-        <span className={cn("text-sm font-semibold", color)}>{value}</span>
+    <div className="min-w-0 flex items-center gap-2 rounded-xl border border-border/50 bg-secondary/20 px-3 py-2">
+      <Icon className={cn("h-3.5 w-3.5 shrink-0", color)} />
+      <div className="min-w-0 flex flex-1 flex-col">
+        <span className="truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+        <span className={cn("wrap-break-word text-sm font-semibold leading-tight", color)}>{value}</span>
       </div>
     </div>
   )
@@ -132,14 +132,14 @@ function SetupCard({ setup, onViewDetail, onCompare, onRetire, onReactivate }: {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-2">
           <StatPill label="Trades" value={String(setup.totalTrades)} icon={Crosshair} />
           <StatPill label="Win Rate" value={`${setup.winRate.toFixed(1)}%`} icon={Target} color={wrColor} />
           <StatPill label="P&L" value={fmt(setup.totalPnl)} icon={setup.totalPnl >= 0 ? TrendingUp : TrendingDown} color={pnlColor} />
           <StatPill label="Expectancy" value={fmt(setup.expectancy)} icon={Zap} color={setup.expectancy > 0 ? POSITIVE_TEXT_CLASS : NEGATIVE_TEXT_CLASS} />
         </div>
 
-        <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <Award className="h-3 w-3" />PF: <span className={cn("font-semibold", setup.profitFactor >= 1.5 ? POSITIVE_TEXT_CLASS : setup.profitFactor >= 1 ? WARNING_TEXT_CLASS : NEGATIVE_TEXT_CLASS)}>
               {setup.profitFactor >= 1e15 ? "∞" : setup.profitFactor.toFixed(2)}
@@ -157,7 +157,7 @@ function SetupCard({ setup, onViewDetail, onCompare, onRetire, onReactivate }: {
 
 function OverviewHeader({ overview }: { overview: PlaybookOverview }) {
   return (
-    <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-background via-background to-primary/5 shadow-sm">
+    <Card className="overflow-hidden border-border/70 bg-linear-to-br from-background via-background to-primary/5 shadow-sm">
       <CardContent className="px-6 py-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
