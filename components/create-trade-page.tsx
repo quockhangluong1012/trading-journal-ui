@@ -7,46 +7,25 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useTrades } from "@/lib/trade-context"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   ArrowLeft,
   Save,
   Target,
   TrendingUp,
   TrendingDown,
-  Shield,
   FileText,
-  ImagePlus,
-  X,
-  Brain,
-  Tags,
-  Clock,
   ClipboardCheck,
   Check,
   CircleAlert,
-  Gauge,
-  AlertTriangle,
   Loader2,
   Layers,
 } from "lucide-react"
 import {
   EmotionTagApi,
-  getTagCategory,
-  TradeScreenshot,
   ChecklistModelApi,
   ChecklistModelDetailApi,
 } from "@/lib/trade-store"
 import { useToast } from "@/hooks/use-toast"
-import { Checkbox } from "@/components/ui/checkbox"
 import { PositionType } from "@/lib/enum/PositionType"
 import { TradeStatus } from "@/lib/enum/TradeStatus"
 import { api, ApiResponse } from "@/lib/api"
@@ -54,7 +33,6 @@ import {
   interpretPreTradeChecklist,
   type PreTradeChecklistInterpretationResult,
 } from "@/lib/ai-insights-api"
-import { getPlainTextFromRichText } from "@/lib/rich-text"
 import type { TradingSetupSummaryDto } from "@/lib/setup-api"
 import { cn } from "@/lib/utils"
 import { AxiosResponse } from "axios"
@@ -65,6 +43,7 @@ import {
   CREATE_TRADE_SCREENSHOT_MAX_COUNT,
   DEFAULT_CREATE_TRADE_RETURN_PATH,
   getInitialTradeFormData,
+  hasMeaningfulCreateTradeNotes,
   isAllowedCreateTradeScreenshotDataUrl,
   type TradeFormData,
   validateCreateTradeScreenshot,
@@ -126,6 +105,94 @@ import {
   surfaceFieldClassName,
 } from "./trade/create-trade/shared-utils"
 
+const WIZARD_STEPS = [
+  {
+    id: "setup",
+    label: "Setup",
+    description: "Define the instrument, trade direction, entry, stop, and targets.",
+    icon: Target,
+  },
+  {
+    id: "context",
+    label: "Context",
+    description: "Capture checklist status, market context, and trading psychology.",
+    icon: ClipboardCheck,
+  },
+  {
+    id: "evidence",
+    label: "Evidence & Submit",
+    description: "Add notes or charts, then review the setup before saving it.",
+    icon: FileText,
+  },
+] as const
+
+const STEP_VALIDATION_FIELDS = [
+  ["asset", "entryPrice", "stopLoss", "date", "targetTier1"],
+  ["checklist", "tradingSession", "confidenceLevel"],
+  [],
+] as const
+
+const VALIDATION_GUIDANCE: Record<string, string> = {
+  asset: "Add the asset or market you are planning to trade.",
+  entryPrice: "Enter a valid entry price for the setup.",
+  stopLoss: "Set a protective stop loss before continuing.",
+  date: "Choose the date for this trade idea.",
+  targetTier1: "Add at least one target so the reward plan is clear.",
+  checklist: "Choose a checklist model if you want pre-trade criteria.",
+  tradingSession: "Select the trading zone or session for this setup.",
+  confidenceLevel: "Set your confidence level to capture conviction.",
+}
+
+function getCreateTradeValidationErrors({
+  formData,
+  checklistCount,
+  checkedItemCount,
+  tradingSession,
+  confidenceLevel,
+}: {
+  formData: TradeFormData
+  checklistCount: number
+  checkedItemCount: number
+  tradingSession: string
+  confidenceLevel: number
+}): Record<string, string> {
+  const nextErrors: Record<string, string> = {}
+
+  if (!formData.asset.trim()) {
+    nextErrors.asset = "Asset name is required"
+  }
+
+  if (!formData.entryPrice || Number.parseFloat(formData.entryPrice) <= 0) {
+    nextErrors.entryPrice = "Valid entry price is required"
+  }
+
+  if (!formData.stopLoss || Number.parseFloat(formData.stopLoss) <= 0) {
+    nextErrors.stopLoss = "Valid stop loss is required"
+  }
+
+  if (!formData.date) {
+    nextErrors.date = "Trade date is required"
+  }
+
+  if (!formData.targetTier1 && !formData.targetTier2 && !formData.targetTier3) {
+    nextErrors.targetTier1 = "At least one target price is required"
+  }
+
+  if (checklistCount > 0 && checkedItemCount === 0) {
+    nextErrors.checklist = "Please complete at least one checklist item"
+  }
+
+  if (!tradingSession) {
+    nextErrors.tradingSession = "Trading zone is required"
+  }
+
+  if (confidenceLevel === 0) {
+    nextErrors.confidenceLevel = "Confidence level is required"
+  }
+
+  return nextErrors
+}
+
 export function CreateTradePage({
   returnTo = DEFAULT_CREATE_TRADE_RETURN_PATH,
   templateId,
@@ -135,13 +202,20 @@ export function CreateTradePage({
   const router = useRouter()
   const { addTrade, activeSession } = useTrades()
   const { toast } = useToast()
+  const overrideAsset = queryOverrides?.asset
+  const overridePosition = queryOverrides?.position
+  const overrideEntry = queryOverrides?.entry
+  const overrideStopLoss = queryOverrides?.sl
+  const overrideTargetTier1 = queryOverrides?.t1
+  const overrideTradingZone = queryOverrides?.zone
+  const overrideConfidence = queryOverrides?.confidence
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [screenshots, setScreenshots] = useState<UploadedTradeScreenshot[]>([])
   const [selectedEmotions, setSelectedEmotions] = useState<string[]>([])
-  const [confidenceLevel, setConfidenceLevel] = useState<number>(queryOverrides?.confidence ? Number(queryOverrides.confidence) : 0)
+  const [confidenceLevel, setConfidenceLevel] = useState<number>(overrideConfidence ? Number(overrideConfidence) : 0)
   const [analysisTags, setAnalysisTags] = useState<string[]>([])
-  const [tradingSession, setTradingSession] = useState(queryOverrides?.zone || "")
+  const [tradingSession, setTradingSession] = useState(overrideTradingZone || "")
   const [checkedItems, setCheckedItems] = useState<string[]>([])
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([])
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>([])
@@ -159,11 +233,11 @@ export function CreateTradePage({
   const [isChecklistInterpreting, setIsChecklistInterpreting] = useState(false)
   const [formData, setFormData] = useState<TradeFormData>(() => {
     const initial = getInitialTradeFormData()
-    if (queryOverrides?.asset) initial.asset = queryOverrides.asset
-    if (queryOverrides?.position) initial.position = Number(queryOverrides.position) as PositionType
-    if (queryOverrides?.entry) initial.entryPrice = queryOverrides.entry
-    if (queryOverrides?.sl) initial.stopLoss = queryOverrides.sl
-    if (queryOverrides?.t1) initial.targetTier1 = queryOverrides.t1
+    if (overrideAsset) initial.asset = overrideAsset
+    if (overridePosition) initial.position = Number(overridePosition) as PositionType
+    if (overrideEntry) initial.entryPrice = overrideEntry
+    if (overrideStopLoss) initial.stopLoss = overrideStopLoss
+    if (overrideTargetTier1) initial.targetTier1 = overrideTargetTier1
     return initial
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -174,33 +248,6 @@ export function CreateTradePage({
   const [ictDailyBias, setIctDailyBias] = useState<number | null>(null)
   const [ictMarketStructure, setIctMarketStructure] = useState<number | null>(null)
   const [ictPremiumDiscount, setIctPremiumDiscount] = useState<number | null>(null)
-
-
-  const WIZARD_STEPS = [
-    {
-      id: "setup",
-      label: "Setup",
-      description: "Define the instrument, trade direction, entry, stop, and targets.",
-      icon: Target,
-    },
-    {
-      id: "context",
-      label: "Context",
-      description: "Capture checklist status, market context, and trading psychology.",
-      icon: ClipboardCheck,
-    },
-    {
-      id: "evidence",
-      label: "Evidence & Submit",
-      description: "Add notes or charts, then review the setup before saving it.",
-      icon: FileText,
-    },
-  ] as const
-  const STEP_VALIDATION_FIELDS = [
-    ["asset", "entryPrice", "stopLoss", "date", "targetTier1"],
-    ["checklist", "tradingSession", "confidenceLevel"],
-    [],
-  ] as const
 
   const checklistDetailRequestRef = useRef(0)
 
@@ -216,19 +263,19 @@ export function CreateTradePage({
           const tpl = res.data.value
           setFormData((prev) => ({
             ...prev,
-            asset: queryOverrides?.asset || tpl.asset || prev.asset,
+            asset: overrideAsset || tpl.asset || prev.asset,
             tradingSetupId: tpl.tradingSetupId != null ? String(tpl.tradingSetupId) : prev.tradingSetupId,
-            position: queryOverrides?.position ? (Number(queryOverrides.position) as PositionType) : (tpl.position != null ? (tpl.position as PositionType) : prev.position),
-            stopLoss: queryOverrides?.sl || (tpl.defaultStopLoss != null ? String(tpl.defaultStopLoss) : prev.stopLoss),
-            targetTier1: queryOverrides?.t1 || (tpl.defaultTargetTier1 != null ? String(tpl.defaultTargetTier1) : prev.targetTier1),
+            position: overridePosition ? (Number(overridePosition) as PositionType) : (tpl.position != null ? (tpl.position as PositionType) : prev.position),
+            stopLoss: overrideStopLoss || (tpl.defaultStopLoss != null ? String(tpl.defaultStopLoss) : prev.stopLoss),
+            targetTier1: overrideTargetTier1 || (tpl.defaultTargetTier1 != null ? String(tpl.defaultTargetTier1) : prev.targetTier1),
             targetTier2: tpl.defaultTargetTier2 != null ? String(tpl.defaultTargetTier2) : prev.targetTier2,
             targetTier3: tpl.defaultTargetTier3 != null ? String(tpl.defaultTargetTier3) : prev.targetTier3,
             notes: tpl.defaultNotes || prev.notes,
           }))
-          if (!queryOverrides?.zone && tpl.tradingZoneId != null) {
+          if (!overrideTradingZone && tpl.tradingZoneId != null) {
             setTradingSession(String(tpl.tradingZoneId))
           }
-          if (!queryOverrides?.confidence && tpl.defaultConfidenceLevel != null) {
+          if (!overrideConfidence && tpl.defaultConfidenceLevel != null) {
             setConfidenceLevel(tpl.defaultConfidenceLevel)
           }
           if (tpl.defaultEmotionTagIds && tpl.defaultEmotionTagIds.length > 0) {
@@ -247,7 +294,15 @@ export function CreateTradePage({
     }
     void loadTemplate()
     return () => { isActive = false }
-  }, [templateId, queryOverrides])
+  }, [
+    overrideAsset,
+    overrideConfidence,
+    overridePosition,
+    overrideStopLoss,
+    overrideTargetTier1,
+    overrideTradingZone,
+    templateId,
+  ])
 
   useEffect(() => {
     let isActive = true
@@ -489,46 +544,14 @@ export function CreateTradePage({
     })
   }
 
-  const getValidationErrors = () => {
-    const nextErrors: Record<string, string> = {}
-
-    if (!formData.asset.trim()) {
-      nextErrors.asset = "Asset name is required"
-    }
-
-    if (!formData.entryPrice || Number.parseFloat(formData.entryPrice) <= 0) {
-      nextErrors.entryPrice = "Valid entry price is required"
-    }
-
-    if (!formData.stopLoss || Number.parseFloat(formData.stopLoss) <= 0) {
-      nextErrors.stopLoss = "Valid stop loss is required"
-    }
-
-    if (!formData.date) {
-      nextErrors.date = "Trade date is required"
-    }
-
-    if (!formData.targetTier1 && !formData.targetTier2 && !formData.targetTier3) {
-      nextErrors.targetTier1 = "At least one target price is required"
-    }
-
-    if (apiChecklists.length > 0 && checkedItems.length === 0) {
-      nextErrors.checklist = "Please complete at least one checklist item"
-    }
-
-    if (!tradingSession) {
-      nextErrors.tradingSession = "Trading zone is required"
-    }
-
-    if (confidenceLevel === 0) {
-      nextErrors.confidenceLevel = "Confidence level is required"
-    }
-
-    return nextErrors
-  }
-
   const validateForm = () => {
-    const nextErrors = getValidationErrors()
+    const nextErrors = getCreateTradeValidationErrors({
+      formData,
+      checklistCount: apiChecklists.length,
+      checkedItemCount: checkedItems.length,
+      tradingSession,
+      confidenceLevel,
+    })
 
     setErrors(nextErrors)
 
@@ -542,7 +565,13 @@ export function CreateTradePage({
       return true
     }
 
-    const nextErrors = getValidationErrors()
+    const nextErrors = getCreateTradeValidationErrors({
+      formData,
+      checklistCount: apiChecklists.length,
+      checkedItemCount: checkedItems.length,
+      tradingSession,
+      confidenceLevel,
+    })
 
     setErrors((prev) => {
       const mergedErrors = { ...prev }
@@ -803,9 +832,11 @@ export function CreateTradePage({
     () => setupOptions.find((setup) => setup.id.toString() === formData.tradingSetupId) ?? null,
     [formData.tradingSetupId, setupOptions],
   )
-  const selectedChecklistModel = checklistModels.find(
-    (model) => model.id.toString() === selectedModelId,
+  const selectedChecklistModel = useMemo(
+    () => checklistModels.find((model) => model.id.toString() === selectedModelId),
+    [checklistModels, selectedModelId],
   )
+  const hasMeaningfulNotes = hasMeaningfulCreateTradeNotes(formData.notes)
   const hasTargetConfigured = Boolean(
     formData.targetTier1 || formData.targetTier2 || formData.targetTier3,
   )
@@ -827,19 +858,16 @@ export function CreateTradePage({
   const riskTone = getProgressTone(riskMetrics.riskScore)
   const checklistTone = getProgressTone(checklistProgress)
   const completionTone = getProgressTone(completionProgress)
-  const validationErrors = getValidationErrors()
-  const validationGuidance: Record<string, string> = {
-    asset: "Add the asset or market you are planning to trade.",
-    entryPrice: "Enter a valid entry price for the setup.",
-    stopLoss: "Set a protective stop loss before continuing.",
-    date: "Choose the date for this trade idea.",
-    targetTier1: "Add at least one target so the reward plan is clear.",
-    checklist: apiChecklists.length > 0
-      ? "Check at least one checklist item for this model."
-      : "Choose a checklist model if you want pre-trade criteria.",
-    tradingSession: "Select the trading zone or session for this setup.",
-    confidenceLevel: "Set your confidence level to capture conviction.",
-  }
+  const validationErrors = useMemo(
+    () => getCreateTradeValidationErrors({
+      formData,
+      checklistCount: apiChecklists.length,
+      checkedItemCount: checkedItems.length,
+      tradingSession,
+      confidenceLevel,
+    }),
+    [apiChecklists.length, checkedItems.length, confidenceLevel, formData, tradingSession],
+  )
   const stepReadiness = [
     {
       completed: [
@@ -860,8 +888,7 @@ export function CreateTradePage({
       total: 3,
     },
     {
-      completed: [Boolean(formData.notes.trim()), screenshots.length > 0].filter(Boolean)
-        .length,
+      completed: [hasMeaningfulNotes, screenshots.length > 0].filter(Boolean).length,
       total: 2,
     },
   ]
@@ -872,9 +899,15 @@ export function CreateTradePage({
   )
   const currentStepAttentionItems = STEP_VALIDATION_FIELDS[currentStep]
     .filter((field) => validationErrors[field])
-    .map((field) => validationGuidance[field] ?? validationErrors[field])
+    .map((field) => {
+      if (field === "checklist" && apiChecklists.length > 0) {
+        return "Check at least one checklist item for this model."
+      }
+
+      return VALIDATION_GUIDANCE[field] ?? validationErrors[field]
+    })
   const reviewSuggestions = [
-    formData.notes.trim().length > 0
+    hasMeaningfulNotes
       ? null
       : "Add a short trade rationale so the later review has context.",
     screenshots.length > 0
@@ -906,13 +939,13 @@ export function CreateTradePage({
     <div className="relative space-y-6 pb-32">
       {/* Background glow effects */}
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-[10%] left-[-5%] h-150 w-150 animate-pulse rounded-full bg-primary/10 blur-[120px] duration-1000" />
-        <div className="absolute right-[-5%] top-[20%] h-125 w-125 animate-pulse rounded-full bg-accent/10 blur-[100px] duration-700" />
-        <div className="absolute bottom-[10%] left-[10%] h-175 w-175 animate-pulse rounded-full bg-emerald-500/5 blur-[150px] duration-1000" />
+        <div className="absolute -top-[10%] left-[-5%] h-150 w-150 rounded-full bg-primary/8 blur-[96px]" />
+        <div className="absolute right-[-5%] top-[20%] h-125 w-125 rounded-full bg-accent/8 blur-[84px]" />
+        <div className="absolute bottom-[10%] left-[10%] h-175 w-175 rounded-full bg-emerald-500/5 blur-[120px]" />
       </div>
 
       <div className="mx-auto w-full max-w-6xl space-y-5">
-        <div className="relative overflow-hidden rounded-[2.75rem] border border-slate-200/80 bg-background/85 ring-1 ring-slate-300/60 shadow-[0_24px_60px_rgba(148,163,184,0.22)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-950/90 dark:ring-white/5 dark:shadow-[0_24px_60px_rgba(2,8,23,0.38)]">
+        <div className="relative overflow-hidden rounded-[2.75rem] border border-slate-200/80 bg-background/92 ring-1 ring-slate-300/60 shadow-[0_18px_42px_rgba(148,163,184,0.16)] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/92 dark:ring-white/5 dark:shadow-[0_18px_42px_rgba(2,8,23,0.3)]">
           <div className="absolute inset-0 bg-linear-to-br from-primary/6 via-transparent to-accent/6 opacity-70" />
           <div className="relative flex flex-col gap-6 px-6 py-7 sm:px-8 sm:py-8 md:flex-row md:items-center md:justify-between md:gap-8">
             <div className="min-w-0 space-y-4">
@@ -995,7 +1028,7 @@ export function CreateTradePage({
           </div>
         </div>
 
-        <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-4xl border border-slate-200/80 bg-background/75 ring-1 ring-slate-300/50 shadow-[0_20px_50px_rgba(148,163,184,0.18)] backdrop-blur-2xl dark:border-slate-700/70 dark:bg-slate-950/85 dark:ring-white/5 dark:shadow-[0_20px_50px_rgba(2,8,23,0.3)]">
+        <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-4xl border border-slate-200/80 bg-background/88 ring-1 ring-slate-300/50 shadow-[0_16px_38px_rgba(148,163,184,0.14)] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/90 dark:ring-white/5 dark:shadow-[0_16px_38px_rgba(2,8,23,0.28)]">
         <div className="border-b border-slate-200/70 px-5 py-5 sm:px-6 dark:border-slate-800/90">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-2">
@@ -1039,7 +1072,7 @@ export function CreateTradePage({
                 type="button"
                 onClick={() => handleStepChange(index)}
                 className={cn(
-                  "rounded-3xl border p-4 text-left transition-all duration-300",
+                  "rounded-3xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-300",
                   isActive
                     ? "border-primary/45 bg-primary/10 shadow-[0_16px_40px_rgba(79,70,229,0.12)] dark:bg-primary/15 dark:shadow-[0_16px_40px_rgba(79,70,229,0.18)]"
                     : "border-slate-200/70 bg-background/60 hover:border-slate-300/90 hover:bg-background/75 dark:border-slate-700/70 dark:bg-slate-950/72 dark:hover:border-slate-500/80 dark:hover:bg-slate-900/80",
@@ -1242,7 +1275,7 @@ export function CreateTradePage({
           </div>
 
           <aside className="order-last self-start space-y-6 xl:sticky xl:top-24">
-            <div className="overflow-hidden rounded-4xl border border-slate-200/80 bg-background/60 ring-1 ring-slate-300/40 shadow-[0_24px_55px_rgba(148,163,184,0.18)] backdrop-blur-2xl transition-all duration-500 hover:border-slate-300/90 hover:shadow-[0_30px_65px_rgba(148,163,184,0.22)] dark:border-slate-700/70 dark:bg-slate-950/82 dark:ring-white/5 dark:shadow-[0_24px_55px_rgba(2,8,23,0.34)] dark:hover:border-slate-500/80 dark:hover:shadow-[0_30px_65px_rgba(2,8,23,0.38)]">
+            <div className="overflow-hidden rounded-4xl border border-slate-200/80 bg-background/82 ring-1 ring-slate-300/40 shadow-[0_20px_44px_rgba(148,163,184,0.16)] backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-300 hover:border-slate-300/90 hover:shadow-[0_24px_52px_rgba(148,163,184,0.2)] dark:border-slate-700/70 dark:bg-slate-950/88 dark:ring-white/5 dark:shadow-[0_20px_44px_rgba(2,8,23,0.3)] dark:hover:border-slate-500/80 dark:hover:shadow-[0_24px_52px_rgba(2,8,23,0.34)]">
               <div className="absolute inset-0 bg-linear-to-b from-white/6 to-transparent opacity-70" />
               <div className="relative border-b border-slate-200/70 px-6 py-6 dark:border-slate-800/90">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1434,7 +1467,7 @@ export function CreateTradePage({
           </aside>
         </div>
 
-        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-3rem)] max-w-5xl -translate-x-1/2 overflow-hidden rounded-4xl border border-slate-200/80 bg-background/75 px-6 py-4 ring-1 ring-slate-300/40 shadow-[0_24px_50px_rgba(148,163,184,0.18)] backdrop-blur-2xl transition-all duration-500 dark:border-slate-700/70 dark:bg-slate-950/88 dark:ring-white/5 dark:shadow-[0_24px_50px_rgba(2,8,23,0.34)]">
+        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-3rem)] max-w-5xl -translate-x-1/2 overflow-hidden rounded-4xl border border-slate-200/80 bg-background/88 px-6 py-4 ring-1 ring-slate-300/40 shadow-[0_18px_38px_rgba(148,163,184,0.16)] backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-300 dark:border-slate-700/70 dark:bg-slate-950/92 dark:ring-white/5 dark:shadow-[0_18px_38px_rgba(2,8,23,0.3)]">
           <div className="absolute inset-0 bg-linear-to-r from-primary/10 via-transparent to-accent/10 opacity-30" />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1.5">

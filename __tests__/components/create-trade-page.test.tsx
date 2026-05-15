@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -160,6 +160,16 @@ describe("CreateTradePage", () => {
     expect(screen.getByText("Evidence & Submit")).toBeInTheDocument()
     expect(screen.getByText(/Current focus:/)).toBeInTheDocument()
     expect(screen.getByText("Needs attention")).toBeInTheDocument()
+  })
+
+  it("does not count the default notes template as completed evidence", async () => {
+    render(<CreateTradePage />)
+
+    await screen.findByText("Wizard progress")
+
+    const evidenceStepCard = screen.getByRole("button", { name: /Evidence & Submit/i })
+
+    expect(within(evidenceStepCard).getByText("0/2 ready")).toBeInTheDocument()
   })
 
   it("blocks progression when the current step is incomplete", async () => {

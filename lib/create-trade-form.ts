@@ -113,6 +113,23 @@ const parseStringIdList = (values: string[]): number[] | null => {
   return parsedValues.length > 0 ? parsedValues : null
 }
 
+const CREATE_TRADE_DEFAULT_NOTES = [
+  "================= D1 ===================",
+  "================= H1 ===================",
+  "================= M15 ==================",
+  "================= M5/M1 ================",
+].join("\n\n")
+
+const normalizeCreateTradeNotes = (notes: string): string =>
+  notes.trim().replace(/\s+/g, " ")
+
+export const hasMeaningfulCreateTradeNotes = (notes: string): boolean => {
+  const normalizedNotes = normalizeCreateTradeNotes(notes)
+  const normalizedDefaultNotes = normalizeCreateTradeNotes(CREATE_TRADE_DEFAULT_NOTES)
+
+  return normalizedNotes.length > 0 && normalizedNotes !== normalizedDefaultNotes
+}
+
 export const getInitialTradeFormData = (now: Date = new Date()): TradeFormData => ({
   asset: "",
   tradingSetupId: "",
@@ -122,7 +139,7 @@ export const getInitialTradeFormData = (now: Date = new Date()): TradeFormData =
   targetTier2: "",
   targetTier3: "",
   stopLoss: "",
-  notes: "",
+  notes: CREATE_TRADE_DEFAULT_NOTES,
   date: now.toISOString().split("T")[0] ?? "",
 })
 

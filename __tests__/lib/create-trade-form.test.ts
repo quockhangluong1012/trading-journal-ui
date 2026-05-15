@@ -8,6 +8,8 @@ import {
   CREATE_TRADE_SCREENSHOT_MAX_FILE_SIZE_BYTES,
   CREATE_TRADE_SCREENSHOT_MAX_TOTAL_SIZE_BYTES,
   DEFAULT_CREATE_TRADE_RETURN_PATH,
+  getInitialTradeFormData,
+  hasMeaningfulCreateTradeNotes,
   isAllowedCreateTradeScreenshotDataUrl,
   sanitizeTradeReturnPath,
   type TradeFormData,
@@ -26,6 +28,40 @@ const createFormData = (overrides: Partial<TradeFormData> = {}): TradeFormData =
   notes: "Trade thesis",
   date: "2026-04-19",
   ...overrides,
+})
+
+describe("getInitialTradeFormData", () => {
+  it("returns the default multi-timeframe trade notes template", () => {
+    expect(getInitialTradeFormData().notes).toBe(
+      "================= D1 ===================\n\n================= H1 ===================\n\n================= M15 ==================\n\n================= M5/M1 ================",
+    )
+  })
+
+  it("preserves the provided date when building initial form data", () => {
+    const initialFormData = getInitialTradeFormData(new Date("2026-01-15T10:00:00.000Z"))
+
+    expect(initialFormData.date).toBe("2026-01-15")
+  })
+})
+
+describe("hasMeaningfulCreateTradeNotes", () => {
+  it("treats the untouched default template as not meaningful yet", () => {
+    expect(hasMeaningfulCreateTradeNotes(getInitialTradeFormData().notes)).toBe(false)
+  })
+
+  it("ignores whitespace-only changes around the default template", () => {
+    expect(
+      hasMeaningfulCreateTradeNotes(`\n\n${getInitialTradeFormData().notes}\n\n`),
+    ).toBe(false)
+  })
+
+  it("recognizes user-added notes beyond the default template", () => {
+    expect(
+      hasMeaningfulCreateTradeNotes(
+        `${getInitialTradeFormData().notes}\nBias confirmed with liquidity sweep.`,
+      ),
+    ).toBe(true)
+  })
 })
 
 describe("calculateTradeRiskMetrics", () => {
