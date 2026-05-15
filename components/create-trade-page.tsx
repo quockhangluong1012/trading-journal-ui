@@ -147,6 +147,7 @@ export function CreateTradePage({
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>([])
   const [apiTechTags, setApiTechTags] = useState<TechnicalAnalysisTagApi[]>([])
   const [apiTradingZones, setApiTradingZones] = useState<TradingZoneApi[]>([])
+  const [assetOptions, setAssetOptions] = useState<string[]>([])
   const [setupOptions, setSetupOptions] = useState<TradingSetupSummaryDto[]>([])
   const [checklistModels, setChecklistModels] = useState<ChecklistModelApi[]>([])
   const [selectedModelId, setSelectedModelId] = useState<string>("")
@@ -257,6 +258,7 @@ export function CreateTradePage({
         api.get<ApiResponse<ChecklistModelApi[]>>("/v1/checklist-models"),
         api.get<ApiResponse<TechnicalAnalysisTagApi[]>>("/v1/technical-analysis"),
         api.get<ApiResponse<TradingZoneApi[]>>("/v1/trading-zones"),
+        api.get<ApiResponse<string[]>>("/v1/trade-histories/assets"),
         api.get<ApiResponse<TradingSetupSummaryDto[]>>("/v1/trading-setups"),
       ])
 
@@ -265,7 +267,7 @@ export function CreateTradePage({
       }
 
       const failedResources: string[] = []
-      const [emotionsResult, checklistModelsResult, technicalTagsResult, tradingZonesResult, setupsResult] =
+      const [emotionsResult, checklistModelsResult, technicalTagsResult, tradingZonesResult, assetOptionsResult, setupsResult] =
         results
 
       if (
@@ -306,6 +308,15 @@ export function CreateTradePage({
         setApiTradingZones(tradingZonesResult.value.data.value)
       } else {
         failedResources.push("trading zones")
+      }
+
+      if (
+        assetOptionsResult.status === "fulfilled" &&
+        assetOptionsResult.value.data.isSuccess
+      ) {
+        setAssetOptions(assetOptionsResult.value.data.value)
+      } else {
+        failedResources.push("asset names")
       }
 
       if (
@@ -1106,6 +1117,7 @@ export function CreateTradePage({
               errors={errors}
               handleInputChange={handleInputChange}
               handlePositionChange={handlePositionChange}
+              assetOptions={assetOptions}
               setupOptions={setupOptions}
               selectedTradingSetupId={formData.tradingSetupId}
               selectedTradingSetup={selectedTradingSetup}
