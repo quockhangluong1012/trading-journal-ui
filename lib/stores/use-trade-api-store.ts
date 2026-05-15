@@ -214,7 +214,7 @@ export const useTradeApiStore = create<TradeApiStore>((set, get) => ({
     try {
       attachToken()
       const res = await api.get<ApiResponse<PaginationResult<TradeApiResponseDto>>>(
-        `/v1/trade-histories${buildTradeQueryString({ page: 1, pageSize: 1000 })}`
+        `/v1/trade-histories${buildTradeQueryString({ page: 1, pageSize: 10 })}`
       )
 
       if (res.data.isSuccess && res.data.value) {

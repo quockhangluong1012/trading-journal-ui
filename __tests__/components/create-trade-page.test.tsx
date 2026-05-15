@@ -134,6 +134,8 @@ describe("CreateTradePage", () => {
           return buildReferenceResponse([])
         case "/v1/trading-zones":
           return buildReferenceResponse([])
+        case "/v1/trade-histories/assets":
+          return buildReferenceResponse([])
         case "/v1/trading-setups":
           return buildReferenceResponse([])
         case "/v1/checklist-models/1":
@@ -174,6 +176,39 @@ describe("CreateTradePage", () => {
       }),
     )
     expect(screen.queryByText("Checklist section")).not.toBeInTheDocument()
+  })
+
+  it("shows a warning when saved asset names cannot be loaded", async () => {
+    apiGetMock.mockImplementation((url: string) => {
+      switch (url) {
+        case "/v1/emotions":
+          return buildReferenceResponse([])
+        case "/v1/checklist-models":
+          return buildReferenceResponse([{ id: 1, name: "Core checklist", criteriaCount: 1 }])
+        case "/v1/technical-analysis":
+          return buildReferenceResponse([])
+        case "/v1/trading-zones":
+          return buildReferenceResponse([])
+        case "/v1/trade-histories/assets":
+          return Promise.reject(new Error("assets unavailable"))
+        case "/v1/trading-setups":
+          return buildReferenceResponse([])
+        case "/v1/checklist-models/1":
+          return buildReferenceResponse({ id: 1, name: "Core checklist", criteria: [] })
+        default:
+          throw new Error(`Unexpected api.get call for ${url}`)
+      }
+    })
+
+    render(<CreateTradePage />)
+
+    expect(await screen.findByText("Wizard progress")).toBeInTheDocument()
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Some trade planner data could not be loaded",
+        description: expect.stringContaining("asset names"),
+      }),
+    )
   })
 
   it("moves to the context step once the setup step is complete", async () => {

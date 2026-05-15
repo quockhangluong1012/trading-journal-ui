@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -35,41 +35,14 @@ import type { TradeFormData } from "@/lib/create-trade-form"
 import { getPlainTextFromRichText } from "@/lib/rich-text"
 import type { TradingSetupSummaryDto } from "@/lib/setup-api"
 import { TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
-import { useTrades } from "@/lib/trade-context"
 import { TradeFormSection } from "./trade-form-section"
-
-const RECENT_ASSET_LIMIT = 8
-
-function getTradeTimestamp(date: string): number {
-  const timestamp = Date.parse(date)
-  return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-function getRecentAssetOptions(trades: { asset: string; date: string }[]): string[] {
-  const seenAssets = new Set<string>()
-
-  return [...trades]
-    .sort((leftTrade, rightTrade) => getTradeTimestamp(rightTrade.date) - getTradeTimestamp(leftTrade.date))
-    .map((trade) => trade.asset.trim())
-    .filter(Boolean)
-    .filter((asset) => {
-      const normalizedAsset = asset.toUpperCase()
-
-      if (seenAssets.has(normalizedAsset)) {
-        return false
-      }
-
-      seenAssets.add(normalizedAsset)
-      return true
-    })
-    .slice(0, RECENT_ASSET_LIMIT)
-}
 
 export interface TradeSetupSectionProps {
   formData: TradeFormData
   errors: Record<string, string>
   handleInputChange: (field: keyof Omit<TradeFormData, "position">, value: string) => void
   handlePositionChange: (value: string) => void
+  assetOptions: string[]
   setupOptions: TradingSetupSummaryDto[]
   selectedTradingSetupId: string
   selectedTradingSetup: TradingSetupSummaryDto | null
@@ -81,21 +54,19 @@ export function TradeSetupSection({
   errors,
   handleInputChange,
   handlePositionChange,
+  assetOptions,
   setupOptions,
   selectedTradingSetupId,
   selectedTradingSetup,
   surfaceFieldClassName,
 }: TradeSetupSectionProps) {
-  const { trades } = useTrades()
   const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false)
   const [assetSearchQuery, setAssetSearchQuery] = useState("")
-
-  const recentAssetOptions = useMemo(() => getRecentAssetOptions(trades), [trades])
 
   const trimmedAssetSearchQuery = assetSearchQuery.trim()
   const normalizedAssetSearchQuery = trimmedAssetSearchQuery.toUpperCase()
   const normalizedSelectedAsset = formData.asset.trim().toUpperCase()
-  const hasExactRecentAssetMatch = recentAssetOptions.some(
+  const hasExactSavedAssetMatch = assetOptions.some(
     (asset) => asset.toUpperCase() === normalizedAssetSearchQuery,
   )
 
@@ -151,12 +122,12 @@ export function TradeSetupSection({
                     <CommandInput
                       aria-label="Search or add asset"
                       autoFocus
-                      placeholder="Search recent assets or add a new one"
+                      placeholder="Search saved assets or add a new one"
                       value={assetSearchQuery}
                       onValueChange={setAssetSearchQuery}
                     />
                     <CommandList>
-                      {trimmedAssetSearchQuery && !hasExactRecentAssetMatch ? (
+                      {trimmedAssetSearchQuery && !hasExactSavedAssetMatch ? (
                         <CommandGroup heading="Use custom asset">
                           <CommandItem
                             value={`use-${trimmedAssetSearchQuery}`}
@@ -168,9 +139,9 @@ export function TradeSetupSection({
                         </CommandGroup>
                       ) : null}
 
-                      {recentAssetOptions.length > 0 ? (
-                        <CommandGroup heading="Recent assets">
-                          {recentAssetOptions.map((asset) => (
+                      {assetOptions.length > 0 ? (
+                        <CommandGroup heading="Saved assets">
+                          {assetOptions.map((asset) => (
                             <CommandItem
                               key={asset}
                               value={asset}
@@ -192,8 +163,8 @@ export function TradeSetupSection({
 
                       <CommandEmpty>
                         {trimmedAssetSearchQuery
-                          ? `No recent assets match "${trimmedAssetSearchQuery}".`
-                          : "No recent assets yet. Type to add one."}
+                          ? `No saved assets match "${trimmedAssetSearchQuery}".`
+                          : "No saved assets yet. Type to add one."}
                       </CommandEmpty>
                     </CommandList>
                   </Command>
