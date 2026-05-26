@@ -14,6 +14,7 @@ import {
   BarChart3,
   ClipboardList,
   Wand2,
+  Activity,
   Sparkles,
   Trophy,
   GitBranch,
@@ -55,6 +56,7 @@ const data = {
       title: "Analysis",
       items: [
         { title: "Analytics", url: "/analytics", icon: BarChart3 },
+        { title: "Backtest", url: "/backtest", icon: Activity },
         { title: "Review", url: "/review", icon: ClipboardList },
         { title: "Review Wizard", url: "/review/wizard", icon: Wand2 },
       ],

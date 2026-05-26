@@ -27,6 +27,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 const routeLabels: Record<string, string> = {
   analytics: "Analytics",
   admin: "Admin Portal",
+  backtest: "Backtest",
   coach: "AI Coach",
   "daily-notes": "Daily Notes",
   history: "Trade History",

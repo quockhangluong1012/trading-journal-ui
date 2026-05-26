@@ -152,6 +152,72 @@ export async function deleteTradingZone(id: number) {
 
 
 
+// ─── Backtest Assets ──────────────────────────────────────
+export interface AssetDto {
+  id: number;
+  displayName: string;
+  symbol: string;
+  category: string;
+  dataProvider: string;
+  syncStatus: string;
+  dataStartDate: string;
+  dataEndDate: string | null;
+  lastSyncedDate: string | null;
+  totalCandles: number;
+  lastError: string | null;
+  createdDate: string;
+}
+
+export interface AdminCreateAssetRequest {
+  displayName: string;
+  symbol: string;
+  category: "Forex" | "Metals" | "Futures" | "Crypto" | "Indices" | string;
+  dataProvider: "TwelveData" | "AlphaVantage" | "CSV" | string;
+  dataStartDate: string;
+  dataEndDate: string | null;
+  defaultSpreadPips: number;
+  pipType: number;
+}
+
+export async function getBacktestAssets() {
+  return api.get<ApiResponse<AssetDto[]>>("/v1/admin/backtest");
+}
+
+export async function createBacktestAsset(data: AdminCreateAssetRequest) {
+  return api.post<ApiResponse<number>>("/v1/admin/backtest", data);
+}
+
+export async function deleteBacktestAsset(id: number) {
+  return api.delete<ApiResponse<boolean>>(`/v1/admin/backtest/${id}`);
+}
+
+export interface CsvImportJobDto {
+  id: number;
+  fileName: string;
+  status: "Pending" | "Processing" | "Completed" | "Failed";
+  importedCandles: number;
+  skippedDuplicates: number;
+  errorMessage: string | null;
+  processedDate: string | null;
+  createdDate: string;
+}
+
+export async function bulkUploadCsvFiles(assetId: number, files: File[]) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  return api.post<ApiResponse<{ queuedFiles: number; jobIds: number[] }>>(
+    `/v1/admin/backtest/${assetId}/bulk-import`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+}
+
+export async function getImportJobs(assetId: number) {
+  return api.get<ApiResponse<CsvImportJobDto[]>>(
+    `/v1/admin/backtest/${assetId}/import-jobs`
+  );
+}
+
 // ─── Enum Labels ─────────────────────────────────────────
 export const EmotionTypeLabels: Record<number, string> = {
   1: "Positive",
