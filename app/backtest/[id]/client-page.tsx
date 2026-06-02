@@ -7,11 +7,10 @@ import { KLineChartPro, DatafeedSubscribeCallback, SymbolInfo, Period, ChartPro 
 import { init as klineInit, dispose as klineDispose, registerOverlay, LineType, type OverlayCreate } from 'klinecharts';
 import '@klinecharts/pro/dist/klinecharts-pro.css';
 import { useTheme } from "next-themes";
-import { Flag, PanelRightOpen, ChevronUp } from "lucide-react";
+import { Flag, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BacktestWorkspaceHeader } from "../../../components/backtest/backtest-workspace-header";
-import { OrderPanel } from "@/components/backtest/order-panel";
-import { PositionsPanel } from "@/components/backtest/positions-panel";
+import { BacktestSidebar } from "@/components/backtest/backtest-sidebar";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Header } from "@/components/header";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -183,11 +182,9 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const [chartReadyVersion, setChartReadyVersion] = useState(0);
   const [isSwitchingTimeframe, setIsSwitchingTimeframe] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
-  const [isOrderPanelCollapsed, setIsOrderPanelCollapsed] = useState(false);
-  const [isPositionsPanelCollapsed, setIsPositionsPanelCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
   const { theme } = useTheme();
-  const orderPanelRef = useRef<ImperativePanelHandle | null>(null);
-  const positionsPanelRef = useRef<ImperativePanelHandle | null>(null);
+  const sidebarPanelRef = useRef<ImperativePanelHandle | null>(null);
   const chartResizeFrameRef = useRef<number | null>(null);
 
   // Datafeed state
@@ -283,6 +280,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
 
     chartApi.applyNewData(mappedCandles);
     chartApi.setOffsetRightDistance(60);
+    chartApi.setBarSpace(6);
     chartApi.scrollToTimestamp(lastTimestamp);
   }, [activeTimeframe, chartReadyVersion, mappedCandles]);
 
@@ -353,7 +351,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       theme: isDark ? 'dark' : 'light',
       locale: 'en-US',
       timezone: CHART_TIMEZONE,
-      drawingBarVisible: true,
+      drawingBarVisible: false,
       periods: [],
       mainIndicators: [],
       subIndicators: [],
@@ -526,39 +524,17 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     });
   }, []);
 
-  const handleCollapseOrderPanel = () => {
-    orderPanelRef.current?.collapse();
-  };
+  const handleExpandSidebar = useCallback(() => {
+    sidebarPanelRef.current?.resize(32);
+  }, []);
 
-  const handleExpandOrderPanel = () => {
-    orderPanelRef.current?.expand(22);
-  };
-
-  const handleCollapsePositionsPanel = () => {
-    positionsPanelRef.current?.collapse();
-  };
-
-  const handleExpandPositionsPanel = () => {
-    positionsPanelRef.current?.expand();
-  };
-
-  const handleOrderPanelCollapsed = useCallback(() => {
-    setIsOrderPanelCollapsed(true);
+  const handleSidebarCollapsed = useCallback(() => {
+    setIsSidebarCollapsed(true);
     requestChartResize();
   }, [requestChartResize]);
 
-  const handleOrderPanelExpanded = useCallback(() => {
-    setIsOrderPanelCollapsed(false);
-    requestChartResize();
-  }, [requestChartResize]);
-
-  const handlePositionsPanelCollapsed = useCallback(() => {
-    setIsPositionsPanelCollapsed(true);
-    requestChartResize();
-  }, [requestChartResize]);
-
-  const handlePositionsPanelExpanded = useCallback(() => {
-    setIsPositionsPanelCollapsed(false);
+  const handleSidebarExpanded = useCallback(() => {
+    setIsSidebarCollapsed(false);
     requestChartResize();
   }, [requestChartResize]);
 
@@ -678,82 +654,49 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
             ) : null}
           />
 
-      <div className="flex min-h-0 flex-1 overflow-hidden px-4 pb-4 pt-1.5">
-        <ResizablePanelGroup direction="vertical" className="h-full w-full min-h-0 flex-1 overflow-hidden rounded-2xl border bg-background shadow-sm">
-          <ResizablePanel defaultSize={70} minSize={30} onResize={requestChartResize} className="relative z-0 flex min-h-0 w-full">
-            <ResizablePanelGroup direction="horizontal" className="w-full min-h-0">
-              <ResizablePanel
-                defaultSize={75}
-                minSize={30}
-                onResize={requestChartResize}
-                className="relative min-h-0 w-full overflow-hidden bg-background shadow-inner"
-              >
-                <div className="backtest-chart-shell w-full h-full">
-                  <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
-                </div>
+      <div className="flex min-h-0 flex-1 overflow-hidden px-3 pb-3 pt-2 sm:px-4 sm:pb-4">
+        <ResizablePanelGroup direction="horizontal" className="h-full w-full min-h-0 flex-1 overflow-hidden rounded-lg border border-border/70 bg-card/80 shadow-sm backdrop-blur-md">
+          <ResizablePanel
+            defaultSize={100}
+            minSize={40}
+            onResize={requestChartResize}
+            className="relative min-h-0 w-full overflow-hidden bg-background"
+          >
+            <div className="backtest-chart-shell w-full h-full">
+              <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
+            </div>
 
-                {isOrderPanelCollapsed && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="absolute right-3 top-3 z-20 h-10 w-10 rounded-xl bg-background/90 shadow-sm backdrop-blur"
-                    onClick={handleExpandOrderPanel}
-                    title="Expand order ticket"
-                    aria-label="Expand order ticket"
-                  >
-                    <PanelRightOpen className="h-4 w-4" />
-                  </Button>
-                )}
-
-                {isPositionsPanelCollapsed && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="absolute bottom-3 right-3 z-20 h-10 w-10 rounded-xl bg-background/90 shadow-sm backdrop-blur"
-                    onClick={handleExpandPositionsPanel}
-                    title="Expand positions and orders panel"
-                    aria-label="Expand positions and orders panel"
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </Button>
-                )}
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-              <ResizablePanel
-                ref={orderPanelRef}
-                defaultSize={24}
-                minSize={18}
-                maxSize={36}
-                collapsible={true}
-                collapsedSize={0}
-                onCollapse={handleOrderPanelCollapsed}
-                onExpand={handleOrderPanelExpanded}
-                className="z-10 hidden min-h-0 border-l bg-card shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] md:block"
+            {isSidebarCollapsed && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="absolute right-3 top-3 z-20 h-9 w-9 rounded-md bg-background/90 shadow-sm backdrop-blur"
+                onClick={handleExpandSidebar}
+                title="Open trading panel"
+                aria-label="Open trading panel"
               >
-                <OrderPanel
-                  sessionId={sessionId}
-                  currentPrice={currentPrice}
-                  previousPrice={previousPrice}
-                  onCollapse={handleCollapseOrderPanel}
-                />
-              </ResizablePanel>
-            </ResizablePanelGroup>
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            )}
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel
-            ref={positionsPanelRef}
-            defaultSize={30}
-            minSize={10}
-            maxSize={60}
+            ref={sidebarPanelRef}
+            defaultSize={0}
+            minSize={22}
+            maxSize={45}
             collapsible={true}
             collapsedSize={0}
-            onCollapse={handlePositionsPanelCollapsed}
-            onExpand={handlePositionsPanelExpanded}
-            className="z-10 flex min-h-0 w-full flex-col border-t bg-card"
+            onCollapse={handleSidebarCollapsed}
+            onExpand={handleSidebarExpanded}
+            className="z-10 hidden min-h-0 border-l border-border/70 bg-card md:block"
           >
-            <PositionsPanel sessionId={sessionId} currentPrice={currentPrice} onCollapse={handleCollapsePositionsPanel} />
+            <BacktestSidebar
+              sessionId={sessionId}
+              currentPrice={currentPrice}
+              previousPrice={previousPrice}
+            />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>

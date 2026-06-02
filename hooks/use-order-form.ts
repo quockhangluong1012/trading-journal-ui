@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useBacktestStore } from "@/lib/backtest-store";
 import { toast } from "sonner";
 
+const optionalPositiveNumber = z.preprocess(
+  (value) => (value === "" || value == null ? undefined : value),
+  z.coerce.number().positive("Price must be positive").optional(),
+);
+
 export const orderSchema = z.object({
   positionSize: z.coerce.number().positive("Size must be positive"),
-  entryPrice: z.coerce.number().positive("Price must be positive").optional(),
+  entryPrice: optionalPositiveNumber,
   stopLoss: z.coerce.number().positive().optional().or(z.literal("")),
   takeProfit: z.coerce.number().positive().optional().or(z.literal("")),
 });
@@ -30,8 +35,27 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
       entryPrice: currentPrice,
     },
   });
+  const { clearErrors, setValue } = form;
+
+  useEffect(() => {
+    if (orderType !== "Market") {
+      return;
+    }
+
+    setValue("entryPrice", currentPrice > 0 && Number.isFinite(currentPrice) ? currentPrice : undefined, {
+      shouldDirty: false,
+      shouldTouch: false,
+      shouldValidate: false,
+    });
+    clearErrors("entryPrice");
+  }, [clearErrors, currentPrice, orderType, setValue]);
 
   const onSubmit = async (values: z.infer<typeof orderSchema>) => {
+    if (orderType === "Market" && (!Number.isFinite(currentPrice) || currentPrice <= 0)) {
+      toast.error("Market price is unavailable. Wait for a live price before placing a market order.");
+      return;
+    }
+
     const priceToUse = orderType === "Market" ? currentPrice : Number(values.entryPrice || currentPrice);
     const leverage = session?.leverage || 50;
 

@@ -10,41 +10,51 @@ export function SectionHeader({
   onAdd,
   searchValue,
   onSearchChange,
+  children,
 }: {
   title: string;
   description: string;
-  count: number;
-  onAdd: () => void;
-  searchValue: string;
-  onSearchChange: (v: string) => void;
+  count?: number;
+  onAdd?: () => void;
+  searchValue?: string;
+  onSearchChange?: (v: string) => void;
+  children?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4 rounded-[1.75rem] border border-border/70 bg-card/75 px-5 py-5 shadow-sm backdrop-blur-md sm:flex-row sm:items-end sm:justify-between">
       <div className="space-y-1.5">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
           {title}
-          <Badge variant="secondary" className="text-xs font-normal tabular-nums">
-            {count}
-          </Badge>
+          {count !== undefined && (
+            <Badge variant="secondary" className="text-xs font-normal tabular-nums">
+              {count}
+            </Badge>
+          )}
         </h2>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
 
       <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[320px] sm:flex-row sm:items-center">
-        <div className="relative flex-1 sm:min-w-55">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder={`Search ${title.toLowerCase()}...`}
-            className="h-10 rounded-xl border-border/70 bg-background/75 pl-9"
-          />
-        </div>
+        {searchValue !== undefined && onSearchChange !== undefined && (
+          <div className="relative flex-1 sm:min-w-55">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchValue}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder={`Search ${title.toLowerCase()}...`}
+              className="h-10 rounded-xl border-border/70 bg-background/75 pl-9"
+            />
+          </div>
+        )}
 
-        <Button onClick={onAdd} className="h-10 gap-1.5 rounded-xl px-4">
-          <Plus className="h-3.5 w-3.5" />
-          Add New
-        </Button>
+        {children}
+        
+        {onAdd && !children && (
+          <Button onClick={onAdd} className="h-10 gap-1.5 rounded-xl px-4">
+            <Plus className="h-3.5 w-3.5" />
+            Add New
+          </Button>
+        )}
       </div>
     </div>
   );

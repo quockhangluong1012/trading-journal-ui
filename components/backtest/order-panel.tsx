@@ -1,10 +1,24 @@
 "use client";
 
-import { ChevronDown, ChevronLeft, ChevronUp, Info } from "lucide-react";
+import type { ReactNode } from "react";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  CircleDollarSign,
+  Crosshair,
+  Loader2,
+  ShieldCheck,
+  Target,
+  Wallet,
+  Zap,
+} from "lucide-react";
+
 import { useOrderForm } from "@/hooks/use-order-form";
 import { cn } from "@/lib/utils";
 import { getMarketPriceState } from "@/components/backtest/order-panel.utils";
-
 import {
   Form,
   FormControl,
@@ -26,85 +40,155 @@ interface OrderPanelProps {
   onCollapse?: () => void;
 }
 
+function formatPrice(value: number | null | undefined, digits = 3) {
+  if (value == null || !Number.isFinite(value) || value <= 0) {
+    return "0.000";
+  }
+
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+function formatMoney(value: number) {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatTicks(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0 ticks";
+  }
+
+  return `${value.toFixed(0)} ticks`;
+}
+
+function OrderMetric({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-border/60 bg-background/70 px-2.5 py-2">
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {icon}
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-1 truncate text-sm font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
 export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCollapse }: OrderPanelProps) {
   const {
     form,
-    side, setSide,
-    orderType, setOrderType,
+    side,
+    setSide,
+    orderType,
+    setOrderType,
     isSubmitting,
-    exitsOpen, setExitsOpen,
-    enableTp, setEnableTp,
-    enableSl, setEnableSl,
+    exitsOpen,
+    setExitsOpen,
+    enableTp,
+    setEnableTp,
+    enableSl,
+    setEnableSl,
     onSubmit,
-    balance, session,
+    balance,
+    session,
   } = useOrderForm({ sessionId, currentPrice });
 
   const units = Number(form.watch("positionSize") || 0);
-  const price = Number(orderType === "Market" ? currentPrice : (form.watch("entryPrice") || currentPrice));
+  const watchedEntryPrice = Number(form.watch("entryPrice") || currentPrice);
+  const price = Number(orderType === "Market" ? currentPrice : watchedEntryPrice);
   const tradeValue = units * price;
   const leverage = session?.leverage || 50;
   const margin = tradeValue / leverage;
+  const buyingPowerAfter = balance - margin;
   const sessionAsset = session?.asset || "XAUUSD";
-  const marketPriceText = currentPrice > 0 ? currentPrice.toFixed(3) : "0.000";
+  const marketPriceText = formatPrice(currentPrice);
   const marketPriceState = getMarketPriceState(currentPrice, previousPrice);
+  const tpValue = enableTp ? Number(form.watch("takeProfit") || 0) : 0;
+  const slValue = enableSl ? Number(form.watch("stopLoss") || 0) : 0;
+  const tpTicks = tpValue ? Math.abs((tpValue - price) * 10000) : 0;
+  const slTicks = slValue ? Math.abs((slValue - price) * 10000) : 0;
+  const riskReward =
+    enableTp && enableSl && tpValue > 0 && slValue > 0
+      ? Math.abs(tpValue - price) / Math.max(Math.abs(price - slValue), 0.00001)
+      : null;
+  const isLong = side === "Long";
+  const submitLabel =
+    orderType === "Limit"
+      ? `Place ${isLong ? "limit buy" : "limit sell"}`
+      : `${isLong ? "Buy" : "Sell"} market`;
+  const submitHelper =
+    orderType === "Limit"
+      ? `${formatPrice(price)} entry, ${units || 0} ${sessionAsset}`
+      : `${marketPriceText} live fill, ${units || 0} ${sessionAsset}`;
 
-  const tpValue = enableTp ? (form.watch("takeProfit") || 0) : 0;
-  const slValue = enableSl ? (form.watch("stopLoss") || 0) : 0;
-  const tpTicks = tpValue ? Math.abs((Number(tpValue) - price) * 10000).toFixed(0) : "0";
-  const slTicks = slValue ? Math.abs((Number(slValue) - price) * 10000).toFixed(0) : "0";
-  const orderModeCopy = orderType === "Limit"
-    ? "Your order stays pending until the replay trades through your price."
-    : "Your order executes immediately at the visible market price.";
-  const submitLabel = orderType === "Limit"
-    ? `Place ${side === "Long" ? "Limit Buy" : "Limit Sell"}`
-    : `${side === "Long" ? "Buy Market" : "Sell Market"}`;
-  const submitHelper = orderType === "Limit"
-    ? `${units || 0} ${sessionAsset} queued at ${price ? price.toFixed(3) : "0.000"}`
-    : `${units || 0} ${sessionAsset} routed near ${price ? price.toFixed(3) : "0.000"}`;
-
-  const livePriceTone = marketPriceState.direction === "up"
-    ? "text-emerald-600 dark:text-emerald-300"
-    : marketPriceState.direction === "down"
-      ? "text-rose-600 dark:text-rose-300"
-      : "text-foreground";
-
-  const priceChangeText = marketPriceState.change === 0
-    ? "No change"
-    : `${marketPriceState.change > 0 ? "+" : ""}${marketPriceState.change.toFixed(5)}`;
+  const livePriceTone =
+    marketPriceState.direction === "up"
+      ? "text-emerald-600 dark:text-emerald-300"
+      : marketPriceState.direction === "down"
+        ? "text-rose-600 dark:text-rose-300"
+        : "text-foreground";
+  const priceChangeText =
+    marketPriceState.change === 0
+      ? "Flat"
+      : `${marketPriceState.change > 0 ? "+" : ""}${marketPriceState.change.toFixed(5)}`;
+  const priceChangeIcon =
+    marketPriceState.direction === "up" ? (
+      <ArrowUpRight className="h-3.5 w-3.5" />
+    ) : marketPriceState.direction === "down" ? (
+      <ArrowDownRight className="h-3.5 w-3.5" />
+    ) : (
+      <Zap className="h-3.5 w-3.5" />
+    );
 
   return (
-    <div className="flex h-[calc(100vh-200px)] min-h-0 w-full flex-col bg-card text-[13px] font-sans">
-      <div className="border-b border-border/50 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-              Order Ticket
-            </p>
-            <div className="mt-2">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Live Price
-              </p>
-              <div className="mt-1 flex items-center gap-2">
-                <span className={cn("text-base font-semibold tabular-nums", livePriceTone)}>{marketPriceText}</span>
-                <span className="text-[11px] tabular-nums text-muted-foreground">{priceChangeText}</span>
+    <Form {...form}>
+      <form
+        className="flex h-full min-h-0 w-full flex-col bg-card text-sm"
+        onSubmit={form.handleSubmit((values) => onSubmit(values))}
+      >
+        <div className="border-b border-border/60 bg-card px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="h-6 rounded-md px-2 text-xs font-medium">
+                  {sessionAsset}
+                </Badge>
+                <Badge variant="secondary" className="h-6 rounded-md px-2 text-xs font-medium">
+                  {leverage}:1
+                </Badge>
+              </div>
+              <div className="mt-3 flex items-end gap-2">
+                <span className={cn("text-2xl font-semibold tabular-nums leading-none", livePriceTone)}>
+                  {marketPriceText}
+                </span>
+                <span className={cn("mb-0.5 inline-flex items-center gap-1 text-xs tabular-nums", livePriceTone)}>
+                  {priceChangeIcon}
+                  {priceChangeText}
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {orderType} {isLong ? "buy" : "sell"} ticket
               </div>
             </div>
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-lg font-semibold tracking-tight">{sessionAsset}</span>
-              <Badge variant="outline" className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
-                {leverage}:1 leverage
-              </Badge>
-            </div>
-            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{orderModeCopy}</p>
-          </div>
 
-          <div className="flex items-start gap-2">
             {onCollapse && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="outline"
                 size="icon"
-                className="h-9 w-9 rounded-xl border border-border/60"
+                className="h-8 w-8 rounded-md bg-background"
                 onClick={onCollapse}
                 title="Collapse order ticket"
                 aria-label="Collapse order ticket"
@@ -113,29 +197,48 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
               </Button>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 custom-scrollbar">
-        <Form {...form}>
-          <form className="flex h-full min-h-full flex-col gap-4">
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/40 p-1">
-              {["Market", "Limit"].map((type) => (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <OrderMetric
+              icon={<Wallet className="h-3.5 w-3.5 shrink-0" />}
+              label="Balance"
+              value={`$${formatMoney(balance)}`}
+            />
+            <OrderMetric
+              icon={<CircleDollarSign className="h-3.5 w-3.5 shrink-0" />}
+              label="Margin"
+              value={`$${formatMoney(margin)}`}
+            />
+            <OrderMetric
+              icon={<Crosshair className="h-3.5 w-3.5 shrink-0" />}
+              label="Exposure"
+              value={`$${formatMoney(tradeValue)}`}
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 custom-scrollbar">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
+              {(["Market", "Limit"] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
+                  aria-pressed={orderType === type}
                   onClick={() => {
-                    setOrderType(type as "Market" | "Limit");
+                    setOrderType(type);
                     if (type === "Limit") {
                       form.setValue("entryPrice", currentPrice, {
                         shouldValidate: true,
                       });
                     }
                   }}
-                  className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${orderType === type
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                  }`}
+                  className={cn(
+                    "h-9 rounded-md px-3 text-sm font-medium transition-colors",
+                    orderType === type
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
                 >
                   {type}
                 </button>
@@ -145,119 +248,115 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setSide("Short");
-                }}
-                className={`rounded-2xl border px-4 py-3 text-left transition-all ${side === "Short"
-                  ? "border-rose-500/40 bg-rose-500/10 text-rose-500 shadow-sm"
-                  : "border-border/60 bg-background hover:border-rose-500/30 hover:bg-rose-500/5"
-                }`}
+                aria-pressed={side === "Long"}
+                onClick={() => setSide("Long")}
+                className={cn(
+                  "rounded-md border px-3 py-3 text-left transition-colors",
+                  side === "Long"
+                    ? "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-300"
+                    : "border-border/70 bg-background hover:border-blue-500/40 hover:bg-blue-500/5",
+                )}
               >
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Sell</div>
-                <div className="mt-2 text-lg font-bold leading-none">Short</div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                  Buy
+                </div>
+                <div className="mt-1 text-lg font-semibold leading-none">Long</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => {
-                  setSide("Long");
-                }}
-                className={`rounded-2xl border px-4 py-3 text-right transition-all ${side === "Long"
-                  ? "border-[#2962FF]/40 bg-[#2962FF]/10 text-[#2962FF] shadow-sm"
-                  : "border-border/60 bg-background hover:border-[#2962FF]/30 hover:bg-[#2962FF]/5"
-                }`}
+                aria-pressed={side === "Short"}
+                onClick={() => setSide("Short")}
+                className={cn(
+                  "rounded-md border px-3 py-3 text-left transition-colors",
+                  side === "Short"
+                    ? "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-300"
+                    : "border-border/70 bg-background hover:border-rose-500/40 hover:bg-rose-500/5",
+                )}
               >
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Buy</div>
-                <div className="mt-2 text-lg font-bold leading-none">Long</div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ArrowDownRight className="h-3.5 w-3.5" />
+                  Sell
+                </div>
+                <div className="mt-1 text-lg font-semibold leading-none">Short</div>
               </button>
             </div>
 
-            <div className={cn(
-              "rounded-xl border px-3 py-3 text-xs",
-              orderType === "Limit"
-                ? "border-[#2962FF]/20 bg-[#2962FF]/5 text-[#1E53E5] dark:text-[#8AAFFF]"
-                : "border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300",
-            )}>
-              <div className="flex items-start gap-2">
-                <Info className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{orderModeCopy}</span>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-            <FormField
-              control={form.control}
-              name="entryPrice"
-              render={({ field }) => (
-                <FormItem className="space-y-1.5">
-                  <FormLabel className="text-[13px] font-medium text-muted-foreground">
-                    {orderType === "Limit" ? "Entry price" : "Current market price"}
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative flex items-center overflow-hidden rounded-xl border border-border/60 bg-background focus-within:ring-1 ring-primary transition-all">
-                      <Input
-                        type="number"
-                        step="0.001"
-                        className="h-11 border-0 bg-transparent pl-3 pr-21 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
-                        {...field}
-                        disabled={orderType === "Market"}
-                        value={
-                          orderType === "Market" ? marketPriceText : (field.value ?? "")
-                        }
-                        onChange={(e) => field.onChange(e.target.value)}
-                      />
-                      <div className="absolute right-0 flex h-full items-center px-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                        <span className="text-right">Live</span>
+            <div className="space-y-3 rounded-md border border-border/70 bg-background/70 p-3">
+              <FormField
+                control={form.control}
+                name="entryPrice"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">
+                      {orderType === "Limit" ? "Entry price" : "Market price"}
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.001"
+                          className="h-10 rounded-md bg-card pr-16 text-sm tabular-nums"
+                          {...field}
+                          disabled={orderType === "Market"}
+                          value={orderType === "Market" ? marketPriceText : (field.value ?? "")}
+                          onChange={(event) => field.onChange(event.target.value)}
+                        />
+                        <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-muted-foreground">
+                          USD
+                        </div>
                       </div>
-                    </div>
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
+                    </FormControl>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="positionSize"
-              render={({ field }) => (
-                <FormItem className="space-y-1.5">
-                  <FormLabel className="flex items-center text-[13px] font-medium text-muted-foreground">
-                    Units <ChevronDown className="h-3 w-3 ml-1 opacity-70" />
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative flex items-center overflow-hidden rounded-xl border border-border/60 bg-background focus-within:ring-1 ring-primary transition-all">
-                      <Input
-                        type="number"
-                        step="1"
-                        className="h-11 border-0 bg-transparent pl-3 pr-30.5 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={(e) => field.onChange(e.target.value)}
-                      />
-                      <div className="absolute right-0 flex h-full items-center px-3 text-muted-foreground">
-                        <span className="min-w-18.5 text-right text-[13px] font-medium text-foreground">
-                          {tradeValue.toFixed(2)} USD{" "}
-                          <ChevronDown className="h-3 w-3 opacity-70" />
-                        </span>
+              <FormField
+                control={form.control}
+                name="positionSize"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className="text-xs font-medium text-muted-foreground">Position size</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="1"
+                          className="h-10 rounded-md bg-card pr-24 text-sm tabular-nums"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(event) => field.onChange(event.target.value)}
+                        />
+                        <div className="pointer-events-none absolute inset-y-0 right-3 flex max-w-20 items-center truncate text-xs font-medium text-muted-foreground">
+                          {sessionAsset}
+                        </div>
                       </div>
+                    </FormControl>
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span className="truncate">Value</span>
+                      <span className="shrink-0 tabular-nums">${formatMoney(tradeValue)}</span>
                     </div>
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <Collapsible
               open={exitsOpen}
               onOpenChange={setExitsOpen}
-              className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4"
+              className="rounded-md border border-border/70 bg-background/70"
             >
               <CollapsibleTrigger
-                className="flex items-center justify-between w-full focus:outline-none"
+                className="flex h-11 w-full items-center justify-between px-3 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={exitsOpen ? "Collapse exits section" : "Expand exits section"}
               >
-                <span className="font-semibold text-[14px]">Exits</span>
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                  Exits
+                </span>
                 {exitsOpen ? (
                   <ChevronUp className="h-4 w-4 text-muted-foreground" />
                 ) : (
@@ -265,40 +364,36 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                 )}
               </CollapsibleTrigger>
 
-              <CollapsibleContent className="space-y-3">
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[13px] text-muted-foreground">
-                      Take profit, price
+              <CollapsibleContent className="space-y-3 border-t border-border/60 px-3 py-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <Target className="h-3.5 w-3.5 text-emerald-500" />
+                      Take profit
                     </span>
                     <Switch
                       checked={enableTp}
                       onCheckedChange={setEnableTp}
-                      className="scale-75 origin-right data-[state=checked]:bg-[#089981]"
+                      className="scale-75 origin-right data-[state=checked]:bg-emerald-600"
                     />
                   </div>
-                  <div
-                    className={`transition-opacity duration-200 ${enableTp ? "opacity-100" : "opacity-40 pointer-events-none"}`}
-                  >
+                  <div className={cn("transition-opacity", enableTp ? "opacity-100" : "pointer-events-none opacity-45")}>
                     <FormField
                       control={form.control}
                       name="takeProfit"
                       render={({ field }) => (
                         <FormControl>
-                          <div className="relative flex items-center overflow-hidden rounded-xl border border-border/60 bg-background focus-within:ring-1 ring-primary transition-all">
+                          <div className="relative">
                             <Input
                               type="number"
                               step="0.001"
-                              className="h-11 border-0 bg-transparent pl-3 pr-22.5 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
+                              className="h-10 rounded-md bg-card pr-20 text-sm tabular-nums"
                               {...field}
                               value={field.value ?? ""}
-                              onChange={(e) => field.onChange(e.target.value)}
+                              onChange={(event) => field.onChange(event.target.value)}
                             />
-                            <div className="absolute right-0 flex h-full items-center px-3 text-muted-foreground">
-                              <span className="min-w-18.5 text-right text-[13px] font-medium text-foreground">
-                                {tpTicks} ticks
-                                <ChevronDown className="h-3 w-3 opacity-70" />
-                              </span>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-muted-foreground">
+                              {formatTicks(tpTicks)}
                             </div>
                           </div>
                         </FormControl>
@@ -307,39 +402,35 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[13px] text-muted-foreground">
-                      Stop loss, price
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <ShieldCheck className="h-3.5 w-3.5 text-rose-500" />
+                      Stop loss
                     </span>
                     <Switch
                       checked={enableSl}
                       onCheckedChange={setEnableSl}
-                      className="scale-75 origin-right data-[state=checked]:bg-[#F23645]"
+                      className="scale-75 origin-right data-[state=checked]:bg-rose-600"
                     />
                   </div>
-                  <div
-                    className={`transition-opacity duration-200 ${enableSl ? "opacity-100" : "opacity-40 pointer-events-none"}`}
-                  >
+                  <div className={cn("transition-opacity", enableSl ? "opacity-100" : "pointer-events-none opacity-45")}>
                     <FormField
                       control={form.control}
                       name="stopLoss"
                       render={({ field }) => (
                         <FormControl>
-                          <div className="relative flex items-center overflow-hidden rounded-xl border border-border/60 bg-background focus-within:ring-1 ring-primary transition-all">
+                          <div className="relative">
                             <Input
                               type="number"
                               step="0.001"
-                              className="h-11 border-0 bg-transparent pl-3 pr-22.5 text-[13px] tabular-nums focus-visible:ring-0 focus-visible:ring-offset-0"
+                              className="h-10 rounded-md bg-card pr-20 text-sm tabular-nums"
                               {...field}
                               value={field.value ?? ""}
-                              onChange={(e) => field.onChange(e.target.value)}
+                              onChange={(event) => field.onChange(event.target.value)}
                             />
-                            <div className="absolute right-0 flex h-full items-center px-3 text-muted-foreground">
-                              <span className="min-w-18.5 text-right text-[13px] font-medium text-foreground">
-                                {slTicks} ticks
-                                <ChevronDown className="h-3 w-3 opacity-70" />
-                              </span>
+                            <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-medium text-muted-foreground">
+                              {formatTicks(slTicks)}
                             </div>
                           </div>
                         </FormControl>
@@ -349,42 +440,41 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
                 </div>
               </CollapsibleContent>
             </Collapsible>
+          </div>
+        </div>
 
-            <div className="mt-auto rounded-2xl border border-border/60 bg-muted/20 p-4">
-              <div className="grid grid-cols-2 gap-3 text-[13px]">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Margin</div>
-                  <div className="mt-1 font-semibold tabular-nums">{margin.toFixed(2)} USD</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Buying Power</div>
-                  <div className="mt-1 font-semibold tabular-nums">{balance.toFixed(2)} USD</div>
-                </div>
-              </div>
-
-              <div className="mt-3 text-xs text-muted-foreground">
-                {orderType === "Limit"
-                  ? `Pending until ${side === "Long" ? "market trades down to" : "market trades up to"} ${price.toFixed(3)}.`
-                  : `Executes immediately at the visible market price.`}
+        <div className="border-t border-border/60 bg-card px-4 py-3">
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <div className="rounded-md bg-muted/60 px-2.5 py-2">
+              <div className="text-xs text-muted-foreground">Available after</div>
+              <div className={cn("mt-1 text-sm font-semibold tabular-nums", buyingPowerAfter < 0 && "text-rose-500")}>
+                ${formatMoney(buyingPowerAfter)}
               </div>
             </div>
-          </form>
-        </Form>
-      </div>
+            <div className="rounded-md bg-muted/60 px-2.5 py-2">
+              <div className="text-xs text-muted-foreground">Risk reward</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums">
+                {riskReward ? `${riskReward.toFixed(2)}R` : "-"}
+              </div>
+            </div>
+          </div>
 
-      <div className="border-t border-border/50 bg-card p-4 pt-3 shadow-[0_-4px_10px_rgba(0,0,0,0.02)]">
-        <Button
-          type="button"
-          className={`h-13.5 w-full flex-col items-center justify-center rounded-xl text-white shadow-md transition-all ${side === "Long" ? "bg-[#2962FF] hover:bg-[#1E53E5] hover:shadow-[#2962FF]/40" : "bg-[#F23645] hover:bg-[#D92B3A] hover:shadow-[#F23645]/40"}`}
-          disabled={isSubmitting}
-          onClick={form.handleSubmit((v) => onSubmit(v))}
-        >
-          <span className="mb-0.5 text-[15px] font-bold tracking-wide">{submitLabel}</span>
-          <span className="text-[11px] font-medium uppercase tracking-[0.18em] opacity-90">
-            {submitHelper}
-          </span>
-        </Button>
-      </div>
-    </div>
+          <Button
+            type="submit"
+            className={cn(
+              "h-12 w-full flex-col gap-0.5 overflow-hidden rounded-md px-3 text-white shadow-sm",
+              isLong ? "bg-blue-600 hover:bg-blue-700" : "bg-rose-600 hover:bg-rose-700",
+            )}
+            disabled={isSubmitting}
+          >
+            <span className="flex max-w-full items-center gap-2 truncate font-semibold">
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <span className="truncate">{submitLabel}</span>
+            </span>
+            <span className="max-w-full truncate text-xs font-normal opacity-80">{submitHelper}</span>
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }

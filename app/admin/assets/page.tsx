@@ -76,9 +76,6 @@ const formSchema = z.object({
   symbol: z.string().min(1, "Symbol is required").max(30),
   displayName: z.string().min(1, "Display Name is required").max(100),
   category: z.string().min(1, "Category is required"),
-  dataProvider: z.string().min(1, "Data Provider is required"),
-  dataStartDate: z.string().min(1, "Start Date is required"),
-  dataEndDate: z.string().optional(),
   defaultSpreadPips: z.coerce.number().min(0, "Spread must be >= 0"),
   pipType: z.string().min(1, "Pip Type is required"),
 });
@@ -464,9 +461,6 @@ export default function AssetsPage() {
       symbol: "",
       displayName: "",
       category: "",
-      dataProvider: "",
-      dataStartDate: "",
-      dataEndDate: "",
       defaultSpreadPips: 1.0,
       pipType: "",
     },
@@ -499,9 +493,9 @@ export default function AssetsPage() {
         symbol: values.symbol,
         displayName: values.displayName,
         category: values.category,
-        dataProvider: values.dataProvider,
-        dataStartDate: new Date(values.dataStartDate).toISOString(),
-        dataEndDate: values.dataEndDate ? new Date(values.dataEndDate).toISOString() : null,
+        dataProvider: "CSV",
+        dataStartDate: new Date("2000-01-01").toISOString(),
+        dataEndDate: null,
         defaultSpreadPips: values.defaultSpreadPips,
         pipType: parseInt(values.pipType),
       };
@@ -536,16 +530,14 @@ export default function AssetsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <SectionHeader 
-          title="Backtest Assets" 
-          description="Manage historical data assets, their data providers, and observe sync engine statuses."
-        />
-        
+      <SectionHeader 
+        title="Backtest Assets" 
+        description="Manage historical data assets, their data providers, and observe sync engine statuses."
+      >
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
+            <Button className="h-10 gap-1.5 rounded-xl px-4 bg-blue-500 text-white hover:bg-blue-600">
+              <Plus className="h-3.5 w-3.5" />
               New Asset
             </Button>
           </DialogTrigger>
@@ -585,7 +577,7 @@ export default function AssetsPage() {
                   )}
                 />
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <FormField
                     control={form.control}
                     name="category"
@@ -606,59 +598,6 @@ export default function AssetsPage() {
                             <SelectItem value="Futures">Futures</SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="dataProvider"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Data Provider</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="TwelveData">TwelveData</SelectItem>
-                            <SelectItem value="AlphaVantage">AlphaVantage</SelectItem>
-                            <SelectItem value="CSV">Bulk CSV Import</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="dataStartDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Start Sync Date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="dataEndDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>End Sync Date (Optional)</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -715,7 +654,7 @@ export default function AssetsPage() {
             </Form>
           </DialogContent>
         </Dialog>
-      </div>
+      </SectionHeader>
 
       <div className="rounded-md border border-border">
         {loading ? (

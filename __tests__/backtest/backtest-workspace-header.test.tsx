@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -29,28 +29,30 @@ function createProps() {
 }
 
 describe("BacktestWorkspaceHeader", () => {
-  it("renders the session overview, counters, and account metrics", () => {
+  it("renders the asset identity, financial metrics, and controls", () => {
     render(<BacktestWorkspaceHeader {...createProps()} />);
 
-    const balanceCard = screen.getByText("Balance").parentElement;
-    const equityCard = screen.getByText("Equity").parentElement;
-    const openPnlCard = screen.getByText("Open PnL").parentElement;
-
+    // Asset identity
     expect(screen.getByText("EURUSD")).toBeInTheDocument();
     expect(screen.getByText("In progress")).toBeInTheDocument();
-    expect(screen.getByText("2024-03-01 16:45:00 UTC")).toBeInTheDocument();
-    expect(screen.getByText("Balance")).toBeInTheDocument();
-    expect(screen.getByText("Equity")).toBeInTheDocument();
-    expect(screen.getByText("Open PnL")).toBeInTheDocument();
-    expect(screen.getByText("Open positions")).toBeInTheDocument();
-    expect(screen.getByText("Pending orders")).toBeInTheDocument();
-    expect(screen.getByText("Closed trades")).toBeInTheDocument();
-    expect(balanceCard).not.toBeNull();
-    expect(equityCard).not.toBeNull();
-    expect(openPnlCard).not.toBeNull();
-    expect(within(balanceCard as HTMLElement).getByText("$10,000.00")).toBeInTheDocument();
-    expect(within(equityCard as HTMLElement).getByText("$10,000.00")).toBeInTheDocument();
-    expect(within(openPnlCard as HTMLElement).getByText("+$250.50")).toBeInTheDocument();
+
+    // Inline metric labels (visible on sm+ screens)
+    expect(screen.getByText("Bal")).toBeInTheDocument();
+    expect(screen.getByText("Eq")).toBeInTheDocument();
+    expect(screen.getByText("PnL")).toBeInTheDocument();
+
+    // Metric values
+    const balanceValues = screen.getAllByText("$10,000.00");
+    expect(balanceValues.length).toBeGreaterThanOrEqual(1);
+
+    const pnlValues = screen.getAllByText("+$250.50");
+    expect(pnlValues.length).toBeGreaterThanOrEqual(1);
+
+    // Playback controls
+    expect(screen.getByRole("button", { name: "Start replay" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Step forward one candle" })).toBeInTheDocument();
+
+    // Finish action
     expect(screen.getByText("Finish Early")).toBeInTheDocument();
   });
 
@@ -81,7 +83,12 @@ describe("BacktestWorkspaceHeader", () => {
   it("uses positive and negative pnl tones", () => {
     const { rerender } = render(<BacktestWorkspaceHeader {...createProps()} />);
 
-    expect(screen.getByText("+$250.50")).toHaveClass("text-emerald-500");
+    // The PnL value appears in both desktop and mobile metrics; all instances should have the color class
+    const positivePnls = screen.getAllByText("+$250.50");
+    expect(positivePnls.length).toBeGreaterThanOrEqual(1);
+    for (const el of positivePnls) {
+      expect(el).toHaveClass("text-emerald-500");
+    }
 
     rerender(
       <BacktestWorkspaceHeader
@@ -90,7 +97,11 @@ describe("BacktestWorkspaceHeader", () => {
       />,
     );
 
-    expect(screen.getByText("-$120.00")).toHaveClass("text-rose-500");
+    const negativePnls = screen.getAllByText("-$120.00");
+    expect(negativePnls.length).toBeGreaterThanOrEqual(1);
+    for (const el of negativePnls) {
+      expect(el).toHaveClass("text-rose-500");
+    }
   });
 
   it("omits the finish action area when no finish action is provided", () => {
