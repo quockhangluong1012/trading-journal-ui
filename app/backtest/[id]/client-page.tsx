@@ -1,14 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, use, useState } from "react";
-import { useBacktestStore, type Timeframe } from "@/lib/backtest-store";
+import { useBacktestStore, type Timeframe, type ChartDrawing as StoredChartDrawing } from "@/lib/backtest-store";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useTheme } from "next-themes";
 import { Flag, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BacktestWorkspaceHeader } from "../../../components/backtest/backtest-workspace-header";
 import { BacktestSidebar } from "@/components/backtest/backtest-sidebar";
-import { TradingViewPlatform } from "@/components/backtest/tradingview-platform";
+import { TradingViewPlatform, type ChartDrawing } from "@/components/backtest/tradingview-platform";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Header } from "@/components/header";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -95,6 +94,9 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     closedPositions,
     loadTradingZones,
     finishSession,
+    drawings,
+    setDrawings,
+    saveDrawings,
   } = useBacktestStore();
 
   const displayedTimestamp = candles.length > 0
@@ -123,6 +125,27 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const handleSkip = useCallback(() => {
     advanceCandle(sessionId);
   }, [advanceCandle, sessionId]);
+
+  // Persist chart drawings with a short debounce so rapid edits (e.g. dragging)
+  // coalesce into a single save once the user pauses.
+  const drawingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDrawingsChange = useCallback((next: ChartDrawing[]) => {
+    setDrawings(next as unknown as StoredChartDrawing[]);
+    if (drawingsSaveTimerRef.current) {
+      clearTimeout(drawingsSaveTimerRef.current);
+    }
+    drawingsSaveTimerRef.current = setTimeout(() => {
+      void saveDrawings(sessionId).catch(() => {
+        toast.error("Failed to save chart drawings.");
+      });
+    }, 800);
+  }, [saveDrawings, sessionId, setDrawings]);
+
+  useEffect(() => () => {
+    if (drawingsSaveTimerRef.current) {
+      clearTimeout(drawingsSaveTimerRef.current);
+    }
+  }, []);
 
   const requestChartResize = useCallback(() => {
     if (typeof window === "undefined") {
@@ -210,53 +233,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <BacktestWorkspaceHeader
-            asset={session.asset}
-            sessionStatus={session.status}
-            isPlaying={isPlaying}
-            playbackSpeed={playbackSpeed}
-            activeTimeframe={activeTimeframe}
-            isSwitchingTimeframe={isSwitchingTimeframe}
-            formattedTimestamp={formattedTimestamp}
-            activePositionsCount={activePositions.length}
-            pendingOrdersCount={pendingOrders.length}
-            closedPositionsCount={closedPositions.length}
-            balance={balance}
-            equity={equity}
-            unrealizedPnl={unrealizedPnl}
-            onTogglePlayback={togglePlayback}
-            onSkip={handleSkip}
-            onPlaybackSpeedChange={setPlaybackSpeed}
-            onTimeframeChange={(nextTimeframe: Timeframe) => {
-              void handleTimeframeChange(nextTimeframe);
-            }}
-            finishAction={session.status === "InProgress" ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="h-8 rounded-md border-amber-500/40 bg-amber-500/5 px-2.5 text-xs font-semibold shadow-sm hover:bg-amber-500/10" title="Close open positions and cancel pending orders now.">
-                    <Flag className="mr-2 h-4 w-4 text-amber-600" />
-                    Finish Early
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Finish this backtest now?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Any open positions will be closed at the visible market price and pending orders will be cancelled before sending you to the results page.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isFinishing}>Keep Session Running</AlertDialogCancel>
-                    <AlertDialogAction disabled={isFinishing} onClick={() => void handleFinishSession()}>
-                      {isFinishing ? "Finishing..." : "Finish Session"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            ) : null}
-          />
-
-      <div className="flex min-h-0 flex-1 overflow-hidden px-3 pb-3 pt-2 sm:px-4 sm:pb-4">
+      <div className="flex min-h-0 flex-1 overflow-hidden px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
         <ResizablePanelGroup direction="horizontal" className="h-full w-full min-h-0 flex-1 overflow-hidden rounded-lg border border-border/70 bg-card/80 shadow-sm backdrop-blur-md">
           <ResizablePanel
             defaultSize={100}
@@ -265,6 +242,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
             className="relative min-h-0 w-full overflow-hidden bg-background"
           >
             <TradingViewPlatform
+              key={sessionId}
               asset={session.asset}
               timeframe={activeTimeframe}
               candles={candles}
@@ -278,6 +256,37 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
               startDate={session.startDate}
               endDate={session.endDate}
               currentTimestamp={displayedTimestamp}
+              initialDrawings={drawings as unknown as ChartDrawing[]}
+              onDrawingsChange={handleDrawingsChange}
+              activeTimeframe={activeTimeframe}
+              isSwitchingTimeframe={isSwitchingTimeframe}
+              onTimeframeChange={(nextTimeframe: Timeframe) => {
+                void handleTimeframeChange(nextTimeframe);
+              }}
+              finishAction={session.status === "InProgress" ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="h-7 rounded-md border-amber-500/40 bg-amber-500/5 px-2 text-xs font-semibold shadow-sm hover:bg-amber-500/10" title="Close open positions and cancel pending orders now.">
+                      <Flag className="mr-1.5 h-3.5 w-3.5 text-amber-600" />
+                      Finish
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Finish this backtest now?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Any open positions will be closed at the visible market price and pending orders will be cancelled before sending you to the results page.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isFinishing}>Keep Session Running</AlertDialogCancel>
+                      <AlertDialogAction disabled={isFinishing} onClick={() => void handleFinishSession()}>
+                        {isFinishing ? "Finishing..." : "Finish Session"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
               onTogglePlayback={togglePlayback}
               onSkip={handleSkip}
               onPlaybackSpeedChange={setPlaybackSpeed}

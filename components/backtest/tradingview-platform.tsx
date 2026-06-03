@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   ColorType,
   CrosshairMode,
@@ -23,6 +23,7 @@ import {
   Magnet,
   Maximize2,
   Minus,
+  Equal,
   MousePointer2,
   MoveHorizontal,
   MoveVertical,
@@ -56,6 +57,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { BacktestOrder, CandleData, PlaybackSpeed, Timeframe } from "@/lib/backtest-store";
 import { cn } from "@/lib/utils";
 
@@ -98,7 +107,25 @@ const DIRECT_SYMBOL_MAP: Record<string, string> = {
 };
 
 const SPEED_OPTIONS: PlaybackSpeed[] = [1, 2, 5, 10];
+const TIMEFRAME_OPTIONS: Array<{ value: Timeframe; label: string }> = [
+  { value: "M1", label: "1m" },
+  { value: "M5", label: "5m" },
+  { value: "M15", label: "15m" },
+  { value: "H1", label: "1H" },
+  { value: "H4", label: "4H" },
+  { value: "D1", label: "1D" },
+];
 const VISIBLE_CANDLE_COUNT = 120;
+// Default candle price-scale margins. The vertical-zoom feature scales the
+// usable height between these margins; zoom level 1 reproduces this layout.
+const PRICE_SCALE_BASE_TOP = 0.08;
+const PRICE_SCALE_BASE_BOTTOM = 0.24;
+const BASE_PRICE_USABLE = 1 - PRICE_SCALE_BASE_TOP - PRICE_SCALE_BASE_BOTTOM;
+const BASE_PRICE_TOP_RATIO = PRICE_SCALE_BASE_TOP / (PRICE_SCALE_BASE_TOP + PRICE_SCALE_BASE_BOTTOM);
+// Bounds on the vertical-zoom factor. Beyond these the usable height clamps,
+// so capping keeps the wheel responsive when reversing at an extreme.
+const MIN_VERTICAL_ZOOM = 0.12;
+const MAX_VERTICAL_ZOOM = 1.45;
 const LONG_COLOR = "#2563eb";
 const SHORT_COLOR = "#e11d48";
 const STOP_COLOR = "#dc2626";
@@ -173,6 +200,16 @@ const DRAWING_STYLE_TEMPLATES: DrawingStyleTemplate[] = [
   },
 ];
 
+const DEFAULT_FIBONACCI_LEVELS: FibonacciLevel[] = [
+  { value: 0, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0" },
+  { value: 0.236, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.236" },
+  { value: 0.382, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.382" },
+  { value: 0.5, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.5" },
+  { value: 0.618, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.618" },
+  { value: 0.786, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.786" },
+  { value: 1, visible: true, color: DEFAULT_DRAWING_COLOR, label: "1" },
+];
+
 export type TradingViewInterval = "1" | "5" | "15" | "60" | "240" | "D";
 export type TradingViewTheme = "dark" | "light";
 
@@ -216,6 +253,14 @@ interface TradingViewPlatformProps {
   startDate?: string | null;
   endDate?: string | null;
   currentTimestamp?: string | null;
+  /** Drawings persisted from a previous visit, hydrated once on mount. */
+  initialDrawings?: ChartDrawing[];
+  /** Called whenever the user's drawings change, so the parent can persist them. */
+  onDrawingsChange?: (drawings: ChartDrawing[]) => void;
+  activeTimeframe?: Timeframe;
+  isSwitchingTimeframe?: boolean;
+  onTimeframeChange?: (timeframe: Timeframe) => void;
+  finishAction?: ReactNode;
   onTogglePlayback: () => void;
   onSkip: () => void;
   onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
@@ -266,12 +311,20 @@ export type ChartDrawingTool =
   | "long-position"
   | "short-position"
   | "text"
-  | "measure";
+  | "measure"
+  | "fibonacci";
 
 export type DrawableChartTool = Exclude<ChartDrawingTool, "cursor" | "crosshair">;
 
 export type ChartDrawingLineStyle = "solid" | "dashed" | "dotted";
 export type DrawingStyleTemplateId = "standard" | "focus-zone" | "execution" | "muted";
+
+export interface FibonacciLevel {
+  value: number;
+  visible: boolean;
+  color: string;
+  label: string;
+}
 
 export interface ChartDrawingStyle {
   strokeColor: string;
@@ -284,9 +337,11 @@ export interface ChartDrawingStyle {
 }
 
 interface DrawingStyleTemplate {
-  id: DrawingStyleTemplateId;
+  id: string;
   label: string;
   style: Partial<ChartDrawingStyle>;
+  tool?: DrawableChartTool;
+  text?: string;
 }
 
 export interface ChartDrawingAnchor {
@@ -301,6 +356,7 @@ export interface ChartDrawing {
   style?: ChartDrawingStyle;
   points: ChartDrawingAnchor[];
   text?: string;
+  fibonacciLevels?: FibonacciLevel[];
 }
 
 export interface DrawingMetrics {
@@ -329,6 +385,118 @@ export interface ChartDrawingDraft {
   text?: string;
 }
 
+// ── Drag-to-move: allow free-form repositioning of drawings ──
+
+interface DrawingDragState {
+  drawingId: string;
+  /** -1 = move whole drawing; 0+ = drag a specific anchor point */
+  pointIndex: number;
+  startMousePosition: { x: number; y: number };
+  startPoints: ChartDrawingAnchor[];
+  surfaceRect: { left: number; top: number; width: number; height: number };
+}
+
+// Seed the auto-increment id counter past any persisted drawings so newly
+// created drawings ("drawing-<n>") never collide with hydrated ones.
+function nextDrawingIdSeed(drawings?: ChartDrawing[]): number {
+  if (!drawings?.length) return 0;
+  let max = -1;
+  for (const drawing of drawings) {
+    const match = /^drawing-(\d+)$/.exec(drawing.id);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
+}
+
+function hitTestDrawing(
+  x: number,
+  y: number,
+  drawing: PositionedChartDrawing,
+): { pointIndex: number } | null {
+  const handleRadius = 10;
+
+  // Check handles first (reverse order so top handles win for overlapping)
+  for (let i = drawing.points.length - 1; i >= 0; i--) {
+    const dx = x - drawing.points[i].x;
+    const dy = y - drawing.points[i].y;
+    if (Math.hypot(dx, dy) <= handleRadius) {
+      return { pointIndex: i };
+    }
+  }
+
+  // Body hit-test – bounding box with generous margins
+  const margin = 12;
+  if (drawing.points.length === 1) {
+    if (Math.abs(x - drawing.points[0].x) <= margin + 20 &&
+        Math.abs(y - drawing.points[0].y) <= margin + 20) {
+      return { pointIndex: -1 };
+    }
+    return null;
+  }
+
+  const xs = drawing.points.map((p) => p.x);
+  const ys = drawing.points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  // Expand narrow dimensions for horizontal/vertical lines
+  const isHorizontal = maxY - minY < 8;
+  const isVertical = maxX - minX < 8;
+  const hitX = x >= minX - margin && x <= maxX + margin;
+  const hitY = y >= minY - margin && y <= maxY + margin;
+  const nearCenterY = Math.abs(y - (minY + maxY) / 2) <= margin + 16;
+  const nearCenterX = Math.abs(x - (minX + maxX) / 2) <= margin + 16;
+
+  if (isHorizontal && hitX && nearCenterY) return { pointIndex: -1 };
+  if (isVertical && hitY && nearCenterX) return { pointIndex: -1 };
+  if (!isHorizontal && !isVertical && hitX && hitY) return { pointIndex: -1 };
+
+  return null;
+}
+
+function pixelDeltaToChartDelta(
+  chart: IChartApi,
+  candleSeries: ISeriesApi<"Candlestick">,
+  pixelDX: number,
+  pixelDY: number,
+  containerHeight: number,
+): { dt: number; dp: number } {
+  let dt = 0;
+  let dp = 0;
+
+  // Horizontal: use visible range times + timeToCoordinate for reliable time/pixel ratio.
+  // coordinateToTime() can return null when queried outside the chart data — this
+  // alternative never hits that path because we start from known Time values.
+  const timeScale = chart.timeScale();
+  const visibleRange = timeScale.getVisibleRange();
+  if (visibleRange) {
+    const tFrom = Number(visibleRange.from);
+    const tTo = Number(visibleRange.to);
+    if (Number.isFinite(tFrom) && Number.isFinite(tTo) && tTo !== tFrom) {
+      const xFrom = timeScale.timeToCoordinate(visibleRange.from);
+      const xTo = timeScale.timeToCoordinate(visibleRange.to);
+      if (xFrom !== null && xTo !== null && xFrom !== xTo) {
+        dt = pixelDX * (tTo - tFrom) / (xTo - xFrom);
+      }
+    }
+  }
+
+  // Vertical: probe two well-separated Y positions for price/pixel ratio
+  const probeY1 = Math.max(1, containerHeight * 0.1);
+  const probeY2 = Math.max(1, containerHeight * 0.9);
+  if (probeY1 !== probeY2) {
+    const p1 = candleSeries.coordinateToPrice(probeY1);
+    const p2 = candleSeries.coordinateToPrice(probeY2);
+    if (p1 !== null && p2 !== null) {
+      dp = pixelDY * (p2 - p1) / (probeY2 - probeY1);
+    }
+  }
+
+  return { dt, dp };
+}
+
 interface DrawingToolDefinition {
   id: ChartDrawingTool;
   label: string;
@@ -353,6 +521,7 @@ const DRAWING_TOOL_GROUPS: DrawingToolDefinition[][] = [
     { id: "short-position", label: "Short position", icon: MoveHorizontal, requiresSecondPoint: true },
     { id: "text", label: "Text note", icon: Type, requiresSecondPoint: false },
     { id: "measure", label: "Measure", icon: Ruler, requiresSecondPoint: true },
+    { id: "fibonacci", label: "Fib retracement", icon: Equal, requiresSecondPoint: true },
   ],
 ];
 
@@ -1199,25 +1368,53 @@ function buildExtrapolationParams(
   priceParams: { pricePerPixel: number; basePrice: number; baseY: number } | null;
 } {
   const timeScale = chart.timeScale();
-  const logicalRange = timeScale.getVisibleLogicalRange();
 
   let timeParams = null;
   let priceParams = null;
 
-  if (logicalRange) {
-    const xFrom = timeScale.logicalToCoordinate(logicalRange.from);
-    const xTo = timeScale.logicalToCoordinate(logicalRange.to);
-
-    if (xFrom !== null && xTo !== null && xFrom !== xTo) {
-      const tFrom = timeScale.coordinateToTime(xFrom);
-      const tTo = timeScale.coordinateToTime(xTo);
-
-      if (tFrom !== null && tTo !== null && typeof tFrom === "number" && typeof tTo === "number") {
+  // Preferred: derive the time/pixel mapping from the visible *time* range.
+  // getVisibleRange() returns real bar times, so timeToCoordinate() on them
+  // never returns null. The logical-range path below relies on
+  // coordinateToTime() at the view edges, which returns null whenever an edge
+  // falls in trailing whitespace (the normal state of a replay chart) — that
+  // left timeParams null, so dragged drawings whose times go off-grid could
+  // not be positioned and vanished. This path stays valid as long as any bar
+  // is on screen.
+  const visibleRange = timeScale.getVisibleRange();
+  if (visibleRange) {
+    const tFrom = Number(visibleRange.from);
+    const tTo = Number(visibleRange.to);
+    if (Number.isFinite(tFrom) && Number.isFinite(tTo) && tTo !== tFrom) {
+      const xFrom = timeScale.timeToCoordinate(visibleRange.from);
+      const xTo = timeScale.timeToCoordinate(visibleRange.to);
+      if (xFrom !== null && xTo !== null && xFrom !== xTo) {
         timeParams = {
-          timePerPixel: (tTo - tFrom) / (xTo - xFrom),
+          timePerPixel: (tTo - tFrom) / (Number(xTo) - Number(xFrom)),
           baseTime: tFrom,
-          baseX: xFrom,
+          baseX: Number(xFrom),
         };
+      }
+    }
+  }
+
+  // Fallback: logical-range based mapping for views with no visible bars.
+  if (!timeParams) {
+    const logicalRange = timeScale.getVisibleLogicalRange();
+    if (logicalRange) {
+      const xFrom = timeScale.logicalToCoordinate(logicalRange.from);
+      const xTo = timeScale.logicalToCoordinate(logicalRange.to);
+
+      if (xFrom !== null && xTo !== null && xFrom !== xTo) {
+        const tFrom = timeScale.coordinateToTime(xFrom);
+        const tTo = timeScale.coordinateToTime(xTo);
+
+        if (tFrom !== null && tTo !== null && typeof tFrom === "number" && typeof tTo === "number") {
+          timeParams = {
+            timePerPixel: (tTo - tFrom) / (xTo - xFrom),
+            baseTime: tFrom,
+            baseX: xFrom,
+          };
+        }
       }
     }
   }
@@ -1296,12 +1493,14 @@ function renderDrawingLabel({
   text,
   color,
   fontSize,
+  textAnchor,
 }: {
   x: number;
   y: number;
   text: string;
   color: string;
   fontSize?: number;
+  textAnchor?: "start" | "middle" | "end";
 }) {
   return (
     <text
@@ -1313,6 +1512,7 @@ function renderDrawingLabel({
       paintOrder="stroke"
       stroke="hsl(var(--background))"
       strokeWidth="4"
+      textAnchor={textAnchor}
     >
       {text}
     </text>
@@ -1359,14 +1559,10 @@ function renderPositionedChartDrawing(
   const selectionHandles = isSelected ? renderDrawingSelectionHandles(drawing, drawingStyle.strokeColor) : null;
   const interactiveProps = onSelect && !isDraft
     ? {
-        className: "pointer-events-auto cursor-pointer",
-        onPointerDown: (event: ReactPointerEvent<SVGGElement>) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onSelect(drawing.id);
-        },
+        className: "pointer-events-none",
+        "data-drawing-id": drawing.id,
       }
-    : {};
+    : { className: "pointer-events-none" };
   const commonLineProps = {
     stroke: drawingStyle.strokeColor,
     strokeLinecap: "round" as const,
@@ -1382,6 +1578,13 @@ function renderPositionedChartDrawing(
       return (
         <g key={drawing.id} {...interactiveProps}>
           <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} {...commonLineProps} />
+          {drawing.text ? renderDrawingLabel({
+            x: (start.x + end.x) / 2 + 8,
+            y: (start.y + end.y) / 2 - 8,
+            text: drawing.text,
+            color: drawingStyle.textColor,
+            fontSize: drawingStyle.textSize,
+          }) : null}
           {selectionHandles}
         </g>
       );
@@ -1397,6 +1600,13 @@ function renderPositionedChartDrawing(
       return (
         <g key={drawing.id} {...interactiveProps}>
           <line x1={start.x} y1={start.y} x2={rayEndX} y2={rayEndY} {...commonLineProps} />
+          {drawing.text ? renderDrawingLabel({
+            x: start.x + 8,
+            y: start.y - 8,
+            text: drawing.text,
+            color: drawingStyle.textColor,
+            fontSize: drawingStyle.textSize,
+          }) : null}
           {selectionHandles}
         </g>
       );
@@ -1405,6 +1615,13 @@ function renderPositionedChartDrawing(
       return (
         <g key={drawing.id} {...interactiveProps}>
           <line x1={0} y1={start.y} x2={width} y2={start.y} {...commonLineProps} />
+          {drawing.text ? renderDrawingLabel({
+            x: 8,
+            y: clamp(start.y - 6, 12, Math.max(12, height - 8)),
+            text: drawing.text,
+            color: drawingStyle.textColor,
+            fontSize: drawingStyle.textSize,
+          }) : null}
           {renderDrawingLabel({
             x: Math.max(8, width - 92),
             y: clamp(start.y - 6, 12, Math.max(12, height - 8)),
@@ -1419,6 +1636,13 @@ function renderPositionedChartDrawing(
       return (
         <g key={drawing.id} {...interactiveProps}>
           <line x1={start.x} y1={0} x2={start.x} y2={height} {...commonLineProps} />
+          {drawing.text ? renderDrawingLabel({
+            x: start.x + 8,
+            y: 20,
+            text: drawing.text,
+            color: drawingStyle.textColor,
+            fontSize: drawingStyle.textSize,
+          }) : null}
           {selectionHandles}
         </g>
       );
@@ -1428,6 +1652,8 @@ function renderPositionedChartDrawing(
       const y = Math.min(start.y, end.y);
       const rectWidth = Math.abs(end.x - start.x);
       const rectHeight = Math.abs(end.y - start.y);
+      const centerX = (start.x + end.x) / 2;
+      const centerY = (start.y + end.y) / 2;
 
       return (
         <g key={drawing.id} {...interactiveProps}>
@@ -1443,6 +1669,27 @@ function renderPositionedChartDrawing(
             strokeWidth={strokeWidth}
             vectorEffect="non-scaling-stroke"
           />
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={3}
+            fill="hsl(var(--background))"
+            stroke={drawingStyle.strokeColor}
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line x1={centerX - 4} y1={centerY} x2={centerX + 4} y2={centerY}
+            stroke={drawingStyle.strokeColor} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          <line x1={centerX} y1={centerY - 4} x2={centerX} y2={centerY + 4}
+            stroke={drawingStyle.strokeColor} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+          {drawing.text ? renderDrawingLabel({
+            x: x + rectWidth - 8,
+            y: centerY + 4,
+            text: drawing.text,
+            color: drawingStyle.textColor,
+            fontSize: drawingStyle.textSize,
+            textAnchor: "end",
+          }) : null}
           {selectionHandles}
         </g>
       );
@@ -1511,6 +1758,55 @@ function renderPositionedChartDrawing(
           {selectionHandles}
         </g>
       );
+    case "fibonacci": {
+      if (!end) return null;
+      const levels = drawing.fibonacciLevels ?? DEFAULT_FIBONACCI_LEVELS;
+      const priceRange = end.price - start.price;
+      const pixelRange = end.y - start.y;
+      const bgY = Math.min(start.y, end.y);
+      const bgH = Math.abs(end.y - start.y);
+
+      return (
+        <g key={drawing.id} {...interactiveProps}>
+          <rect
+            x={0} y={bgY} width={width} height={bgH}
+            fill={drawingStyle.fillColor}
+            fillOpacity={drawingStyle.fillOpacity}
+            vectorEffect="non-scaling-stroke"
+          />
+          <line x1={start.x} y1={start.y} x2={end.x} y2={end.y}
+            stroke={drawingStyle.strokeColor} strokeWidth={1} strokeDasharray="4 4"
+            vectorEffect="non-scaling-stroke" />
+          {levels.filter((l) => l.visible).map((level) => {
+            const levelY = start.y + pixelRange * level.value;
+            const levelPrice = start.price + priceRange * level.value;
+            return (
+              <g key={`${drawing.id}-fib-${level.value}`}>
+                <line x1={0} y1={levelY} x2={width} y2={levelY}
+                  stroke={level.color || drawingStyle.strokeColor}
+                  strokeWidth={drawingStyle.strokeWidth}
+                  strokeDasharray={getDrawingStrokeDasharray(drawingStyle)}
+                  vectorEffect="non-scaling-stroke" />
+                {renderDrawingLabel({
+                  x: Math.max(8, width - 108),
+                  y: clamp(levelY - 6, 12, Math.max(12, height - 8)),
+                  text: `${level.label} (${formatPrice(levelPrice)})`,
+                  color: level.color || drawingStyle.textColor,
+                  fontSize: drawingStyle.textSize,
+                })}
+              </g>
+            );
+          })}
+          <circle cx={start.x} cy={start.y} r={3}
+            fill={drawingStyle.strokeColor}
+            vectorEffect="non-scaling-stroke" />
+          <circle cx={end.x} cy={end.y} r={3}
+            fill={drawingStyle.strokeColor}
+            vectorEffect="non-scaling-stroke" />
+          {selectionHandles}
+        </g>
+      );
+    }
     default:
       return null;
   }
@@ -1531,6 +1827,12 @@ export function TradingViewPlatform({
   startDate,
   endDate,
   currentTimestamp,
+  initialDrawings,
+  onDrawingsChange,
+  activeTimeframe,
+  isSwitchingTimeframe = false,
+  onTimeframeChange,
+  finishAction,
   onTogglePlayback,
   onSkip,
   onPlaybackSpeedChange,
@@ -1542,20 +1844,69 @@ export function TradingViewPlatform({
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const orderPriceLinesRef = useRef<IPriceLine[]>([]);
   const orderMarkerSyncFrameRef = useRef<number | null>(null);
-  const drawingIdRef = useRef(0);
+  const drawingIdRef = useRef(nextDrawingIdSeed(initialDrawings));
   const previousCandleCountRef = useRef(0);
+  const dragStateRef = useRef<DrawingDragState | null>(null);
+  const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
+  // True while the user has panned back to review past candles. While set, the
+  // data-update effect stops snapping the view to the live edge so newly
+  // arriving candles don't yank the user out of the history they're inspecting.
+  const isViewingHistoryRef = useRef(false);
+  // Current vertical (price) zoom level. 1 = the chart's default scaleMargins.
+  const verticalZoomRef = useRef(1);
   const [orderMarkerPositions, setOrderMarkerPositions] = useState<PositionedOrderMarkerOverlay[]>([]);
-  const [chartDrawings, setChartDrawings] = useState<ChartDrawing[]>([]);
+  // Hydrate once from persisted drawings; later prop changes are ignored so a
+  // re-fetch can't clobber the user's in-progress edits. The parent remounts
+  // this component per session (key={sessionId}), which re-runs this initializer.
+  const [chartDrawings, setChartDrawings] = useState<ChartDrawing[]>(() => initialDrawings ?? []);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [drawingDraft, setDrawingDraft] = useState<ChartDrawingDraft | null>(null);
   const [activeTool, setActiveTool] = useState<ChartDrawingTool>("cursor");
   const [activeDrawingStyle, setActiveDrawingStyle] = useState<ChartDrawingStyle>(DEFAULT_DRAWING_STYLE);
   const [drawingText, setDrawingText] = useState("Note");
-  const [isMagnetEnabled, setIsMagnetEnabled] = useState(true);
+  const [isMagnetEnabled, setIsMagnetEnabled] = useState(false);
   const [areDrawingsLocked, setAreDrawingsLocked] = useState(false);
   const [areDrawingsVisible, setAreDrawingsVisible] = useState(true);
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
   const [overlayRevision, setOverlayRevision] = useState(0);
+  const [customTemplates, setCustomTemplates] = useState<DrawingStyleTemplate[]>([]);
+  const [templateNameDialogOpen, setTemplateNameDialogOpen] = useState(false);
+  const [templateNameDraft, setTemplateNameDraft] = useState("");
+  const [fibonacciDialogOpen, setFibonacciDialogOpen] = useState(false);
+  const [fibonacciEditLevels, setFibonacciEditLevels] = useState<FibonacciLevel[]>([]);
+  const [fibonacciEditDrawingId, setFibonacciEditDrawingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("tradingview-custom-templates");
+      if (stored) {
+        setCustomTemplates(JSON.parse(stored));
+      }
+    } catch {
+      // ignore corrupt localStorage data
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("tradingview-custom-templates", JSON.stringify(customTemplates));
+  }, [customTemplates]);
+
+  // Notify the parent whenever drawings change so it can persist them. The
+  // first run is the initial hydration, which we skip to avoid re-saving data
+  // we just loaded.
+  const onDrawingsChangeRef = useRef(onDrawingsChange);
+  useEffect(() => {
+    onDrawingsChangeRef.current = onDrawingsChange;
+  }, [onDrawingsChange]);
+  const hasEmittedDrawingsRef = useRef(false);
+  useEffect(() => {
+    if (!hasEmittedDrawingsRef.current) {
+      hasEmittedDrawingsRef.current = true;
+      return;
+    }
+    onDrawingsChangeRef.current?.(chartDrawings);
+  }, [chartDrawings]);
+
   const chartData = useMemo(() => mapBacktestCandlesToChartData(candles), [candles]);
   const orderMarkerOverlays = useMemo(
     () => buildOrderMarkerOverlays({
@@ -1581,10 +1932,6 @@ export function TradingViewPlatform({
     [chartDrawings, selectedDrawingId],
   );
   const selectedDrawingStyle = selectedDrawing ? getChartDrawingStyle(selectedDrawing) : null;
-  const styleEditorValue = selectedDrawingStyle ?? activeDrawingStyle;
-  const styleTargetLabel = selectedDrawing
-    ? (getDrawingToolDefinition(selectedDrawing.tool)?.label ?? "Drawing")
-    : "New drawings";
   const isDrawingMode = isDrawableChartTool(activeTool) && !areDrawingsLocked;
 
   const syncOrderMarkerPositions = useCallback(() => {
@@ -1680,21 +2027,52 @@ export function TradingViewPlatform({
     setActiveDrawingStyle((currentStyle) => applyDrawingStylePatch(currentStyle, style));
   }, [selectedDrawingId]);
 
-  const applyTemplateToCurrentTarget = useCallback((templateId: DrawingStyleTemplateId) => {
-    const template = getDrawingStyleTemplate(templateId);
+  const applyTemplateToCurrentTarget = useCallback((templateId: string) => {
+    const template = getDrawingStyleTemplate(templateId as DrawingStyleTemplateId)
+      ?? customTemplates.find((t) => t.id === templateId);
     if (!template) {
       return;
     }
 
-    if (selectedDrawingId) {
-      setChartDrawings((drawings) => drawings.map((drawing) => (
-        drawing.id === selectedDrawingId ? applyChartDrawingTemplate(drawing, templateId) : drawing
-      )));
-      return;
+    // Apply style to the active "new drawings" defaults
+    setActiveDrawingStyle((currentStyle) => applyDrawingStylePatch(currentStyle, template.style));
+
+    // When no drawing is selected, also switch tool and set text from template
+    if (!selectedDrawingId) {
+      if (template.tool) {
+        setDrawingDraft(null);
+        setActiveTool(template.tool);
+      }
+      if (template.text != null) {
+        setDrawingText(template.text);
+      }
     }
 
-    setActiveDrawingStyle((currentStyle) => applyDrawingStylePatch(currentStyle, template.style));
-  }, [selectedDrawingId]);
+    // Apply style (and text) to the selected drawing
+    if (selectedDrawingId) {
+      setChartDrawings((drawings) => drawings.map((drawing) => {
+        if (drawing.id !== selectedDrawingId) return drawing;
+        const styled = applyChartDrawingStyle(drawing, template.style);
+        return template.text != null ? { ...styled, text: template.text } : styled;
+      }));
+    }
+  }, [customTemplates, selectedDrawingId]);
+
+  const saveCurrentStyleAsTemplate = useCallback((name: string) => {
+    const style = selectedDrawingStyle ?? activeDrawingStyle;
+    const newTemplate: DrawingStyleTemplate = {
+      id: `custom-${Date.now()}`,
+      label: name,
+      style: { ...style },
+      tool: selectedDrawing?.tool,
+      text: selectedDrawing?.text?.trim() || undefined,
+    };
+    setCustomTemplates((prev) => [...prev, newTemplate]);
+  }, [activeDrawingStyle, selectedDrawing, selectedDrawingStyle]);
+
+  const deleteCustomTemplate = useCallback((templateId: string) => {
+    setCustomTemplates((prev) => prev.filter((t) => t.id !== templateId));
+  }, []);
 
   const updateSelectedDrawingText = useCallback((text: string) => {
     if (!selectedDrawingId) {
@@ -1741,6 +2119,84 @@ export function TradingViewPlatform({
       window.removeEventListener("resize", syncDrawingProjection);
     };
   }, [syncChartSize, syncDrawingProjection]);
+
+  // Scale the candle price-scale margins to match a vertical-zoom level, keeping
+  // the same top:bottom ratio as the default layout so zoom 1 is a no-op and the
+  // volume histogram keeps its space at the bottom. lightweight-charts has no
+  // public price setVisibleRange in v4, so margins are the supported lever here.
+  const applyVerticalZoom = useCallback((zoom: number) => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries) return;
+
+    const clampedZoom = clamp(zoom, MIN_VERTICAL_ZOOM, MAX_VERTICAL_ZOOM);
+    verticalZoomRef.current = clampedZoom;
+
+    const usable = clamp(BASE_PRICE_USABLE * clampedZoom, 0.08, 0.98);
+    const remaining = 1 - usable;
+    candleSeries.priceScale().applyOptions({
+      scaleMargins: {
+        top: remaining * BASE_PRICE_TOP_RATIO,
+        bottom: remaining * (1 - BASE_PRICE_TOP_RATIO),
+      },
+    });
+  }, []);
+
+  // Wheel-to-zoom: non-passive listener so preventDefault() actually suppresses page scroll.
+  // Over the chart body it zooms the time scale toward the cursor; over the right
+  // price column it zooms the price scale vertically.
+  useEffect(() => {
+    const surface = drawingSurfaceRef.current;
+    if (!surface) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const chart = chartRef.current;
+      const candleSeries = candleSeriesRef.current;
+      if (!chart || !candleSeries) return;
+
+      const rect = surface.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left;
+
+      // Scrolling over the price axis (right column) zooms vertically.
+      const priceAxisWidth = candleSeries.priceScale().width();
+      if (priceAxisWidth > 0 && cursorX >= rect.width - priceAxisWidth) {
+        const factor = event.deltaY > 0 ? 0.9 : 1.1; // scroll up = zoom in
+        applyVerticalZoom(verticalZoomRef.current * factor);
+        scheduleOrderMarkerSync();
+        return;
+      }
+
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (!range) return;
+
+      const factor = event.deltaY > 0 ? 1.12 : 0.88;
+      const currentWidth = range.to - range.from;
+      const newWidth = Math.max(8, currentWidth * factor);
+
+      const xFrom = chart.timeScale().logicalToCoordinate(range.from);
+      const xTo = chart.timeScale().logicalToCoordinate(range.to);
+
+      if (xFrom !== null && xTo !== null && Number(xFrom) !== Number(xTo)) {
+        const ratio = Math.max(0, Math.min(1, (cursorX - Number(xFrom)) / (Number(xTo) - Number(xFrom))));
+        const pivotLogical = range.from + ratio * currentWidth;
+        chart.timeScale().setVisibleLogicalRange({
+          from: pivotLogical - ratio * newWidth,
+          to: pivotLogical + (1 - ratio) * newWidth,
+        });
+      } else {
+        const center = (range.from + range.to) / 2;
+        chart.timeScale().setVisibleLogicalRange({
+          from: center - newWidth / 2,
+          to: center + newWidth / 2,
+        });
+      }
+
+      scheduleOrderMarkerSync();
+    };
+
+    surface.addEventListener("wheel", handleWheel, { passive: false });
+    return () => surface.removeEventListener("wheel", handleWheel);
+  }, [applyVerticalZoom, scheduleOrderMarkerSync]);
 
   const getChartAnchorFromPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>): PointerChartAnchor | null => {
     const chart = chartRef.current;
@@ -1876,83 +2332,298 @@ export function TradingViewPlatform({
   }, [chartSize.height, chartSize.width, drawingDraft, overlayRevision]);
 
   const handleDrawingPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!isDrawableChartTool(activeTool) || areDrawingsLocked) {
-      return;
+    // ── Check existing drawing hits first (regardless of activeTool) ──
+    // This fixes the bug where having a drawing tool active would intercept
+    // clicks on existing drawings, causing them to appear to "disappear"
+    // (get deselected + a new draft starts instead of moving the object).
+    if (!areDrawingsLocked) {
+      const surface = drawingSurfaceRef.current;
+      if (surface) {
+        const rect = surface.getBoundingClientRect();
+        const canvasX = event.clientX - rect.left;
+        const canvasY = event.clientY - rect.top;
+
+        const candidateIds = selectedDrawingId
+          ? [selectedDrawingId, ...chartDrawings.map((d) => d.id).filter((id) => id !== selectedDrawingId)]
+          : chartDrawings.map((d) => d.id);
+
+        for (const drawingId of candidateIds) {
+          const posDrawing = positionedChartDrawings.find((d) => d.id === drawingId);
+          if (!posDrawing) continue;
+          const hit = hitTestDrawing(canvasX, canvasY, posDrawing);
+          if (!hit) continue;
+
+          event.preventDefault();
+          event.stopPropagation();
+
+          if (hit.pointIndex >= 0) {
+            const sourceDrawing = chartDrawings.find((d) => d.id === drawingId);
+            if (!sourceDrawing) continue;
+            (event.target as Element).setPointerCapture?.(event.pointerId);
+            dragStateRef.current = {
+              drawingId,
+              pointIndex: hit.pointIndex,
+              startMousePosition: { x: event.clientX, y: event.clientY },
+              startPoints: sourceDrawing.points.map((p) => ({ ...p })),
+              surfaceRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+            };
+            setDrawingDraft(null);
+            setActiveTool("cursor");
+            setSelectedDrawingId(drawingId);
+          } else if (drawingId === selectedDrawingId) {
+            const sourceDrawing = chartDrawings.find((d) => d.id === drawingId);
+            if (!sourceDrawing) continue;
+            (event.target as Element).setPointerCapture?.(event.pointerId);
+            setDrawingDraft(null);
+            dragStateRef.current = {
+              drawingId,
+              pointIndex: -1,
+              startMousePosition: { x: event.clientX, y: event.clientY },
+              startPoints: sourceDrawing.points.map((p) => ({ ...p })),
+              surfaceRect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+            };
+          } else {
+            setDrawingDraft(null);
+            setActiveTool("cursor");
+            setSelectedDrawingId(drawingId);
+          }
+          return;
+        }
+      }
     }
 
-    const anchor = getChartAnchorFromPointer(event);
-    if (!anchor) {
-      return;
-    }
-
-    event.preventDefault();
-    setSelectedDrawingId(null);
-
-    if (drawingDraft?.tool === activeTool && isTwoPointDrawingTool(activeTool)) {
-      const drawingId = `drawing-${drawingIdRef.current++}`;
-      const drawing = completeChartDrawingDraft({
-        draft: drawingDraft,
-        end: anchor,
-        drawingId,
-      });
-
-      if (drawing) {
-        setChartDrawings((drawings) => [...drawings, drawing]);
-        setSelectedDrawingId(drawingId);
+    // ── Drawing-creation mode ──
+    if (isDrawableChartTool(activeTool) && !areDrawingsLocked) {
+      const anchor = getChartAnchorFromPointer(event);
+      if (!anchor) {
+        return;
       }
 
-      setDrawingDraft(null);
-      return;
-    }
+      event.preventDefault();
+      setSelectedDrawingId(null);
 
-    if (isTwoPointDrawingTool(activeTool)) {
-      setDrawingDraft(createChartDrawingDraft({
+      if (drawingDraft?.tool === activeTool && isTwoPointDrawingTool(activeTool)) {
+        const drawingId = `drawing-${drawingIdRef.current++}`;
+        const drawing = completeChartDrawingDraft({
+          draft: drawingDraft,
+          end: anchor,
+          drawingId,
+        });
+
+        if (drawing) {
+          if (activeTool === "fibonacci") {
+            drawing.fibonacciLevels = DEFAULT_FIBONACCI_LEVELS.map((l) => ({ ...l }));
+          }
+          setChartDrawings((drawings) => [...drawings, drawing]);
+          setSelectedDrawingId(drawingId);
+        }
+
+        setDrawingDraft(null);
+        setActiveTool("cursor");
+        return;
+      }
+
+      if (isTwoPointDrawingTool(activeTool)) {
+        setDrawingDraft(createChartDrawingDraft({
+          tool: activeTool,
+          color: activeDrawingStyle.strokeColor,
+          style: activeDrawingStyle,
+          start: anchor,
+          text: drawingText,
+        }));
+        return;
+      }
+
+      const drawingId = `drawing-${drawingIdRef.current++}`;
+      const drawing = createChartDrawing({
+        id: drawingId,
         tool: activeTool,
         color: activeDrawingStyle.strokeColor,
         style: activeDrawingStyle,
         start: anchor,
+        end: anchor,
         text: drawingText,
+      });
+
+      if (drawing) {
+        if (activeTool === "fibonacci") {
+          drawing.fibonacciLevels = DEFAULT_FIBONACCI_LEVELS.map((l) => ({ ...l }));
+        }
+        setDrawingDraft(null);
+        setChartDrawings((drawings) => [...drawings, drawing]);
+        setSelectedDrawingId(drawingId);
+        setActiveTool("cursor");
+      }
+
+      return;
+    }
+
+    // Clicked empty canvas area: start a chart pan gesture.
+    // Deselection happens on pointer-up only if the pointer didn't move (i.e. it was a plain click).
+    (event.target as Element).setPointerCapture?.(event.pointerId);
+    chartPanRef.current = { prevX: event.clientX, hasMoved: false };
+  }, [
+    activeDrawingStyle,
+    activeTool,
+    areDrawingsLocked,
+    chartDrawings,
+    drawingDraft,
+    drawingText,
+    getChartAnchorFromPointer,
+    positionedChartDrawings,
+    selectedDrawingId,
+  ]);
+
+  const handleDrawingPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    // Drag update (check FIRST — stale drawingDraft from a prior incomplete
+    // drawing operation must not block live drag of an existing object).
+    const dragState = dragStateRef.current;
+    if (dragState) {
+      event.preventDefault();
+
+      const chart = chartRef.current;
+      const candleSeries = candleSeriesRef.current;
+      if (!chart || !candleSeries) return;
+
+      const pixelDX = event.clientX - dragState.startMousePosition.x;
+      const pixelDY = event.clientY - dragState.startMousePosition.y;
+      const { dt, dp } = pixelDeltaToChartDelta(
+        chart, candleSeries, pixelDX, pixelDY, dragState.surfaceRect.height,
+      );
+
+      setChartDrawings((drawings) => drawings.map((drawing) => {
+        if (drawing.id !== dragState.drawingId) return drawing;
+        return {
+          ...drawing,
+          points: dragState.startPoints.map((point, i) => {
+            if (dragState.pointIndex === -1 || dragState.pointIndex === i) {
+              return {
+                time: (point.time + dt) as UTCTimestamp,
+                price: point.price + dp,
+              };
+            }
+            return { ...point };
+          }),
+        };
       }));
       return;
     }
 
-    const drawingId = `drawing-${drawingIdRef.current++}`;
-    const drawing = createChartDrawing({
-      id: drawingId,
-      tool: activeTool,
-      color: activeDrawingStyle.strokeColor,
-      style: activeDrawingStyle,
-      start: anchor,
-      end: anchor,
-      text: drawingText,
-    });
-
-    if (drawing) {
-      setDrawingDraft(null);
-      setChartDrawings((drawings) => [...drawings, drawing]);
-      setSelectedDrawingId(drawingId);
-    }
-  }, [activeDrawingStyle, activeTool, areDrawingsLocked, drawingDraft, drawingText, getChartAnchorFromPointer]);
-
-  const handleDrawingPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!drawingDraft) {
+    // Chart pan — horizontal scroll while dragging on empty canvas
+    const panState = chartPanRef.current;
+    if (panState && !drawingDraft) {
+      const dx = event.clientX - panState.prevX;
+      if (Math.abs(dx) > 0) {
+        const chart = chartRef.current;
+        if (chart) {
+          const timeScale = chart.timeScale();
+          const range = timeScale.getVisibleLogicalRange();
+          // Derive bars-per-pixel from the time-scale width rather than from
+          // logicalToCoordinate() differences: width() always returns a usable
+          // pixel value, whereas logicalToCoordinate() can return null at the
+          // view edges (trailing whitespace on a replay chart), which silently
+          // killed the pan.
+          const width = timeScale.width();
+          if (range && width > 0) {
+            const logicalDelta = -dx * (range.to - range.from) / width;
+            const nextTo = range.to + logicalDelta;
+            timeScale.setVisibleLogicalRange({
+              from: range.from + logicalDelta,
+              to: nextTo,
+            });
+            // Once the last bar scrolls off the right edge the user is
+            // reviewing history; suppress live auto-scroll until they pan
+            // back far enough that the latest candle is visible again.
+            const lastBarIndex = previousCandleCountRef.current - 1;
+            isViewingHistoryRef.current = nextTo < lastBarIndex;
+            panState.hasMoved = true;
+            scheduleOrderMarkerSync();
+          }
+        }
+      }
+      panState.prevX = event.clientX;
+      event.preventDefault();
       return;
     }
 
-    const anchor = getChartAnchorFromPointer(event);
-    if (!anchor) {
+    // Draft update (existing behaviour)
+    if (drawingDraft) {
+      const anchor = getChartAnchorFromPointer(event);
+      if (!anchor) {
+        return;
+      }
+
+      event.preventDefault();
+      setDrawingDraft((currentDraft) => currentDraft
+        ? updateChartDrawingDraftEnd(currentDraft, anchor)
+        : currentDraft);
       return;
     }
+  }, [drawingDraft, getChartAnchorFromPointer, scheduleOrderMarkerSync]);
 
-    event.preventDefault();
-    setDrawingDraft((currentDraft) => currentDraft
-      ? updateChartDrawingDraftEnd(currentDraft, anchor)
-      : currentDraft);
-  }, [drawingDraft, getChartAnchorFromPointer]);
-
-  const handleDrawingPointerCancel = useCallback(() => {
-    setDrawingDraft(null);
+  const handleDrawingPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    (event.target as Element).releasePointerCapture?.(event.pointerId);
+    dragStateRef.current = null;
+    const panState = chartPanRef.current;
+    if (panState) {
+      chartPanRef.current = null;
+      // No movement = plain click on empty canvas → deselect the current drawing
+      if (!panState.hasMoved) {
+        setSelectedDrawingId(null);
+      }
+    }
   }, []);
+
+  const handleDrawingPointerCancel = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    (event.target as Element).releasePointerCapture?.(event.pointerId);
+    setDrawingDraft(null);
+    dragStateRef.current = null;
+    chartPanRef.current = null;
+  }, []);
+
+  const openFibonacciDialog = useCallback((drawingId: string) => {
+    const drawing = chartDrawings.find((d) => d.id === drawingId);
+    if (!drawing || drawing.tool !== "fibonacci") return;
+    setFibonacciEditDrawingId(drawingId);
+    setFibonacciEditLevels(
+      (drawing.fibonacciLevels ?? DEFAULT_FIBONACCI_LEVELS).map((l) => ({ ...l })),
+    );
+    setFibonacciDialogOpen(true);
+  }, [chartDrawings]);
+
+  const applyFibonacciLevels = useCallback(() => {
+    if (!fibonacciEditDrawingId) return;
+    setChartDrawings((drawings) =>
+      drawings.map((d) =>
+        d.id === fibonacciEditDrawingId
+          ? { ...d, fibonacciLevels: fibonacciEditLevels.map((l) => ({ ...l })) }
+          : d,
+      ),
+    );
+    setFibonacciDialogOpen(false);
+  }, [fibonacciEditDrawingId, fibonacciEditLevels]);
+
+  const handleDrawingDoubleClick = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const surface = drawingSurfaceRef.current;
+    if (!surface) return;
+    const rect = surface.getBoundingClientRect();
+    const canvasX = event.clientX - rect.left;
+    const canvasY = event.clientY - rect.top;
+
+    for (const drawing of chartDrawings) {
+      if (drawing.tool !== "fibonacci") continue;
+      const posDrawing = positionedChartDrawings.find((d) => d.id === drawing.id);
+      if (!posDrawing) continue;
+      const hit = hitTestDrawing(canvasX, canvasY, posDrawing);
+      if (hit) {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedDrawingId(drawing.id);
+        openFibonacciDialog(drawing.id);
+        return;
+      }
+    }
+  }, [chartDrawings, positionedChartDrawings, openFibonacciDialog]);
 
   const undoLastDrawing = useCallback(() => {
     setChartDrawings((drawings) => drawings.slice(0, -1));
@@ -2001,6 +2672,7 @@ export function TradingViewPlatform({
     }
 
     fitLatestCandles(chart, chartData.candles.length);
+    isViewingHistoryRef.current = false;
     scheduleOrderMarkerSync();
   }, [chartData.candles.length, scheduleOrderMarkerSync]);
 
@@ -2177,7 +2849,10 @@ export function TradingViewPlatform({
       chartData.candles.length - previousCandleCountRef.current > 5
     ) {
       fitLatestCandles(chart, chartData.candles.length);
-    } else if (chartData.candles.length > previousCandleCountRef.current) {
+      isViewingHistoryRef.current = false;
+    } else if (chartData.candles.length > previousCandleCountRef.current && !isViewingHistoryRef.current) {
+      // Skip the snap-to-live-edge while the user is panning through past
+      // candles, so reviewing history isn't interrupted by new data.
       chart.timeScale().scrollToRealTime();
     }
 
@@ -2282,12 +2957,18 @@ export function TradingViewPlatform({
         ref={drawingSurfaceRef}
         aria-hidden={!isDrawingMode}
         className={cn(
-          "absolute inset-0 z-10",
-          isDrawingMode ? "pointer-events-auto cursor-crosshair" : "pointer-events-none",
+          "absolute inset-0 z-10 pointer-events-auto",
+          isDrawingMode || activeTool === "crosshair"
+            ? "cursor-crosshair"
+            : activeTool === "cursor"
+              ? "cursor-grab active:cursor-grabbing"
+              : "",
         )}
         onPointerDown={handleDrawingPointerDown}
         onPointerMove={handleDrawingPointerMove}
+        onPointerUp={handleDrawingPointerUp}
         onPointerCancel={handleDrawingPointerCancel}
+        onDoubleClick={handleDrawingDoubleClick}
       >
         {chartSize.width > 0 && chartSize.height > 0 ? (
           <svg
@@ -2428,135 +3109,170 @@ export function TradingViewPlatform({
           </div>
         </div>
 
-        <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-md border border-border/70 bg-background/90 px-2 py-1.5 shadow-sm backdrop-blur">
-          <Select
-            value={selectedDrawingId ?? "new"}
-            onValueChange={(value) => {
-              setDrawingDraft(null);
-              setSelectedDrawingId(value === "new" ? null : value);
-              if (value !== "new") {
-                setActiveTool("cursor");
-              }
-            }}
-          >
-            <SelectTrigger className="h-8 w-[136px] rounded-md text-xs font-semibold" aria-label="Select drawing object">
-              <FilePenLine className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <SelectValue placeholder="New drawings" />
-            </SelectTrigger>
-            <SelectContent align="start">
-              <SelectItem value="new">New drawings</SelectItem>
-              {chartDrawings.map((drawing, index) => (
-                <SelectItem key={drawing.id} value={drawing.id}>
-                  {index + 1}. {getDrawingToolDefinition(drawing.tool)?.label ?? "Drawing"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {selectedDrawingId !== null ? (
+          <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-md border border-border/70 bg-background/90 px-2 py-1.5 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-1.5">
+              <FilePenLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              <Select
+                value={selectedDrawingId}
+                onValueChange={(value) => {
+                  setDrawingDraft(null);
+                  setSelectedDrawingId(value);
+                  setActiveTool("cursor");
+                }}
+              >
+                <SelectTrigger className="h-8 w-[136px] rounded-md text-xs font-semibold" aria-label="Select drawing object">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {chartDrawings.map((drawing, index) => (
+                    <SelectItem key={drawing.id} value={drawing.id}>
+                      {index + 1}. {getDrawingToolDefinition(drawing.tool)?.label ?? "Drawing"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <Select onValueChange={(value) => applyTemplateToCurrentTarget(value as DrawingStyleTemplateId)}>
-            <SelectTrigger className="h-8 w-[118px] rounded-md text-xs font-semibold" aria-label="Apply drawing style template">
-              <SelectValue placeholder="Template" />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {DRAWING_STYLE_TEMPLATES.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <div aria-hidden="true" className="h-4 w-px bg-border/60" />
 
-          <span className="max-w-28 truncate text-[11px] font-semibold text-muted-foreground">
-            {styleTargetLabel}
-          </span>
-          <div className="flex items-center gap-1">
-            {DRAWING_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                aria-label={`Use ${color} drawing color for ${styleTargetLabel}`}
-                className={cn(
-                  "h-4 w-4 rounded-full border border-background shadow-sm ring-offset-background transition",
-                  styleEditorValue.strokeColor === color && "ring-2 ring-ring ring-offset-1",
-                )}
-                style={{ backgroundColor: color }}
-                onClick={() => applyStyleToCurrentTarget({ strokeColor: color })}
-              />
-            ))}
-          </div>
-
-          <Select
-            value={styleEditorValue.lineStyle}
-            onValueChange={(value) => applyStyleToCurrentTarget({ lineStyle: value as ChartDrawingLineStyle })}
-          >
-            <SelectTrigger className="h-8 w-[88px] rounded-md text-xs font-semibold" aria-label="Drawing line style">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {DRAWING_LINE_STYLE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={String(styleEditorValue.strokeWidth)}
-            onValueChange={(value) => applyStyleToCurrentTarget({ strokeWidth: Number(value) })}
-          >
-            <SelectTrigger className="h-8 w-[72px] rounded-md text-xs font-semibold" aria-label="Drawing stroke width">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {DRAWING_STROKE_WIDTHS.map((width) => (
-                <SelectItem key={width} value={String(width)}>
-                  {width}px
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <div className="hidden w-24 items-center gap-2 md:flex">
-            <span className="text-[11px] font-semibold text-muted-foreground">Fill</span>
-            <Slider
-              aria-label="Drawing fill opacity"
-              value={[Math.round(styleEditorValue.fillOpacity * 100)]}
-              min={0}
-              max={45}
-              step={1}
-              onValueChange={([value]) => applyStyleToCurrentTarget({ fillOpacity: (value ?? 0) / 100 })}
-            />
-          </div>
-
-          {(activeTool === "text" || selectedDrawing?.tool === "text") ? (
-            <Input
-              value={selectedDrawing?.tool === "text" ? selectedDrawing.text ?? "" : drawingText}
-              onChange={(event) => updateSelectedDrawingText(event.target.value)}
-              className="h-7 w-32 rounded-md px-2 text-xs"
-              aria-label="Drawing text"
-            />
-          ) : null}
-
-          {(activeTool === "text" || selectedDrawing?.tool === "text") ? (
-            <Select
-              value={String(styleEditorValue.textSize)}
-              onValueChange={(value) => applyStyleToCurrentTarget({ textSize: Number(value) })}
-            >
-              <SelectTrigger className="h-8 w-[74px] rounded-md text-xs font-semibold" aria-label="Drawing text size">
-                <SelectValue />
+            <Select onValueChange={(value) => applyTemplateToCurrentTarget(value)}>
+              <SelectTrigger className="h-8 w-[118px] rounded-md text-xs font-semibold" aria-label="Apply drawing style template">
+                <SelectValue placeholder="Template" />
               </SelectTrigger>
               <SelectContent align="start">
-                {DRAWING_TEXT_SIZES.map((size) => (
-                  <SelectItem key={size} value={String(size)}>
-                    {size}px
+                {DRAWING_STYLE_TEMPLATES.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.label}
+                  </SelectItem>
+                ))}
+                {customTemplates.length > 0 ? (
+                  <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">Custom</div>
+                ) : null}
+                {customTemplates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-          ) : null}
-          <span className="text-[11px] font-semibold tabular-nums text-muted-foreground">{chartDrawings.length}</span>
-        </div>
+            <button
+              type="button"
+              aria-label="Save current style as template"
+              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground inline-flex items-center justify-center text-sm font-bold leading-none"
+              onClick={() => {
+                setTemplateNameDraft("");
+                setTemplateNameDialogOpen(true);
+              }}
+              title="Save current style as template"
+            >
+              +
+            </button>
+            {customTemplates.length > 0 ? (
+              <button
+                type="button"
+                aria-label="Delete last custom template"
+                className="h-7 w-7 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive inline-flex items-center justify-center text-xs font-bold leading-none"
+                onClick={() => {
+                  const last = customTemplates[customTemplates.length - 1];
+                  if (last) deleteCustomTemplate(last.id);
+                }}
+                title="Delete last custom template"
+              >
+                &times;
+              </button>
+            ) : null}
+
+            <div aria-hidden="true" className="h-4 w-px bg-border/60" />
+
+            <div className="flex items-center gap-1">
+              {DRAWING_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`Set color to ${color}`}
+                  className={cn(
+                    "h-4 w-4 rounded-full border border-background shadow-sm ring-offset-background transition",
+                    selectedDrawingStyle?.strokeColor === color && "ring-2 ring-ring ring-offset-1",
+                  )}
+                  style={{ backgroundColor: color }}
+                  onClick={() => applyStyleToCurrentTarget({ strokeColor: color })}
+                />
+              ))}
+            </div>
+
+            <Select
+              value={selectedDrawingStyle?.lineStyle ?? DEFAULT_DRAWING_STYLE.lineStyle}
+              onValueChange={(value) => applyStyleToCurrentTarget({ lineStyle: value as ChartDrawingLineStyle })}
+            >
+              <SelectTrigger className="h-8 w-[88px] rounded-md text-xs font-semibold" aria-label="Drawing line style">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {DRAWING_LINE_STYLE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={String(selectedDrawingStyle?.strokeWidth ?? DEFAULT_DRAWING_STYLE.strokeWidth)}
+              onValueChange={(value) => applyStyleToCurrentTarget({ strokeWidth: Number(value) })}
+            >
+              <SelectTrigger className="h-8 w-[72px] rounded-md text-xs font-semibold" aria-label="Drawing stroke width">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {DRAWING_STROKE_WIDTHS.map((width) => (
+                  <SelectItem key={width} value={String(width)}>
+                    {width}px
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="hidden w-24 items-center gap-2 md:flex">
+              <span className="text-[11px] font-semibold text-muted-foreground">Fill</span>
+              <Slider
+                aria-label="Drawing fill opacity"
+                value={[Math.round((selectedDrawingStyle?.fillOpacity ?? DEFAULT_DRAWING_STYLE.fillOpacity) * 100)]}
+                min={0}
+                max={45}
+                step={1}
+                onValueChange={([value]) => applyStyleToCurrentTarget({ fillOpacity: (value ?? 0) / 100 })}
+              />
+            </div>
+
+            {selectedDrawing ? (
+              <Input
+                value={selectedDrawing.text ?? ""}
+                onChange={(event) => updateSelectedDrawingText(event.target.value)}
+                className="h-7 w-32 rounded-md px-2 text-xs"
+                aria-label="Drawing text"
+              />
+            ) : null}
+
+            {selectedDrawing ? (
+              <Select
+                value={String(selectedDrawingStyle?.textSize ?? DEFAULT_DRAWING_STYLE.textSize)}
+                onValueChange={(value) => applyStyleToCurrentTarget({ textSize: Number(value) })}
+              >
+                <SelectTrigger className="h-8 w-[74px] rounded-md text-xs font-semibold" aria-label="Drawing text size">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {DRAWING_TEXT_SIZES.map((size) => (
+                    <SelectItem key={size} value={String(size)}>
+                      {size}px
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-md border border-border/70 bg-background/95 px-2 py-1.5 shadow-sm backdrop-blur">
@@ -2610,6 +3326,37 @@ export function TradingViewPlatform({
             </span>
           ) : null}
         </div>
+        {onTimeframeChange ? (
+          <>
+            <div aria-hidden="true" className="h-4 w-px bg-border/60" />
+            <div className="flex items-center gap-0.5">
+              {TIMEFRAME_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={isSwitchingTimeframe}
+                  aria-label={`Switch to ${option.label} timeframe`}
+                  aria-pressed={activeTimeframe === option.value}
+                  className={cn(
+                    "h-7 min-w-9 rounded-sm border px-2 text-xs font-medium shadow-sm transition-colors disabled:opacity-50",
+                    activeTimeframe === option.value
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border/70 bg-background/75 text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                  onClick={() => onTimeframeChange(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
+        {finishAction ? (
+          <>
+            <div aria-hidden="true" className="h-4 w-px bg-border/60" />
+            {finishAction}
+          </>
+        ) : null}
       </div>
 
       {chartData.candles.length === 0 ? (
@@ -2619,6 +3366,127 @@ export function TradingViewPlatform({
           </div>
         </div>
       ) : null}
+
+      <Dialog open={templateNameDialogOpen} onOpenChange={setTemplateNameDialogOpen}>
+        <DialogContent className="sm:max-w-xs" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Save template</DialogTitle>
+            <DialogDescription>
+              Enter a name for this style template.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={templateNameDraft}
+            onChange={(e) => setTemplateNameDraft(e.target.value)}
+            placeholder="e.g. FVG, Supply zone..."
+            className="h-8 text-xs"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && templateNameDraft.trim()) {
+                saveCurrentStyleAsTemplate(templateNameDraft.trim());
+                setTemplateNameDialogOpen(false);
+              }
+            }}
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setTemplateNameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!templateNameDraft.trim()}
+              onClick={() => {
+                saveCurrentStyleAsTemplate(templateNameDraft.trim());
+                setTemplateNameDialogOpen(false);
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={fibonacciDialogOpen} onOpenChange={setFibonacciDialogOpen}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Fibonacci Settings</DialogTitle>
+            <DialogDescription>
+              Toggle visibility, change values/colors for each level.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-72 space-y-2 overflow-y-auto py-1">
+            {fibonacciEditLevels.map((level, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={cn(
+                    "h-7 w-7 rounded-md border text-xs font-bold",
+                    level.visible
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border",
+                  )}
+                  onClick={() => {
+                    setFibonacciEditLevels((prev) =>
+                      prev.map((l, i) => (i === index ? { ...l, visible: !l.visible } : l)),
+                    );
+                  }}
+                  title={level.visible ? "Hide level" : "Show level"}
+                >
+                  {level.visible ? "✓" : "—"}
+                </button>
+                <Input
+                  type="number"
+                  step="0.001"
+                  value={level.value}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!Number.isNaN(v)) {
+                      setFibonacciEditLevels((prev) =>
+                        prev.map((l, i) => (i === index ? { ...l, value: v } : l)),
+                      );
+                    }
+                  }}
+                  className="h-7 w-20 rounded-md text-xs"
+                />
+                <button
+                  type="button"
+                  className="h-6 w-6 shrink-0 rounded-full border shadow-sm"
+                  style={{ backgroundColor: level.color }}
+                  onClick={() => {
+                    const c = prompt("Enter hex color (e.g. #ff6600):", level.color);
+                    if (c && /^#[0-9a-fA-F]{6}$/.test(c.trim())) {
+                      setFibonacciEditLevels((prev) =>
+                        prev.map((l, i) => (i === index ? { ...l, color: c.trim() } : l)),
+                      );
+                    }
+                  }}
+                  title="Change level color"
+                />
+                <Input
+                  value={level.label}
+                  onChange={(e) => {
+                    setFibonacciEditLevels((prev) =>
+                      prev.map((l, i) => (i === index ? { ...l, label: e.target.value } : l)),
+                    );
+                  }}
+                  className="h-7 w-20 rounded-md text-xs"
+                  placeholder="Label"
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" size="sm" onClick={() => setFibonacciDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" size="sm" onClick={applyFibonacciLevels}>
+              Apply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
