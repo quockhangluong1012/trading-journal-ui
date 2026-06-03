@@ -234,7 +234,6 @@ export interface TradingViewWidgetOptions {
   symbol: string;
   theme: TradingViewTheme;
   timezone: "Etc/UTC";
-  watchlist: string[];
   withdateranges: boolean;
 }
 
@@ -346,6 +345,9 @@ interface DrawingStyleTemplate {
 
 export interface ChartDrawingAnchor {
   time: UTCTimestamp;
+  /** Fractional bar index, kept so drawings can be re-projected even when the
+   *  anchor's time falls outside the chart's currently-mapped range. */
+  logical?: number;
   price: number;
 }
 
@@ -595,7 +597,6 @@ export function buildTradingViewWidgetOptions({
     symbol,
     theme: tradingViewTheme,
     timezone: "Etc/UTC",
-    watchlist: [],
     withdateranges: true,
   };
 }
@@ -643,6 +644,114 @@ export function mapBacktestCandlesToChartData(candles: CandleData[]): ChartData 
     },
     { candles: [], volumes: [] },
   );
+}
+
+export interface IncrementalChartDataCache {
+  data: ChartData;
+  sourceLength: number;
+}
+
+export interface IncrementalChartDataUpdate extends IncrementalChartDataCache {
+  mode: "reset" | "update" | "none";
+  updatedCandle?: CandlestickData<UTCTimestamp>;
+  updatedVolume?: HistogramData<UTCTimestamp>;
+}
+
+function mapBacktestCandleToChartBars(
+  candle: CandleData,
+): { candle: CandlestickData<UTCTimestamp>; volume: HistogramData<UTCTimestamp> } | null {
+  const time = toChartTimestamp(candle.timestamp);
+  if (!time) {
+    return null;
+  }
+
+  return {
+    candle: {
+      time,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+    },
+    volume: {
+      time,
+      value: candle.volume ?? 0,
+      color: candle.close >= candle.open ? "rgba(34, 197, 94, 0.28)" : "rgba(239, 68, 68, 0.28)",
+    },
+  };
+}
+
+/**
+ * Diff the new candle array against the previously-rendered one so the chart can
+ * append/replace a single bar (candleSeries.update) instead of re-ingesting the
+ * whole series (candleSeries.setData) on every replay tick. Falls back to a full
+ * "reset" whenever the tail no longer lines up (re-fetch, timeframe switch, reorder).
+ */
+export function buildIncrementalChartData(
+  candles: CandleData[],
+  previous?: IncrementalChartDataCache | null,
+): IncrementalChartDataUpdate {
+  const reset = (): IncrementalChartDataUpdate => ({
+    data: mapBacktestCandlesToChartData(candles),
+    mode: "reset",
+    sourceLength: candles.length,
+  });
+
+  if (
+    !previous ||
+    candles.length !== previous.sourceLength + 1 ||
+    previous.data.candles.length === 0 ||
+    previous.data.candles.length !== previous.data.volumes.length
+  ) {
+    return reset();
+  }
+
+  const previousSourceTail = candles[previous.sourceLength - 1];
+  const previousSourceTailTime = previousSourceTail ? toChartTimestamp(previousSourceTail.timestamp) : null;
+  const previousLastTime = Number(previous.data.candles[previous.data.candles.length - 1].time);
+
+  if (!previousSourceTailTime || Number(previousSourceTailTime) !== previousLastTime) {
+    return reset();
+  }
+
+  const mapped = mapBacktestCandleToChartBars(candles[candles.length - 1]);
+  if (!mapped) {
+    return {
+      data: previous.data,
+      mode: "none",
+      sourceLength: candles.length,
+    };
+  }
+
+  const nextTime = Number(mapped.candle.time);
+
+  if (!Number.isFinite(previousLastTime) || nextTime < previousLastTime) {
+    return reset();
+  }
+
+  if (nextTime === previousLastTime) {
+    return {
+      data: {
+        candles: [...previous.data.candles.slice(0, -1), mapped.candle],
+        volumes: [...previous.data.volumes.slice(0, -1), mapped.volume],
+      },
+      mode: "update",
+      sourceLength: candles.length,
+      updatedCandle: mapped.candle,
+      updatedVolume: mapped.volume,
+    };
+  }
+
+  return {
+    data: {
+      candles: [...previous.data.candles, mapped.candle],
+      volumes: [...previous.data.volumes, mapped.volume],
+    },
+    mode: "update",
+    sourceLength: candles.length,
+    updatedCandle: mapped.candle,
+    updatedVolume: mapped.volume,
+  };
 }
 
 export function calculateReplayProgress({
@@ -1287,11 +1396,12 @@ export function snapDrawingAnchorToCandles(
     return anchor;
   }
 
-  const nearestCandle = chartCandles.reduce((nearest, candidate) => {
-    const nearestDistance = Math.abs(Number(nearest.time) - Number(anchor.time));
+  const nearest = chartCandles.reduce<{ candle: CandlestickData<UTCTimestamp>; logical: number }>((nearest, candidate, index) => {
+    const nearestDistance = Math.abs(Number(nearest.candle.time) - Number(anchor.time));
     const candidateDistance = Math.abs(Number(candidate.time) - Number(anchor.time));
-    return candidateDistance < nearestDistance ? candidate : nearest;
-  }, chartCandles[0]);
+    return candidateDistance < nearestDistance ? { candle: candidate, logical: index } : nearest;
+  }, { candle: chartCandles[0], logical: 0 });
+  const nearestCandle = nearest.candle;
 
   const priceCandidates = [
     nearestCandle.open,
@@ -1308,6 +1418,7 @@ export function snapDrawingAnchorToCandles(
 
   return {
     time: nearestCandle.time as UTCTimestamp,
+    logical: nearest.logical,
     price: nearestPrice,
   };
 }
@@ -1442,12 +1553,14 @@ export function positionChartDrawing({
   drawing,
   width,
   height,
+  logicalToCoordinate,
   timeToCoordinate,
   priceToCoordinate,
 }: {
   drawing: ChartDrawing;
   width: number;
   height: number;
+  logicalToCoordinate?: (logical: number) => number | null;
   timeToCoordinate: (time: UTCTimestamp) => number | null;
   priceToCoordinate: (price: number) => number | null;
 }): PositionedChartDrawing | null {
@@ -1456,7 +1569,13 @@ export function positionChartDrawing({
   }
 
   const points = drawing.points.reduce<PositionedChartDrawing["points"]>((result, point) => {
-    const x = timeToCoordinate(point.time);
+    let x = timeToCoordinate(point.time);
+    // When a point's time falls outside the chart's mapped range (panned far,
+    // or no bars on screen) the time mapping yields null — fall back to the
+    // point's logical index so the drawing stays anchored instead of vanishing.
+    if ((x == null || !Number.isFinite(x)) && logicalToCoordinate && Number.isFinite(point.logical)) {
+      x = logicalToCoordinate(Number(point.logical));
+    }
     const y = priceToCoordinate(point.price);
 
     if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) {
@@ -1480,6 +1599,93 @@ export function positionChartDrawing({
     ...drawing,
     points,
     metrics: calculateDrawingMetrics(drawing),
+  };
+}
+
+export function estimateDrawingTimeFromLogical(
+  logical: number,
+  chartCandles: Array<CandlestickData<UTCTimestamp>>,
+): UTCTimestamp | null {
+  if (!Number.isFinite(logical) || chartCandles.length === 0) {
+    return null;
+  }
+
+  if (chartCandles.length === 1) {
+    return chartCandles[0].time as UTCTimestamp;
+  }
+
+  const lastIndex = chartCandles.length - 1;
+  const intervalAt = (leftIndex: number, rightIndex: number) => (
+    Number(chartCandles[rightIndex].time) - Number(chartCandles[leftIndex].time)
+  );
+
+  if (logical <= 0) {
+    const interval = intervalAt(0, 1);
+    return Math.round(Number(chartCandles[0].time) + logical * interval) as UTCTimestamp;
+  }
+
+  if (logical >= lastIndex) {
+    const interval = intervalAt(lastIndex - 1, lastIndex);
+    return Math.round(Number(chartCandles[lastIndex].time) + (logical - lastIndex) * interval) as UTCTimestamp;
+  }
+
+  const leftIndex = Math.floor(logical);
+  const rightIndex = Math.ceil(logical);
+  if (leftIndex === rightIndex) {
+    return chartCandles[leftIndex].time as UTCTimestamp;
+  }
+
+  const leftTime = Number(chartCandles[leftIndex].time);
+  const rightTime = Number(chartCandles[rightIndex].time);
+  const ratio = logical - leftIndex;
+
+  return Math.round(leftTime + (rightTime - leftTime) * ratio) as UTCTimestamp;
+}
+
+export function calculateDrawingAnchorDelta(
+  start: ChartDrawingAnchor,
+  end: ChartDrawingAnchor,
+): { dt: number; dLogical: number | null; dp: number } {
+  const hasLogicalDelta = Number.isFinite(start.logical) && Number.isFinite(end.logical);
+
+  return {
+    dt: Number(end.time) - Number(start.time),
+    dLogical: hasLogicalDelta ? Number(end.logical) - Number(start.logical) : null,
+    dp: end.price - start.price,
+  };
+}
+
+export function moveChartDrawing(
+  drawing: ChartDrawing,
+  delta: { dt: number; dLogical?: number | null; dp: number },
+): ChartDrawing {
+  return {
+    ...drawing,
+    points: drawing.points.map((point) => {
+      const moved: ChartDrawingAnchor = {
+        time: (Number(point.time) + delta.dt) as UTCTimestamp,
+        price: point.price + delta.dp,
+      };
+
+      if (Number.isFinite(point.logical) && delta.dLogical != null && Number.isFinite(delta.dLogical)) {
+        moved.logical = Number(point.logical) + delta.dLogical;
+      }
+
+      return moved;
+    }),
+  };
+}
+
+export function replaceChartDrawingPoint(
+  drawing: ChartDrawing,
+  pointIndex: number,
+  point: ChartDrawingAnchor,
+): ChartDrawing {
+  return {
+    ...drawing,
+    points: drawing.points.map((currentPoint, index) => (
+      index === pointIndex ? { ...point } : { ...currentPoint }
+    )),
   };
 }
 
@@ -1683,7 +1889,7 @@ function renderPositionedChartDrawing(
           <line x1={centerX} y1={centerY - 4} x2={centerX} y2={centerY + 4}
             stroke={drawingStyle.strokeColor} strokeWidth={1} vectorEffect="non-scaling-stroke" />
           {drawing.text ? renderDrawingLabel({
-            x: x + rectWidth - 8,
+            x: x + rectWidth - 8, 
             y: centerY + 4,
             text: drawing.text,
             color: drawingStyle.textColor,
@@ -1844,8 +2050,19 @@ export function TradingViewPlatform({
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const orderPriceLinesRef = useRef<IPriceLine[]>([]);
   const orderMarkerSyncFrameRef = useRef<number | null>(null);
+  // Caches the last-rendered chart data so each replay tick can diff against it
+  // and push a single bar instead of re-ingesting the whole series.
+  const chartDataCacheRef = useRef<(
+    IncrementalChartDataCache & {
+      source: CandleData[];
+      update: IncrementalChartDataUpdate;
+    }
+  ) | null>(null);
   const drawingIdRef = useRef(nextDrawingIdSeed(initialDrawings));
   const previousCandleCountRef = useRef(0);
+  // Tracks whether the overlay actually has anything to project, so viewport
+  // changes don't bump overlayRevision (forcing a full re-render) when idle.
+  const shouldProjectDrawingsRef = useRef(false);
   const dragStateRef = useRef<DrawingDragState | null>(null);
   const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
   // True while the user has panned back to review past candles. While set, the
@@ -1907,7 +2124,23 @@ export function TradingViewPlatform({
     onDrawingsChangeRef.current?.(chartDrawings);
   }, [chartDrawings]);
 
-  const chartData = useMemo(() => mapBacktestCandlesToChartData(candles), [candles]);
+  const chartDataUpdate = useMemo(() => {
+    const cached = chartDataCacheRef.current;
+    if (cached?.source === candles) {
+      return cached.update;
+    }
+
+    const update = buildIncrementalChartData(candles, cached);
+    chartDataCacheRef.current = {
+      data: update.data,
+      source: candles,
+      sourceLength: update.sourceLength,
+      update,
+    };
+
+    return update;
+  }, [candles]);
+  const chartData = chartDataUpdate.data;
   const orderMarkerOverlays = useMemo(
     () => buildOrderMarkerOverlays({
       pendingOrders,
@@ -1939,7 +2172,7 @@ export function TradingViewPlatform({
     const candleSeries = candleSeriesRef.current;
 
     if (!chart || !candleSeries || orderMarkerOverlays.length === 0) {
-      setOrderMarkerPositions([]);
+      setOrderMarkerPositions((current) => (current.length === 0 ? current : []));
       return;
     }
 
@@ -1961,7 +2194,27 @@ export function TradingViewPlatform({
       return result;
     }, []);
 
-    setOrderMarkerPositions(nextPositions);
+    // Keep the same array reference when nothing moved so the markers don't
+    // re-render every frame during pan/playback when their pixels are unchanged.
+    setOrderMarkerPositions((current) => {
+      if (
+        current.length === nextPositions.length &&
+        current.every((marker, index) => {
+          const other = nextPositions[index];
+          return (
+            marker.id === other.id &&
+            marker.x === other.x &&
+            marker.y === other.y &&
+            marker.text === other.text &&
+            marker.color === other.color
+          );
+        })
+      ) {
+        return current;
+      }
+
+      return nextPositions;
+    });
   }, [orderMarkerOverlays]);
 
   const syncChartSize = useCallback(() => {
@@ -1986,6 +2239,12 @@ export function TradingViewPlatform({
 
   const syncDrawingProjection = useCallback(() => {
     syncChartSize();
+    // Only bump the overlay revision (which re-renders the SVG layer) when there
+    // is actually something to project. Otherwise every viewport change / replay
+    // tick would force a full re-render for nothing.
+    if (!shouldProjectDrawingsRef.current) {
+      return;
+    }
     setOverlayRevision((revision) => revision + 1);
   }, [syncChartSize]);
 
@@ -1994,9 +2253,18 @@ export function TradingViewPlatform({
     syncDrawingProjection();
   }, [syncDrawingProjection, syncOrderMarkerPositions]);
 
+  // Keep a ref to the latest sync fn so scheduleOrderMarkerSync can stay stable
+  // ([] deps). Otherwise it changes identity on every tick (orderMarkerOverlays
+  // depends on the per-tick candle array), which would re-subscribe the chart's
+  // viewport listeners and re-attach the wheel handler every frame.
+  const syncViewportOverlaysRef = useRef(syncViewportOverlays);
+  useEffect(() => {
+    syncViewportOverlaysRef.current = syncViewportOverlays;
+  }, [syncViewportOverlays]);
+
   const scheduleOrderMarkerSync = useCallback(() => {
     if (typeof window === "undefined") {
-      syncViewportOverlays();
+      syncViewportOverlaysRef.current();
       return;
     }
 
@@ -2006,9 +2274,15 @@ export function TradingViewPlatform({
 
     orderMarkerSyncFrameRef.current = window.requestAnimationFrame(() => {
       orderMarkerSyncFrameRef.current = null;
-      syncViewportOverlays();
+      syncViewportOverlaysRef.current();
     });
-  }, [syncViewportOverlays]);
+  }, []);
+
+  // Maintain the projection guard whenever visibility/drawing-presence changes.
+  useEffect(() => {
+    shouldProjectDrawingsRef.current =
+      areDrawingsVisible && (chartDrawings.length > 0 || drawingDraft !== null);
+  }, [areDrawingsVisible, chartDrawings.length, drawingDraft]);
 
   useEffect(() => {
     if (selectedDrawingId && !chartDrawings.some((drawing) => drawing.id === selectedDrawingId)) {
@@ -2671,10 +2945,12 @@ export function TradingViewPlatform({
       return;
     }
 
-    fitLatestCandles(chart, chartData.candles.length);
+    // Read the candle count from the ref so this callback stays stable across
+    // replay ticks (otherwise it would bust the memoized toolbar every tick).
+    fitLatestCandles(chart, previousCandleCountRef.current);
     isViewingHistoryRef.current = false;
     scheduleOrderMarkerSync();
-  }, [chartData.candles.length, scheduleOrderMarkerSync]);
+  }, [scheduleOrderMarkerSync]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2840,17 +3116,36 @@ export function TradingViewPlatform({
       return;
     }
 
-    candleSeries.setData(chartData.candles);
-    volumeSeries.setData(chartData.volumes);
+    const previousCandleCount = previousCandleCountRef.current;
+    const updatedCandle = chartDataUpdate.updatedCandle;
+    const updatedVolume = chartDataUpdate.updatedVolume;
+    // Append/replace just the latest bar when the diff says only the tail moved;
+    // a full setData() re-ingests and repaints the entire series on every tick.
+    const canUseSeriesUpdate =
+      chartDataUpdate.mode === "update" &&
+      updatedCandle !== undefined &&
+      updatedVolume !== undefined &&
+      previousCandleCount > 0 &&
+      chartData.candles.length >= previousCandleCount &&
+      chartData.candles.length - previousCandleCount <= 1;
+
+    if (canUseSeriesUpdate) {
+      candleSeries.update(updatedCandle);
+      volumeSeries.update(updatedVolume);
+    } else if (chartDataUpdate.mode !== "none") {
+      candleSeries.setData(chartData.candles);
+      volumeSeries.setData(chartData.volumes);
+    }
 
     if (
-      previousCandleCountRef.current === 0 ||
-      chartData.candles.length < previousCandleCountRef.current ||
-      chartData.candles.length - previousCandleCountRef.current > 5
+      previousCandleCount === 0 ||
+      chartDataUpdate.mode === "reset" ||
+      chartData.candles.length < previousCandleCount ||
+      chartData.candles.length - previousCandleCount > 5
     ) {
       fitLatestCandles(chart, chartData.candles.length);
       isViewingHistoryRef.current = false;
-    } else if (chartData.candles.length > previousCandleCountRef.current && !isViewingHistoryRef.current) {
+    } else if (chartData.candles.length > previousCandleCount && !isViewingHistoryRef.current) {
       // Skip the snap-to-live-edge while the user is panning through past
       // candles, so reviewing history isn't interrupted by new data.
       chart.timeScale().scrollToRealTime();
@@ -2858,7 +3153,7 @@ export function TradingViewPlatform({
 
     previousCandleCountRef.current = chartData.candles.length;
     scheduleOrderMarkerSync();
-  }, [chartData, scheduleOrderMarkerSync]);
+  }, [chartData, chartDataUpdate, scheduleOrderMarkerSync]);
 
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
@@ -2911,7 +3206,7 @@ export function TradingViewPlatform({
     };
   }, [scheduleOrderMarkerSync]);
 
-  const renderToolbarButton = ({
+  const renderToolbarButton = useCallback(({
     label,
     icon: Icon,
     pressed = false,
@@ -2947,7 +3242,98 @@ export function TradingViewPlatform({
       </TooltipTrigger>
       <TooltipContent side="right">{label}</TooltipContent>
     </Tooltip>
-  );
+  ), []);
+
+  // Memoize the left toolbar so the ~18 Radix Tooltip buttons don't re-render on
+  // every overlay/marker/draft update (pan, zoom, drag, replay tick). It only
+  // rebuilds when its real inputs change (active tool, toggles, selection).
+  const drawingToolbar = useMemo(() => (
+    <div className="pointer-events-auto absolute left-3 top-3 z-40 flex max-h-[calc(100%-1.5rem)] w-10 flex-col items-center gap-1 overflow-y-auto rounded-md border border-border/70 bg-background/95 p-1 shadow-sm backdrop-blur">
+      {DRAWING_TOOL_GROUPS.map((group, groupIndex) => (
+        <div key={`tool-group-${groupIndex}`} className="flex w-full flex-col items-center gap-1">
+          {groupIndex > 0 ? <div className="my-0.5 h-px w-6 bg-border/80" /> : null}
+          {group.map((tool) => renderToolbarButton({
+            label: tool.label,
+            icon: tool.icon,
+            pressed: activeTool === tool.id,
+            onClick: () => {
+              setDrawingDraft(null);
+              setSelectedDrawingId(null);
+              setActiveTool(tool.id);
+            },
+          }))}
+        </div>
+      ))}
+
+      <div className="my-0.5 h-px w-6 bg-border/80" />
+      {renderToolbarButton({
+        label: "Magnet",
+        icon: Magnet,
+        pressed: isMagnetEnabled,
+        onClick: () => setIsMagnetEnabled((value) => !value),
+      })}
+      {renderToolbarButton({
+        label: "Lock drawings",
+        icon: Lock,
+        pressed: areDrawingsLocked,
+        onClick: () => setAreDrawingsLocked((value) => !value),
+      })}
+      {renderToolbarButton({
+        label: areDrawingsVisible ? "Hide drawings" : "Show drawings",
+        icon: areDrawingsVisible ? Eye : EyeOff,
+        pressed: !areDrawingsVisible,
+        onClick: () => setAreDrawingsVisible((value) => !value),
+      })}
+      {renderToolbarButton({
+        label: "Undo drawing",
+        icon: RotateCcw,
+        disabled: chartDrawings.length === 0,
+        onClick: undoLastDrawing,
+      })}
+      {renderToolbarButton({
+        label: "Delete selected drawing",
+        icon: X,
+        disabled: !selectedDrawingId,
+        onClick: deleteSelectedDrawing,
+      })}
+      {renderToolbarButton({
+        label: "Clear drawings",
+        icon: Trash2,
+        disabled: chartDrawings.length === 0,
+        onClick: clearDrawings,
+      })}
+
+      <div className="my-0.5 h-px w-6 bg-border/80" />
+      {renderToolbarButton({
+        label: "Zoom in",
+        icon: ZoomIn,
+        onClick: () => zoomChart(0.72),
+      })}
+      {renderToolbarButton({
+        label: "Zoom out",
+        icon: ZoomOut,
+        onClick: () => zoomChart(1.35),
+      })}
+      {renderToolbarButton({
+        label: "Reset view",
+        icon: Maximize2,
+        onClick: resetChartView,
+      })}
+    </div>
+  ), [
+    activeTool,
+    isMagnetEnabled,
+    areDrawingsLocked,
+    areDrawingsVisible,
+    chartDrawings.length,
+    selectedDrawingId,
+    undoLastDrawing,
+    deleteSelectedDrawing,
+    clearDrawings,
+    zoomChart,
+    resetChartView,
+    renderToolbarButton,
+  ]);
 
   return (
     <div className={cn("relative h-full w-full overflow-hidden bg-background", className)} data-testid="tradingview-platform">
@@ -2992,78 +3378,7 @@ export function TradingViewPlatform({
         ) : null}
       </div>
 
-      <div className="pointer-events-auto absolute left-3 top-3 z-40 flex max-h-[calc(100%-1.5rem)] w-10 flex-col items-center gap-1 overflow-y-auto rounded-md border border-border/70 bg-background/95 p-1 shadow-sm backdrop-blur">
-        {DRAWING_TOOL_GROUPS.map((group, groupIndex) => (
-          <div key={`tool-group-${groupIndex}`} className="flex w-full flex-col items-center gap-1">
-            {groupIndex > 0 ? <div className="my-0.5 h-px w-6 bg-border/80" /> : null}
-            {group.map((tool) => renderToolbarButton({
-              label: tool.label,
-              icon: tool.icon,
-              pressed: activeTool === tool.id,
-              onClick: () => {
-                setDrawingDraft(null);
-                setSelectedDrawingId(null);
-                setActiveTool(tool.id);
-              },
-            }))}
-          </div>
-        ))}
-
-        <div className="my-0.5 h-px w-6 bg-border/80" />
-        {renderToolbarButton({
-          label: "Magnet",
-          icon: Magnet,
-          pressed: isMagnetEnabled,
-          onClick: () => setIsMagnetEnabled((value) => !value),
-        })}
-        {renderToolbarButton({
-          label: "Lock drawings",
-          icon: Lock,
-          pressed: areDrawingsLocked,
-          onClick: () => setAreDrawingsLocked((value) => !value),
-        })}
-        {renderToolbarButton({
-          label: areDrawingsVisible ? "Hide drawings" : "Show drawings",
-          icon: areDrawingsVisible ? Eye : EyeOff,
-          pressed: !areDrawingsVisible,
-          onClick: () => setAreDrawingsVisible((value) => !value),
-        })}
-        {renderToolbarButton({
-          label: "Undo drawing",
-          icon: RotateCcw,
-          disabled: chartDrawings.length === 0,
-          onClick: undoLastDrawing,
-        })}
-        {renderToolbarButton({
-          label: "Delete selected drawing",
-          icon: X,
-          disabled: !selectedDrawingId,
-          onClick: deleteSelectedDrawing,
-        })}
-        {renderToolbarButton({
-          label: "Clear drawings",
-          icon: Trash2,
-          disabled: chartDrawings.length === 0,
-          onClick: clearDrawings,
-        })}
-
-        <div className="my-0.5 h-px w-6 bg-border/80" />
-        {renderToolbarButton({
-          label: "Zoom in",
-          icon: ZoomIn,
-          onClick: () => zoomChart(0.72),
-        })}
-        {renderToolbarButton({
-          label: "Zoom out",
-          icon: ZoomOut,
-          onClick: () => zoomChart(1.35),
-        })}
-        {renderToolbarButton({
-          label: "Reset view",
-          icon: Maximize2,
-          onClick: resetChartView,
-        })}
-      </div>
+      {drawingToolbar}
 
       {orderMarkerPositions.map((marker) => {
         const isBuyMarker = marker.side === "Long";

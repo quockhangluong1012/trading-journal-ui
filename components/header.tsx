@@ -41,11 +41,18 @@ const routeLabels: Record<string, string> = {
   settings: "Settings",
   setup: "Setups",
   trade: "Trade Workspace",
+  "trade/live": "Live Trade",
 };
 
 function formatSectionLabel(pathname: string): string {
   if (pathname === "/") {
     return "Dashboard";
+  }
+
+  // Check exact path match first (e.g. /trade/live)
+  const pathWithoutLeadingSlash = pathname.replace(/^\//, "");
+  if (routeLabels[pathWithoutLeadingSlash]) {
+    return routeLabels[pathWithoutLeadingSlash];
   }
 
   const segment = pathname.split("/").filter(Boolean)[0];

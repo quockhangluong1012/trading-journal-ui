@@ -6,6 +6,7 @@ import {
   calculateDrawingAnchorDelta,
   applyChartDrawingStyle,
   applyChartDrawingTemplate,
+  buildIncrementalChartData,
   buildOrderMarkerOverlays,
   buildOrderPriceLines,
   buildTradingViewWidgetOptions,
@@ -114,6 +115,57 @@ describe("TradingView platform helpers", () => {
       time: toChartTimestamp("2024-01-01T00:05:00Z"),
       value: 1500,
     });
+  });
+
+  it("builds an incremental chart update when replay appends the next candle", () => {
+    const firstBatch = [
+      { timestamp: "2024-01-01T00:00:00Z", open: 100, high: 103, low: 99, close: 101, volume: 900 },
+      { timestamp: "2024-01-01T00:05:00Z", open: 101, high: 104, low: 100, close: 103, volume: 1200 },
+    ];
+    const initial = buildIncrementalChartData(firstBatch);
+
+    const appended = buildIncrementalChartData([
+      ...firstBatch,
+      { timestamp: "2024-01-01T00:10:00Z", open: 103, high: 107, low: 102, close: 106, volume: 1500 },
+    ], initial);
+
+    expect(appended.mode).toBe("update");
+    expect(appended.sourceLength).toBe(3);
+    expect(appended.data.candles).toHaveLength(3);
+    expect(appended.data.candles[0]).toBe(initial.data.candles[0]);
+    expect(appended.data.candles[1]).toBe(initial.data.candles[1]);
+    expect(appended.updatedCandle).toEqual({
+      time: toChartTimestamp("2024-01-01T00:10:00Z"),
+      open: 103,
+      high: 107,
+      low: 102,
+      close: 106,
+    });
+    expect(appended.updatedVolume).toMatchObject({
+      time: toChartTimestamp("2024-01-01T00:10:00Z"),
+      value: 1500,
+    });
+  });
+
+  it("falls back to a full chart reset when replay candles are replaced or reordered", () => {
+    const initial = buildIncrementalChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 100, high: 103, low: 99, close: 101, volume: 900 },
+      { timestamp: "2024-01-01T00:05:00Z", open: 101, high: 104, low: 100, close: 103, volume: 1200 },
+    ]);
+
+    const reset = buildIncrementalChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 100, high: 103, low: 99, close: 101, volume: 900 },
+      { timestamp: "2023-12-31T23:55:00Z", open: 98, high: 100, low: 97, close: 99, volume: 700 },
+      { timestamp: "2024-01-01T00:05:00Z", open: 101, high: 104, low: 100, close: 103, volume: 1200 },
+    ], initial);
+
+    expect(reset.mode).toBe("reset");
+    expect(reset.data.candles.map((candle) => candle.time)).toEqual([
+      toChartTimestamp("2023-12-31T23:55:00Z"),
+      toChartTimestamp("2024-01-01T00:00:00Z"),
+      toChartTimestamp("2024-01-01T00:05:00Z"),
+    ]);
+    expect(reset.updatedCandle).toBeUndefined();
   });
 
   it("calculates bounded replay progress from session dates", () => {

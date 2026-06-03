@@ -25,6 +25,21 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
+const sessionDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const sessionTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 function formatSessionTimestamp(timestamp: string | null): string {
   if (!timestamp) {
     return "Waiting for candles";
@@ -35,20 +50,8 @@ function formatSessionTimestamp(timestamp: string | null): string {
     return "Waiting for candles";
   }
 
-  const datePart = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-
-  const timePart = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "UTC",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(date);
+  const datePart = sessionDateFormatter.format(date);
+  const timePart = sessionTimeFormatter.format(date);
 
   return `${datePart} ${timePart} UTC`;
 }
@@ -74,30 +77,25 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     );
   }
 
-  const {
-    session,
-    candles,
-    resumeSession,
-    isPlaying,
-    startPlayback,
-    pausePlayback,
-    playbackSpeed,
-    setPlaybackSpeed,
-    activeTimeframe,
-    switchTimeframe,
-    advanceCandle,
-    balance,
-    equity,
-    unrealizedPnl,
-    pendingOrders,
-    activePositions,
-    closedPositions,
-    loadTradingZones,
-    finishSession,
-    drawings,
-    setDrawings,
-    saveDrawings,
-  } = useBacktestStore();
+  const session = useBacktestStore((state) => state.session);
+  const candles = useBacktestStore((state) => state.candles);
+  const resumeSession = useBacktestStore((state) => state.resumeSession);
+  const isPlaying = useBacktestStore((state) => state.isPlaying);
+  const startPlayback = useBacktestStore((state) => state.startPlayback);
+  const pausePlayback = useBacktestStore((state) => state.pausePlayback);
+  const playbackSpeed = useBacktestStore((state) => state.playbackSpeed);
+  const setPlaybackSpeed = useBacktestStore((state) => state.setPlaybackSpeed);
+  const activeTimeframe = useBacktestStore((state) => state.activeTimeframe);
+  const switchTimeframe = useBacktestStore((state) => state.switchTimeframe);
+  const advanceCandle = useBacktestStore((state) => state.advanceCandle);
+  const pendingOrders = useBacktestStore((state) => state.pendingOrders);
+  const activePositions = useBacktestStore((state) => state.activePositions);
+  const closedPositions = useBacktestStore((state) => state.closedPositions);
+  const loadTradingZones = useBacktestStore((state) => state.loadTradingZones);
+  const finishSession = useBacktestStore((state) => state.finishSession);
+  const drawings = useBacktestStore((state) => state.drawings);
+  const setDrawings = useBacktestStore((state) => state.setDrawings);
+  const saveDrawings = useBacktestStore((state) => state.saveDrawings);
 
   const displayedTimestamp = candles.length > 0
     ? candles[candles.length - 1].timestamp

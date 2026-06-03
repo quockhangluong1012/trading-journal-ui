@@ -19,7 +19,8 @@ import {
   Trophy,
   GitBranch,
   FileText,
-  CalendarDays
+  CalendarDays,
+  TrendingUp
 } from "lucide-react"
 
 import {
@@ -46,6 +47,7 @@ const data = {
     {
       title: "Trading",
       items: [
+        { title: "Live Trade", url: "/trade/live", icon: TrendingUp },
         { title: "Trade History", url: "/history", icon: History },
         { title: "Setup", url: "/setup", icon: GitBranch },
         { title: "Templates", url: "/trade/templates", icon: FileText },

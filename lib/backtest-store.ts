@@ -700,42 +700,43 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   },
 
   startPlayback: (sessionId) => {
-    const { isPlaying, playbackSpeed } = get();
-    if (isPlaying) return;
+    if (get().isPlaying) return;
 
-    const intervalMs = Math.max(100, 1000 / playbackSpeed);
-    const intervalId = setInterval(() => {
-      get().advanceCandle(sessionId);
-    }, intervalMs);
+    // Self-scheduling loop: the next candle is requested only AFTER the
+    // previous advanceCandle() round-trip resolves. A fixed setInterval keeps
+    // firing while a request is still in flight, so at higher speeds (or
+    // against a slow backend) calls pile up and candles land in bursts instead
+    // of a steady cadence. Re-reading playbackSpeed each tick also lets a speed
+    // change take effect without tearing down and restarting the loop.
+    set({ isPlaying: true, playbackIntervalId: null });
 
-    set({ isPlaying: true, playbackIntervalId: intervalId });
+    const tick = async () => {
+      if (!get().isPlaying) return;
+
+      await get().advanceCandle(sessionId);
+
+      // advanceCandle may end or liquidate the session, which pauses playback.
+      if (!get().isPlaying) return;
+
+      const intervalMs = Math.max(100, 1000 / get().playbackSpeed);
+      const timeoutId = setTimeout(tick, intervalMs);
+      set({ playbackIntervalId: timeoutId });
+    };
+
+    void tick();
   },
 
   pausePlayback: () => {
     const { playbackIntervalId } = get();
     if (playbackIntervalId) {
-      clearInterval(playbackIntervalId);
+      clearTimeout(playbackIntervalId);
     }
     set({ isPlaying: false, playbackIntervalId: null });
   },
 
   setPlaybackSpeed: (speed) => {
-    const { isPlaying, playbackIntervalId } = get();
-
-    if (isPlaying && playbackIntervalId) {
-      // Restart with new speed — need the sessionId from state
-      clearInterval(playbackIntervalId);
-      const session = get().session;
-      if (session) {
-        const intervalMs = Math.max(100, 1000 / speed);
-        const newIntervalId = setInterval(() => {
-          get().advanceCandle(session.id);
-        }, intervalMs);
-        set({ playbackSpeed: speed, playbackIntervalId: newIntervalId });
-        return;
-      }
-    }
-
+    // The playback loop re-reads playbackSpeed on every tick, so updating the
+    // value is enough — no need to clear and reschedule the timer.
     set({ playbackSpeed: speed });
   },
 
@@ -928,6 +929,11 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   // ── Resume ──
 
   resumeSession: async (sessionId) => {
+    // Stop any playback loop left running from a previous session before we
+    // wipe its bookkeeping, otherwise the pending timer would leak.
+    const { playbackIntervalId } = get();
+    if (playbackIntervalId) clearTimeout(playbackIntervalId);
+
     // Clear previous session data to prevent chart bleeding
     set({
       session: null,
@@ -975,7 +981,7 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
 
   reset: () => {
     const { playbackIntervalId } = get();
-    if (playbackIntervalId) clearInterval(playbackIntervalId);
+    if (playbackIntervalId) clearTimeout(playbackIntervalId);
     set(initialState);
   },
 }));
