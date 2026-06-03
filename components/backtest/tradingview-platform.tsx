@@ -12,6 +12,7 @@ import {
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type Logical,
   type UTCTimestamp,
 } from "lightweight-charts";
 import {
@@ -132,6 +133,8 @@ const STOP_COLOR = "#dc2626";
 const TARGET_COLOR = "#059669";
 const PENDING_STOP_COLOR = "#f97316";
 const AXIS_LABEL_TEXT_COLOR = "#ffffff";
+const SECONDS_PER_HOUR = 60 * 60;
+const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR;
 const DEFAULT_DRAWING_COLOR = "#2563eb";
 const DRAWING_COLORS = ["#2563eb", "#059669", "#f97316", "#e11d48", "#7c3aed", "#0f172a"];
 const MIN_DRAWING_DISTANCE = 4;
@@ -208,6 +211,44 @@ const DEFAULT_FIBONACCI_LEVELS: FibonacciLevel[] = [
   { value: 0.618, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.618" },
   { value: 0.786, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.786" },
   { value: 1, visible: true, color: DEFAULT_DRAWING_COLOR, label: "1" },
+];
+
+export type TradingSessionId = "tokyo" | "london" | "new-york";
+
+export interface TradingSessionDefinition {
+  id: TradingSessionId;
+  label: string;
+  startHourUtc: number;
+  endHourUtc: number;
+  color: string;
+  fillColor: string;
+}
+
+export const ICT_TRADING_SESSIONS: TradingSessionDefinition[] = [
+  {
+    id: "tokyo",
+    label: "Tokyo",
+    startHourUtc: 0,
+    endHourUtc: 9,
+    color: "#ec4899",
+    fillColor: "rgba(236, 72, 153, 0.09)",
+  },
+  {
+    id: "london",
+    label: "London",
+    startHourUtc: 7,
+    endHourUtc: 16,
+    color: "#2563eb",
+    fillColor: "rgba(37, 99, 235, 0.09)",
+  },
+  {
+    id: "new-york",
+    label: "New York",
+    startHourUtc: 12,
+    endHourUtc: 21,
+    color: "#f97316",
+    fillColor: "rgba(249, 115, 22, 0.09)",
+  },
 ];
 
 export type TradingViewInterval = "1" | "5" | "15" | "60" | "240" | "D";
@@ -297,6 +338,27 @@ export interface OrderMarkerOverlay {
 interface PositionedOrderMarkerOverlay extends OrderMarkerOverlay {
   x: number;
   y: number;
+}
+
+export interface TradingSessionOverlay {
+  id: string;
+  sessionId: TradingSessionId;
+  label: string;
+  color: string;
+  fillColor: string;
+  startTime: UTCTimestamp;
+  endTime: UTCTimestamp;
+  high: number;
+  low: number;
+}
+
+export interface PositionedTradingSessionOverlay extends TradingSessionOverlay {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  labelX: number;
+  labelY: number;
 }
 
 export type ChartDrawingTool =
@@ -776,6 +838,161 @@ export function calculateReplayProgress({
   }
 
   return Math.min(100, Math.max(0, ((current - start) / (end - start)) * 100));
+}
+
+function getUtcDayStartSeconds(time: number): number {
+  const date = new Date(time * 1000);
+  return Math.floor(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) / 1000);
+}
+
+function createTradingSessionBounds(
+  dayStart: number,
+  session: TradingSessionDefinition,
+): { startTime: UTCTimestamp; endTime: UTCTimestamp } {
+  const startTime = dayStart + session.startHourUtc * SECONDS_PER_HOUR;
+  let endTime = dayStart + session.endHourUtc * SECONDS_PER_HOUR;
+
+  if (endTime <= startTime) {
+    endTime += SECONDS_PER_DAY;
+  }
+
+  return {
+    startTime: startTime as UTCTimestamp,
+    endTime: endTime as UTCTimestamp,
+  };
+}
+
+export function buildTradingSessionOverlays(
+  chartCandles: Array<CandlestickData<UTCTimestamp>>,
+  sessions: TradingSessionDefinition[] = ICT_TRADING_SESSIONS,
+): TradingSessionOverlay[] {
+  if (chartCandles.length === 0 || sessions.length === 0) {
+    return [];
+  }
+
+  const sortedCandles = [...chartCandles].sort((left, right) => Number(left.time) - Number(right.time));
+  const firstTime = Number(sortedCandles[0].time);
+  const lastTime = Number(sortedCandles[sortedCandles.length - 1].time);
+
+  if (!Number.isFinite(firstTime) || !Number.isFinite(lastTime)) {
+    return [];
+  }
+
+  const firstDayStart = getUtcDayStartSeconds(firstTime) - SECONDS_PER_DAY;
+  const lastDayStart = getUtcDayStartSeconds(lastTime) + SECONDS_PER_DAY;
+  const overlays: TradingSessionOverlay[] = [];
+
+  for (let dayStart = firstDayStart; dayStart <= lastDayStart; dayStart += SECONDS_PER_DAY) {
+    for (const session of sessions) {
+      const bounds = createTradingSessionBounds(dayStart, session);
+      const sessionCandles = sortedCandles.filter((candle) => {
+        const time = Number(candle.time);
+        return time >= Number(bounds.startTime) && time < Number(bounds.endTime);
+      });
+
+      if (sessionCandles.length === 0) {
+        continue;
+      }
+
+      let high = Number.NEGATIVE_INFINITY;
+      let low = Number.POSITIVE_INFINITY;
+
+      for (const candle of sessionCandles) {
+        if (Number.isFinite(candle.high)) {
+          high = Math.max(high, candle.high);
+        }
+        if (Number.isFinite(candle.low)) {
+          low = Math.min(low, candle.low);
+        }
+      }
+
+      if (!Number.isFinite(high) || !Number.isFinite(low)) {
+        continue;
+      }
+
+      overlays.push({
+        id: `${session.id}-${bounds.startTime}`,
+        sessionId: session.id,
+        label: session.label,
+        color: session.color,
+        fillColor: session.fillColor,
+        startTime: bounds.startTime,
+        endTime: bounds.endTime,
+        high,
+        low,
+      });
+    }
+  }
+
+  return overlays.sort((left, right) => {
+    const timeDiff = Number(left.startTime) - Number(right.startTime);
+    if (timeDiff !== 0) {
+      return timeDiff;
+    }
+
+    return left.sessionId.localeCompare(right.sessionId);
+  });
+}
+
+export function positionTradingSessionOverlays({
+  sessions,
+  width,
+  height,
+  timeToCoordinate,
+  priceToCoordinate,
+}: {
+  sessions: TradingSessionOverlay[];
+  width: number;
+  height: number;
+  timeToCoordinate: (time: UTCTimestamp) => number | null;
+  priceToCoordinate: (price: number) => number | null;
+}): PositionedTradingSessionOverlay[] {
+  if (width <= 0 || height <= 0) {
+    return [];
+  }
+
+  return sessions.reduce<PositionedTradingSessionOverlay[]>((result, session) => {
+    const startX = timeToCoordinate(session.startTime);
+    const endX = timeToCoordinate(session.endTime);
+    const highY = priceToCoordinate(session.high);
+    const lowY = priceToCoordinate(session.low);
+
+    if (
+      startX == null ||
+      endX == null ||
+      highY == null ||
+      lowY == null ||
+      !Number.isFinite(startX) ||
+      !Number.isFinite(endX) ||
+      !Number.isFinite(highY) ||
+      !Number.isFinite(lowY)
+    ) {
+      return result;
+    }
+
+    const left = Math.min(startX, endX);
+    const right = Math.max(startX, endX);
+    const top = Math.min(highY, lowY);
+    const bottom = Math.max(highY, lowY);
+    const boxWidth = right - left;
+    const boxHeight = bottom - top;
+
+    if (boxWidth <= 0 || boxHeight <= 0) {
+      return result;
+    }
+
+    result.push({
+      ...session,
+      x: left,
+      y: top,
+      width: boxWidth,
+      height: boxHeight,
+      labelX: clamp(left + 8, 4, Math.max(4, width - 8)),
+      labelY: clamp(top - 6, 12, Math.max(12, height - 4)),
+    });
+
+    return result;
+  }, []);
 }
 
 function isValidPrice(value: number | null | undefined): value is number {
@@ -1396,6 +1613,11 @@ export function snapDrawingAnchorToCandles(
     return anchor;
   }
 
+  const logical = Number(anchor.logical);
+  if (Number.isFinite(logical) && (logical < 0 || logical > chartCandles.length - 1)) {
+    return anchor;
+  }
+
   const nearest = chartCandles.reduce<{ candle: CandlestickData<UTCTimestamp>; logical: number }>((nearest, candidate, index) => {
     const nearestDistance = Math.abs(Number(nearest.candle.time) - Number(anchor.time));
     const candidateDistance = Math.abs(Number(candidate.time) - Number(anchor.time));
@@ -1640,6 +1862,54 @@ export function estimateDrawingTimeFromLogical(
   const ratio = logical - leftIndex;
 
   return Math.round(leftTime + (rightTime - leftTime) * ratio) as UTCTimestamp;
+}
+
+export function resolveDrawingAnchorFromCoordinate({
+  x,
+  y,
+  chartCandles,
+  coordinateToTime,
+  coordinateToLogical,
+  coordinateToPrice,
+  isMagnetEnabled = false,
+}: {
+  x: number;
+  y: number;
+  chartCandles: Array<CandlestickData<UTCTimestamp>>;
+  coordinateToTime: (x: number) => number | null;
+  coordinateToLogical: (x: number) => number | null;
+  coordinateToPrice: (y: number) => number | null;
+  isMagnetEnabled?: boolean;
+}): ChartDrawingAnchor | null {
+  const rawTime = coordinateToTime(x);
+  const rawLogical = coordinateToLogical(x);
+  const logical = rawLogical != null && Number.isFinite(Number(rawLogical))
+    ? Number(rawLogical)
+    : undefined;
+  const price = coordinateToPrice(y);
+
+  let time = rawTime != null && Number.isFinite(Number(rawTime))
+    ? Number(rawTime)
+    : null;
+
+  if (time == null && logical !== undefined) {
+    time = estimateDrawingTimeFromLogical(logical, chartCandles);
+  }
+
+  if (time == null || price == null || !Number.isFinite(Number(price))) {
+    return null;
+  }
+
+  const anchor: ChartDrawingAnchor = {
+    time: time as UTCTimestamp,
+    price: Number(price),
+  };
+
+  if (logical !== undefined) {
+    anchor.logical = logical;
+  }
+
+  return isMagnetEnabled ? snapDrawingAnchorToCandles(anchor, chartCandles) : anchor;
 }
 
 export function calculateDrawingAnchorDelta(
@@ -2063,6 +2333,7 @@ export function TradingViewPlatform({
   // Tracks whether the overlay actually has anything to project, so viewport
   // changes don't bump overlayRevision (forcing a full re-render) when idle.
   const shouldProjectDrawingsRef = useRef(false);
+  const shouldProjectTradingSessionsRef = useRef(false);
   const dragStateRef = useRef<DrawingDragState | null>(null);
   const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
   // True while the user has panned back to review past candles. While set, the
@@ -2150,6 +2421,10 @@ export function TradingViewPlatform({
       placementFallbackTimestamp: currentTimestamp,
     }),
     [activePositions, chartData.candles, closedPositions, currentTimestamp, pendingOrders],
+  );
+  const tradingSessionOverlays = useMemo(
+    () => buildTradingSessionOverlays(chartData.candles),
+    [chartData.candles],
   );
   const orderPriceLines = useMemo(
     () => buildOrderPriceLines({ activePositions, pendingOrders }),
@@ -2242,7 +2517,7 @@ export function TradingViewPlatform({
     // Only bump the overlay revision (which re-renders the SVG layer) when there
     // is actually something to project. Otherwise every viewport change / replay
     // tick would force a full re-render for nothing.
-    if (!shouldProjectDrawingsRef.current) {
+    if (!shouldProjectDrawingsRef.current && !shouldProjectTradingSessionsRef.current) {
       return;
     }
     setOverlayRevision((revision) => revision + 1);
@@ -2283,6 +2558,10 @@ export function TradingViewPlatform({
     shouldProjectDrawingsRef.current =
       areDrawingsVisible && (chartDrawings.length > 0 || drawingDraft !== null);
   }, [areDrawingsVisible, chartDrawings.length, drawingDraft]);
+
+  useEffect(() => {
+    shouldProjectTradingSessionsRef.current = tradingSessionOverlays.length > 0;
+  }, [tradingSessionOverlays.length]);
 
   useEffect(() => {
     if (selectedDrawingId && !chartDrawings.some((drawing) => drawing.id === selectedDrawingId)) {
@@ -2484,38 +2763,40 @@ export function TradingViewPlatform({
     const rect = surface.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    let time = chart.timeScale().coordinateToTime(x);
-    let price: number | null = candleSeries.coordinateToPrice(y) as number | null;
+    const anchor = resolveDrawingAnchorFromCoordinate({
+      x,
+      y,
+      chartCandles: chartData.candles,
+      coordinateToTime: (coordinate) => {
+        const time = chart.timeScale().coordinateToTime(coordinate);
+        if (typeof time === "number" && Number.isFinite(time)) {
+          return time;
+        }
 
-    // Extrapolate when the pointer lands outside the chart's data range,
-    // so drawings can be placed anywhere on the canvas — not just on candles.
-    if (time === null || typeof time !== "number") {
-      const extrapolated = extrapolateTimeFromCoordinate(chart, x);
-      if (extrapolated !== null) {
-        time = extrapolated;
-      }
-    }
+        const extrapolated = extrapolateTimeFromCoordinate(chart, coordinate);
+        return extrapolated == null ? null : Number(extrapolated);
+      },
+      coordinateToLogical: (coordinate) => {
+        const logical = chart.timeScale().coordinateToLogical(coordinate);
+        return logical == null ? null : Number(logical);
+      },
+      coordinateToPrice: (coordinate) => {
+        const price = candleSeries.coordinateToPrice(coordinate) as number | null;
+        if (price !== null) {
+          return Number(price);
+        }
 
-    if (price === null) {
-      const surfaceHeight = surface.getBoundingClientRect().height;
-      const extrapolated = extrapolatePriceFromCoordinate(candleSeries, y, surfaceHeight);
-      if (extrapolated !== null) {
-        price = extrapolated;
-      }
-    }
+        return extrapolatePriceFromCoordinate(candleSeries, coordinate, rect.height);
+      },
+      isMagnetEnabled,
+    });
 
-    if (typeof time !== "number" || price == null || !Number.isFinite(Number(price))) {
+    if (!anchor) {
       return null;
     }
 
-    const anchor: ChartDrawingAnchor = {
-      time: time as UTCTimestamp,
-      price: Number(price),
-    };
-    const snappedAnchor = isMagnetEnabled ? snapDrawingAnchorToCandles(anchor, chartData.candles) : anchor;
-
     return {
-      ...snappedAnchor,
+      ...anchor,
       x,
       y,
     };
@@ -2538,6 +2819,10 @@ export function TradingViewPlatform({
         drawing,
         width: chartSize.width,
         height: chartSize.height,
+        logicalToCoordinate: (logical) => {
+          const x = chart.timeScale().logicalToCoordinate(logical as Logical);
+          return x == null ? null : Number(x);
+        },
         timeToCoordinate: (time) => {
           const x = chart.timeScale().timeToCoordinate(time);
           if (x !== null) return Number(x);
@@ -2568,6 +2853,43 @@ export function TradingViewPlatform({
     }, []);
   }, [areDrawingsVisible, chartDrawings, chartSize.height, chartSize.width, overlayRevision]);
 
+  const positionedTradingSessions = useMemo(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+
+    if (!chart || !candleSeries || tradingSessionOverlays.length === 0) {
+      return [];
+    }
+
+    const { timeParams, priceParams } = buildExtrapolationParams(
+      chart, candleSeries, chartSize.width, chartSize.height,
+    );
+
+    return positionTradingSessionOverlays({
+      sessions: tradingSessionOverlays,
+      width: chartSize.width,
+      height: chartSize.height,
+      timeToCoordinate: (time) => {
+        const x = chart.timeScale().timeToCoordinate(time);
+        if (x !== null) return Number(x);
+        if (timeParams) {
+          const extrapolated = timeParams.baseX + (time - timeParams.baseTime) / timeParams.timePerPixel;
+          if (Number.isFinite(extrapolated)) return extrapolated;
+        }
+        return null;
+      },
+      priceToCoordinate: (price) => {
+        const y = candleSeries.priceToCoordinate(price);
+        if (y !== null) return Number(y);
+        if (priceParams) {
+          const extrapolated = priceParams.baseY + (price - priceParams.basePrice) / priceParams.pricePerPixel;
+          if (Number.isFinite(extrapolated)) return extrapolated;
+        }
+        return null;
+      },
+    });
+  }, [chartSize.height, chartSize.width, overlayRevision, tradingSessionOverlays]);
+
   const positionedDraftDrawing = useMemo(() => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
@@ -2594,6 +2916,10 @@ export function TradingViewPlatform({
       drawing,
       width: chartSize.width,
       height: chartSize.height,
+      logicalToCoordinate: (logical) => {
+        const x = chart.timeScale().logicalToCoordinate(logical as Logical);
+        return x == null ? null : Number(x);
+      },
       timeToCoordinate: (time) => {
         const x = chart.timeScale().timeToCoordinate(time);
         return x == null ? null : Number(x);
@@ -3338,6 +3664,39 @@ export function TradingViewPlatform({
   return (
     <div className={cn("relative h-full w-full overflow-hidden bg-background", className)} data-testid="tradingview-platform">
       <div ref={containerRef} aria-label={`${asset} replay chart`} className="h-full w-full" />
+
+      {chartSize.width > 0 && chartSize.height > 0 && positionedTradingSessions.length > 0 ? (
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[1] h-full w-full overflow-hidden"
+          viewBox={`0 0 ${chartSize.width} ${chartSize.height}`}
+        >
+          {positionedTradingSessions.map((session) => (
+            <g key={session.id}>
+              <rect
+                x={session.x}
+                y={session.y}
+                width={session.width}
+                height={session.height}
+                fill={session.fillColor}
+                stroke={session.color}
+                strokeDasharray="2 2"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                x={session.labelX}
+                y={session.labelY}
+                fill={session.color}
+                fontSize={11}
+                fontWeight={700}
+              >
+                {session.label}
+              </text>
+            </g>
+          ))}
+        </svg>
+      ) : null}
 
       <div
         ref={drawingSurfaceRef}

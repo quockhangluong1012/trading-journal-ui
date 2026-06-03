@@ -9,6 +9,7 @@ import {
   buildIncrementalChartData,
   buildOrderMarkerOverlays,
   buildOrderPriceLines,
+  buildTradingSessionOverlays,
   buildTradingViewWidgetOptions,
   calculateReplayProgress,
   formatDrawingMetricLabel,
@@ -19,7 +20,9 @@ import {
   mapBacktestCandlesToChartData,
   moveChartDrawing,
   positionChartDrawing,
+  positionTradingSessionOverlays,
   replaceChartDrawingPoint,
+  resolveDrawingAnchorFromCoordinate,
   resolveTradingViewSymbol,
   snapDrawingAnchorToCandles,
   toChartTimestamp,
@@ -186,6 +189,79 @@ describe("TradingView platform helpers", () => {
       endDate: null,
       currentTimestamp: "2024-01-01T00:30:00Z",
     })).toBeNull();
+  });
+
+  it("builds overlapping ICT trading session boxes from loaded chart candles", () => {
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:15:00Z", open: 100, high: 104, low: 96, close: 101, volume: 900 },
+      { timestamp: "2024-01-01T08:00:00Z", open: 101, high: 110, low: 90, close: 107, volume: 1200 },
+      { timestamp: "2024-01-01T13:00:00Z", open: 107, high: 120, low: 92, close: 113, volume: 1500 },
+      { timestamp: "2024-01-01T17:00:00Z", open: 113, high: 118, low: 88, close: 109, volume: 1300 },
+      { timestamp: "2024-01-01T22:00:00Z", open: 109, high: 112, low: 106, close: 108, volume: 700 },
+    ]).candles;
+
+    const sessions = buildTradingSessionOverlays(chartCandles);
+
+    expect(sessions).toEqual([
+      expect.objectContaining({
+        id: `tokyo-${toChartTimestamp("2024-01-01T00:00:00Z")}`,
+        label: "Tokyo",
+        startTime: toChartTimestamp("2024-01-01T00:00:00Z"),
+        endTime: toChartTimestamp("2024-01-01T09:00:00Z"),
+        high: 110,
+        low: 90,
+      }),
+      expect.objectContaining({
+        id: `london-${toChartTimestamp("2024-01-01T07:00:00Z")}`,
+        label: "London",
+        startTime: toChartTimestamp("2024-01-01T07:00:00Z"),
+        endTime: toChartTimestamp("2024-01-01T16:00:00Z"),
+        high: 120,
+        low: 90,
+      }),
+      expect.objectContaining({
+        id: `new-york-${toChartTimestamp("2024-01-01T12:00:00Z")}`,
+        label: "New York",
+        startTime: toChartTimestamp("2024-01-01T12:00:00Z"),
+        endTime: toChartTimestamp("2024-01-01T21:00:00Z"),
+        high: 120,
+        low: 88,
+      }),
+    ]);
+  });
+
+  it("projects ICT trading sessions to chart pixels with bounded labels", () => {
+    const sessions = buildTradingSessionOverlays(mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T17:00:00Z", open: 107, high: 120, low: 92, close: 113, volume: 1500 },
+    ]).candles);
+
+    const positioned = positionTradingSessionOverlays({
+      sessions,
+      width: 800,
+      height: 400,
+      timeToCoordinate: (time) => {
+        if (time === toChartTimestamp("2024-01-01T12:00:00Z")) return 120;
+        if (time === toChartTimestamp("2024-01-01T21:00:00Z")) return 420;
+        return null;
+      },
+      priceToCoordinate: (price) => {
+        if (price === 120) return 6;
+        if (price === 92) return 180;
+        return null;
+      },
+    });
+
+    expect(positioned).toEqual([
+      expect.objectContaining({
+        label: "New York",
+        x: 120,
+        y: 6,
+        width: 300,
+        height: 174,
+        labelX: 128,
+        labelY: 12,
+      }),
+    ]);
   });
 
   it("builds price-axis markers without drawing order lines for pending and triggered orders", () => {
@@ -619,6 +695,21 @@ describe("TradingView platform helpers", () => {
     });
   });
 
+  it("keeps magnet anchors in future chart whitespace instead of snapping back to the latest candle", () => {
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 1.1, high: 1.12, low: 1.09, close: 1.11, volume: 1000 },
+      { timestamp: "2024-01-01T00:15:00Z", open: 1.11, high: 1.13, low: 1.105, close: 1.126, volume: 1200 },
+      { timestamp: "2024-01-01T00:30:00Z", open: 1.12, high: 1.14, low: 1.11, close: 1.135, volume: 900 },
+    ]).candles;
+    const futureAnchor = {
+      time: toChartTimestamp("2024-01-01T01:00:00Z")!,
+      logical: 4,
+      price: 1.128,
+    };
+
+    expect(snapDrawingAnchorToCandles(futureAnchor, chartCandles)).toEqual(futureAnchor);
+  });
+
   it("estimates drawing time for free logical positions away from loaded candles", () => {
     const chartCandles = mapBacktestCandlesToChartData([
       { timestamp: "2024-01-01T00:00:00Z", open: 1.1, high: 1.12, low: 1.09, close: 1.11, volume: 1000 },
@@ -629,6 +720,28 @@ describe("TradingView platform helpers", () => {
     expect(estimateDrawingTimeFromLogical(0.5, chartCandles)).toBe(toChartTimestamp("2024-01-01T00:07:30Z"));
     expect(estimateDrawingTimeFromLogical(4, chartCandles)).toBe(toChartTimestamp("2024-01-01T01:00:00Z"));
     expect(estimateDrawingTimeFromLogical(-1, chartCandles)).toBe(toChartTimestamp("2023-12-31T23:45:00Z"));
+  });
+
+  it("resolves drawing anchors from future logical whitespace when no exact candle time exists", () => {
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 1.1, high: 1.12, low: 1.09, close: 1.11, volume: 1000 },
+      { timestamp: "2024-01-01T00:15:00Z", open: 1.11, high: 1.13, low: 1.105, close: 1.126, volume: 1200 },
+      { timestamp: "2024-01-01T00:30:00Z", open: 1.12, high: 1.14, low: 1.11, close: 1.135, volume: 900 },
+    ]).candles;
+
+    expect(resolveDrawingAnchorFromCoordinate({
+      x: 560,
+      y: 180,
+      chartCandles,
+      coordinateToTime: () => null,
+      coordinateToLogical: () => 4,
+      coordinateToPrice: () => 1.128,
+      isMagnetEnabled: false,
+    })).toEqual({
+      time: toChartTimestamp("2024-01-01T01:00:00Z"),
+      logical: 4,
+      price: 1.128,
+    });
   });
 
   it("projects saved chart drawings back to screen coordinates", () => {
