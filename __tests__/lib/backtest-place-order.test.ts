@@ -49,6 +49,46 @@ describe("BacktestStore - placeOrder", () => {
     expect(useBacktestStore.getState().activePositions).toEqual([]);
   });
 
+  it("keeps the replay candle timestamp when the API response has a stale orderedAt", async () => {
+    const orderedAt = "2024-02-29T17:15:00Z";
+    const staleApiOrder = {
+      ...pendingLimitOrder,
+      orderedAt: "0001-01-01T00:00:00Z",
+    };
+    vi.spyOn(api, "post").mockResolvedValue({
+      data: { value: staleApiOrder },
+    } as never);
+
+    const order = await useBacktestStore.getState().placeOrder({
+      ...orderRequest,
+      orderedAt,
+    });
+
+    expect(order.orderedAt).toBe(orderedAt);
+    expect(useBacktestStore.getState().pendingOrders[0].orderedAt).toBe(orderedAt);
+  });
+
+  it("preserves locally known placement timestamps when refreshing orders", async () => {
+    const orderedAt = "2024-02-29T17:15:00Z";
+    useBacktestStore.setState({
+      pendingOrders: [{ ...pendingLimitOrder, orderedAt }],
+    });
+    vi.spyOn(api, "get").mockResolvedValue({
+      data: {
+        value: [
+          {
+            ...pendingLimitOrder,
+            orderedAt: "0001-01-01T00:00:00Z",
+          },
+        ],
+      },
+    } as never);
+
+    await useBacktestStore.getState().loadOrders(42);
+
+    expect(useBacktestStore.getState().pendingOrders[0].orderedAt).toBe(orderedAt);
+  });
+
   it("rethrows placement failures so the form can show an error state", async () => {
     vi.spyOn(api, "post").mockRejectedValue(new Error("placement failed"));
 

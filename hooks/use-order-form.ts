@@ -26,7 +26,7 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
   const [enableTp, setEnableTp] = useState(false);
   const [enableSl, setEnableSl] = useState(false);
 
-  const { placeOrder, balance, session } = useBacktestStore();
+  const { placeOrder, balance, session, currentTimestamp, candles } = useBacktestStore();
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
@@ -82,6 +82,16 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
 
     setIsSubmitting(true);
     try {
+      // Anchor the order to the candle the user is actually looking at (the last
+      // displayed candle), not the server's simulation clock. The sim clock often
+      // leads the visible candle (it is the candle's close / next bucket), so using
+      // it makes the chart marker resolve to a candle that is out of range at
+      // placement and then jump forward when the next candle renders.
+      const placementTimestamp =
+        candles.length > 0
+          ? candles[candles.length - 1].timestamp
+          : currentTimestamp ?? session?.currentTimestamp ?? null;
+
       const order = await placeOrder({
         sessionId,
         orderType: orderType === "Market" ? 0 : 1,
@@ -90,6 +100,7 @@ export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, c
         positionSize: values.positionSize,
         stopLoss: enableSl && values.stopLoss ? Number(values.stopLoss) : null,
         takeProfit: enableTp && values.takeProfit ? Number(values.takeProfit) : null,
+        orderedAt: placementTimestamp,
       });
 
       const fillPrice = order.filledPrice ?? order.entryPrice;

@@ -66,6 +66,7 @@ describe("useOrderForm", () => {
     const placeOrder = vi.fn().mockResolvedValue(createOrder());
     useBacktestStore.setState({
       balance: 10000,
+      currentTimestamp: "2024-01-01T00:15:00Z",
       session: createSession(),
       placeOrder,
     });
@@ -92,6 +93,7 @@ describe("useOrderForm", () => {
       positionSize: 1,
       stopLoss: null,
       takeProfit: null,
+      orderedAt: "2024-01-01T00:15:00Z",
     });
   });
 

@@ -1,16 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, use, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, use, useState } from "react";
 import { useBacktestStore, type Timeframe } from "@/lib/backtest-store";
 import type { ImperativePanelHandle } from "react-resizable-panels";
-import { KLineChartPro, DatafeedSubscribeCallback, SymbolInfo, Period, ChartPro } from '@klinecharts/pro';
-import { init as klineInit, dispose as klineDispose, registerOverlay, LineType, type OverlayCreate } from 'klinecharts';
-import '@klinecharts/pro/dist/klinecharts-pro.css';
 import { useTheme } from "next-themes";
 import { Flag, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BacktestWorkspaceHeader } from "../../../components/backtest/backtest-workspace-header";
 import { BacktestSidebar } from "@/components/backtest/backtest-sidebar";
+import { TradingViewPlatform } from "@/components/backtest/tradingview-platform";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Header } from "@/components/header";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -27,50 +25,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-
-// Register custom order marker overlay (arrow + label)
-let _orderMarkerRegistered = false;
-const CHART_TIMEZONE = "Etc/UTC";
-
-function parseTimestamp(ts: string | number): number {
-  if (typeof ts === 'number') return ts;
-  if (typeof ts === 'string' && /T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(ts)) {
-    return new Date(ts + 'Z').getTime();
-  }
-  return new Date(ts).getTime();
-}
-
-function getTimeframeMs(tf: Timeframe) {
-  if (tf === 'M1') return 60000;
-  if (tf === 'M5') return 5 * 60000;
-  if (tf === 'M15') return 15 * 60000;
-  if (tf === 'H1') return 60 * 60000;
-  if (tf === 'H4') return 240 * 60000;
-  if (tf === 'D1') return 1440 * 60000;
-  return 60000;
-}
-
-function floorTimestamp(timestamp: string | number, tf: Timeframe) {
-  const time = parseTimestamp(timestamp);
-  const ms = getTimeframeMs(tf);
-  return Math.floor(time / ms) * ms;
-}
-
-function toChartPeriod(timeframe: Timeframe): Period {
-  if (timeframe.startsWith("M")) {
-    return { multiplier: parseInt(timeframe.slice(1), 10), timespan: "minute", text: timeframe };
-  }
-
-  if (timeframe.startsWith("H")) {
-    return { multiplier: parseInt(timeframe.slice(1), 10), timespan: "hour", text: timeframe };
-  }
-
-  if (timeframe.startsWith("D")) {
-    return { multiplier: parseInt(timeframe.slice(1), 10), timespan: "day", text: timeframe };
-  }
-
-  throw new Error(`Unsupported timeframe: ${timeframe}`);
-}
 
 function formatSessionTimestamp(timestamp: string | null): string {
   if (!timestamp) {
@@ -100,97 +54,15 @@ function formatSessionTimestamp(timestamp: string | null): string {
   return `${datePart} ${timePart} UTC`;
 }
 
-function ensureOrderMarkerRegistered() {
-  if (_orderMarkerRegistered) return;
-  try {
-    registerOverlay({
-      name: 'orderMarker',
-      totalStep: 1,
-      needDefaultPointFigure: false,
-      needDefaultXAxisFigure: false,
-      needDefaultYAxisFigure: false,
-      createPointFigures: ({ overlay, coordinates }) => {
-        if (!coordinates?.length) return [];
-        const coord = coordinates[0];
-        const data = overlay.extendData as { isBuy: boolean; label: string } | null;
-        if (!data) return [];
-        const { isBuy, label } = data;
-        const color = isBuy ? '#2962FF' : '#F23645';
-        const s = 7;
-        // Upward triangle for Long, downward for Short
-        const gap = 3;
-        const h = 8;
-        const w = 6;
-        
-        // Upward triangle for Long (Buy), downward for Short (Sell)
-        const tri = isBuy
-          ? [
-              { x: coord.x, y: coord.y + gap },                 // Tip pointing UP at the price
-              { x: coord.x - w, y: coord.y + gap + h },         // Base left
-              { x: coord.x + w, y: coord.y + gap + h }          // Base right
-            ]
-          : [
-              { x: coord.x, y: coord.y - gap },                 // Tip pointing DOWN at the price
-              { x: coord.x - w, y: coord.y - gap - h },         // Base left
-              { x: coord.x + w, y: coord.y - gap - h }          // Base right
-            ];
-        return [
-          {
-            type: 'polygon',
-            attrs: { coordinates: tri },
-            styles: { style: 'fill', color, borderColor: color },
-            ignoreEvent: true
-          },
-          {
-            type: 'text',
-            attrs: {
-              x: coord.x + w + 4,
-              y: coord.y + (isBuy ? gap + h / 2 : -gap - h / 2),
-              text: label,
-              align: 'left',
-              baseline: 'middle'
-            },
-            styles: { 
-              color, 
-              size: 11, 
-              weight: 'bold', 
-              family: 'Arial, sans-serif',
-              backgroundColor: 'transparent',
-              borderColor: 'transparent',
-              paddingLeft: 0,
-              paddingRight: 0,
-              paddingTop: 0,
-              paddingBottom: 0
-            },
-            ignoreEvent: true
-          }
-        ];
-      }
-    });
-  } catch { /* already registered */ }
-  _orderMarkerRegistered = true;
-}
-
 export default function BacktestWorkspace({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const sessionId = parseInt(resolvedParams.id, 10);
   const router = useRouter();
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<ChartPro | null>(null);
-  const klineChartRef = useRef<ReturnType<typeof klineInit>>(null);
-  const orderOverlayIdsRef = useRef<string[]>([]);
-  const [chartReadyVersion, setChartReadyVersion] = useState(0);
   const [isSwitchingTimeframe, setIsSwitchingTimeframe] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
-  const { theme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const sidebarPanelRef = useRef<ImperativePanelHandle | null>(null);
-  const chartResizeFrameRef = useRef<number | null>(null);
-
-  // Datafeed state
-  const datafeedCallbackRef = useRef<DatafeedSubscribeCallback | null>(null);
-  const candlesRef = useRef<any[]>([]);
-  const previousCandlesLengthRef = useRef(0);
 
   if (isNaN(sessionId)) {
     return (
@@ -215,7 +87,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     activeTimeframe,
     switchTimeframe,
     advanceCandle,
-    currentTimestamp,
     balance,
     equity,
     unrealizedPnl,
@@ -225,106 +96,11 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     loadTradingZones,
     finishSession,
   } = useBacktestStore();
-  const hasLoadedCandles = candles.length > 0;
 
-  const mappedCandles = useMemo(() => {
-    return candles.map((c) => ({
-      timestamp: parseTimestamp(c.timestamp),
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume || 0
-    }));
-  }, [candles]);
-
-  const lastCandleTimestamp = candles.length > 0 ? candles[candles.length - 1].timestamp : null;
-  const displayedTimestamp = lastCandleTimestamp;
+  const displayedTimestamp = candles.length > 0
+    ? candles[candles.length - 1].timestamp
+    : session?.currentTimestamp ?? null;
   const formattedTimestamp = formatSessionTimestamp(displayedTimestamp);
-
-  // Keep a ref of candles for the datafeed
-  useEffect(() => {
-    const prevLen = previousCandlesLengthRef.current;
-    candlesRef.current = candles;
-
-    if (datafeedCallbackRef.current && prevLen > 0 && candles.length === prevLen + 1) {
-      const latest = candles[candles.length - 1];
-      datafeedCallbackRef.current({
-        timestamp: parseTimestamp(latest.timestamp),
-        open: latest.open,
-        high: latest.high,
-        low: latest.low,
-        close: latest.close,
-        volume: latest.volume || 0
-      });
-    }
-
-    previousCandlesLengthRef.current = candles.length;
-  }, [candles]);
-
-  // Hydrate checkpoint candles after async resume/timeframe load completes.
-  useEffect(() => {
-    const chartApi = klineChartRef.current;
-    if (!chartApi) return;
-
-    if (mappedCandles.length === 0) {
-      chartApi.clearData();
-      return;
-    }
-
-    const currentChartData = chartApi.getDataList();
-    const lastTimestamp = mappedCandles[mappedCandles.length - 1].timestamp;
-    const chartLastTimestamp = currentChartData.length > 0 ? currentChartData[currentChartData.length - 1].timestamp : null;
-    const needsHydration = currentChartData.length !== mappedCandles.length || chartLastTimestamp !== lastTimestamp;
-    if (!needsHydration) return;
-
-    chartApi.applyNewData(mappedCandles);
-    chartApi.setOffsetRightDistance(60);
-    chartApi.setBarSpace(6);
-    chartApi.scrollToTimestamp(lastTimestamp);
-  }, [activeTimeframe, chartReadyVersion, mappedCandles]);
-
-  const datafeed = useMemo(() => {
-    return {
-      searchSymbols: async (search?: string) => {
-        if (!session?.asset) return [];
-        return [{
-          ticker: session.asset,
-          name: session.asset,
-          shortName: session.asset,
-          exchange: 'Backtest',
-          market: 'Backtest',
-          pricePrecision: 5,
-          volumePrecision: 2,
-          priceCurrency: 'USD',
-          type: 'forex'
-        }];
-      },
-      getHistoryKLineData: async (symbol: SymbolInfo, period: Period, from: number, to: number) => {
-        if (!session?.asset || !candlesRef.current.length) return [];
-
-        const rangeStart = Math.min(from, to);
-        const rangeEnd = Math.max(from, to);
-
-        return candlesRef.current
-          .map(c => ({
-            timestamp: parseTimestamp(c.timestamp),
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-            volume: c.volume || 0
-          }))
-          .filter((c) => c.timestamp >= rangeStart && c.timestamp <= rangeEnd);
-      },
-      subscribe: (symbol: SymbolInfo, period: Period, callback: DatafeedSubscribeCallback) => {
-        datafeedCallbackRef.current = callback;
-      },
-      unsubscribe: (symbol: SymbolInfo, period: Period) => {
-        datafeedCallbackRef.current = null;
-      }
-    };
-  }, [session?.asset]);
 
   // Initial load
   useEffect(() => {
@@ -335,165 +111,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
-
-  // Init chart
-  useEffect(() => {
-    const container = chartContainerRef.current;
-    if (!container || !session?.asset) return;
-    
-    // Clear previous elements inside container if KLineChart doesn't clean itself up perfectly
-    container.innerHTML = '';
-    
-    const isDark = theme === "dark";
-
-    const chart = new KLineChartPro({
-      container: container,
-      theme: isDark ? 'dark' : 'light',
-      locale: 'en-US',
-      timezone: CHART_TIMEZONE,
-      drawingBarVisible: false,
-      periods: [],
-      mainIndicators: [],
-      subIndicators: [],
-      symbol: {
-        ticker: session.asset,
-        name: session.asset,
-        shortName: session.asset
-      },
-      period: toChartPeriod(activeTimeframe),
-      datafeed: datafeed
-    });
-
-    chartInstanceRef.current = chart;
-
-    // Cache the underlying klinecharts chart for overlay management.
-    // @klinecharts/pro doesn't expose createOverlay/removeOverlay publicly,
-    // but it shares the same klinecharts module, so we can retrieve the instance
-    // by temporarily setting the element's HTML id to match the stored key.
-    const inner = container.querySelector<HTMLElement>('[k-line-chart-id]');
-    if (inner) {
-      const chartId = inner.getAttribute('k-line-chart-id');
-      if (chartId) {
-        inner.id = chartId;
-        klineChartRef.current = klineInit(inner);
-        setChartReadyVersion((version) => version + 1);
-        inner.id = '';
-      }
-    }
-
-    return () => {
-      if (klineChartRef.current) {
-        klineDispose(klineChartRef.current);
-      }
-      // Cleanup KLineChartPro if needed
-      if (container) {
-         container.innerHTML = '';
-      }
-      chartInstanceRef.current = null;
-      klineChartRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme, session?.asset, datafeed]);
-
-  // Handle timeframe change gracefully without unmounting the whole chart
-  useEffect(() => {
-    if (chartInstanceRef.current && activeTimeframe) {
-      chartInstanceRef.current.setPeriod(toChartPeriod(activeTimeframe));
-    }
-  }, [activeTimeframe]);
-
-  // Render order overlays on the chart
-  useEffect(() => {
-    const chartApi = klineChartRef.current;
-    if (!chartApi || !lastCandleTimestamp) return;
-
-    ensureOrderMarkerRegistered();
-
-    // Remove previous overlays
-    orderOverlayIdsRef.current.forEach(id => chartApi.removeOverlay(id));
-    const newIds: string[] = [];
-    const lastTs = parseTimestamp(lastCandleTimestamp);
-
-    const add = (config: Omit<OverlayCreate, 'id' | 'lock'>, id: string) => {
-      chartApi.createOverlay({ ...config, id, lock: true });
-      newIds.push(id);
-    };
-
-    // Active positions: arrow marker at fill point + dashed SL/TP lines
-    activePositions.forEach((order) => {
-      if (order.filledAt && order.filledPrice) {
-        const isBuy = order.side === "Long";
-        const ts = parseTimestamp(order.filledAt);
-        add({
-          name: 'orderMarker',
-          points: [{ timestamp: ts, value: order.filledPrice }],
-          extendData: { isBuy, label: `${order.positionSize} @ ${order.filledPrice.toFixed(2)}` }
-        }, `activeEntry_${order.id}`);
-      }
-      if (order.stopLoss && order.stopLoss > 0) {
-        add({
-          name: 'horizontalRayLine',
-          points: [{ timestamp: lastTs, value: order.stopLoss }],
-          styles: { line: { color: '#F23645', style: LineType.Dashed, size: 1 } }
-        }, `activeSl_${order.id}`);
-      }
-      if (order.takeProfit && order.takeProfit > 0) {
-        add({
-          name: 'horizontalRayLine',
-          points: [{ timestamp: lastTs, value: order.takeProfit }],
-          styles: { line: { color: '#089981', style: LineType.Dashed, size: 1 } }
-        }, `activeTp_${order.id}`);
-      }
-    });
-
-    // Pending orders: dashed entry line + optional SL/TP
-    pendingOrders.forEach((order) => {
-      const isBuy = order.side === "Long";
-      add({
-        name: 'horizontalRayLine',
-        points: [{ timestamp: lastTs, value: order.entryPrice }],
-        styles: { line: { color: isBuy ? '#2962FF' : '#F23645', style: LineType.Dashed, size: 1 } }
-      }, `pendingEntry_${order.id}`);
-      if (order.stopLoss && order.stopLoss > 0) {
-        add({
-          name: 'horizontalRayLine',
-          points: [{ timestamp: lastTs, value: order.stopLoss }],
-          styles: { line: { color: '#FF9800', style: LineType.Dashed, size: 1 } }
-        }, `pendingSl_${order.id}`);
-      }
-      if (order.takeProfit && order.takeProfit > 0) {
-        add({
-          name: 'horizontalRayLine',
-          points: [{ timestamp: lastTs, value: order.takeProfit }],
-          styles: { line: { color: '#089981', style: LineType.Dashed, size: 1 } }
-        }, `pendingTp_${order.id}`);
-      }
-    });
-
-    // Closed positions: arrow markers at entry and exit
-    closedPositions.forEach((order) => {
-      if (order.filledAt && order.filledPrice) {
-        const isBuy = order.side === "Long";
-        const ts = parseTimestamp(order.filledAt);
-        add({
-          name: 'orderMarker',
-          points: [{ timestamp: ts, value: order.filledPrice }],
-          extendData: { isBuy, label: `${order.positionSize} @ ${order.filledPrice.toFixed(2)}` }
-        }, `closedEntry_${order.id}`);
-      }
-      if (order.closedAt && order.exitPrice) {
-        const isBuy = order.side === "Long";
-        const ts = parseTimestamp(order.closedAt);
-        add({
-          name: 'orderMarker',
-          points: [{ timestamp: ts, value: order.exitPrice }],
-          extendData: { isBuy: !isBuy, label: `${order.positionSize} @ ${order.exitPrice.toFixed(2)}` }
-        }, `closedExit_${order.id}`);
-      }
-    });
-
-    orderOverlayIdsRef.current = newIds;
-  }, [activePositions, closedPositions, lastCandleTimestamp, pendingOrders, activeTimeframe]);
 
   const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
   const previousPrice = candles.length > 1 ? candles[candles.length - 2].close : null;
@@ -512,15 +129,8 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       return;
     }
 
-    if (chartResizeFrameRef.current !== null) {
-      window.cancelAnimationFrame(chartResizeFrameRef.current);
-    }
-
-    chartResizeFrameRef.current = window.requestAnimationFrame(() => {
-      chartResizeFrameRef.current = null;
-
-      const chartApi = klineChartRef.current as (ReturnType<typeof klineInit> & { resize?: () => void }) | null;
-      chartApi?.resize?.();
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("resize"));
     });
   }, []);
 
@@ -586,14 +196,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSkip, togglePlayback]);
 
-  useEffect(() => {
-    return () => {
-      if (chartResizeFrameRef.current !== null) {
-        window.cancelAnimationFrame(chartResizeFrameRef.current);
-      }
-    };
-  }, []);
-
   if (!session) return (
     <div className="flex min-h-screen items-center justify-center p-8 bg-background">
       <div className="flex flex-col items-center gap-4 text-center animate-pulse">
@@ -658,13 +260,29 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
         <ResizablePanelGroup direction="horizontal" className="h-full w-full min-h-0 flex-1 overflow-hidden rounded-lg border border-border/70 bg-card/80 shadow-sm backdrop-blur-md">
           <ResizablePanel
             defaultSize={100}
-            minSize={40}
+            minSize={50}
             onResize={requestChartResize}
             className="relative min-h-0 w-full overflow-hidden bg-background"
           >
-            <div className="backtest-chart-shell w-full h-full">
-              <div ref={chartContainerRef} className="absolute inset-0 w-full h-full" style={{ minHeight: '400px' }} />
-            </div>
+            <TradingViewPlatform
+              asset={session.asset}
+              timeframe={activeTimeframe}
+              candles={candles}
+              pendingOrders={pendingOrders}
+              activePositions={activePositions}
+              closedPositions={closedPositions}
+              theme={resolvedTheme}
+              isPlaying={isPlaying}
+              playbackSpeed={playbackSpeed}
+              formattedTimestamp={formattedTimestamp}
+              startDate={session.startDate}
+              endDate={session.endDate}
+              currentTimestamp={displayedTimestamp}
+              onTogglePlayback={togglePlayback}
+              onSkip={handleSkip}
+              onPlaybackSpeedChange={setPlaybackSpeed}
+              className="absolute inset-0"
+            />
 
             {isSidebarCollapsed && (
               <Button
@@ -684,8 +302,8 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
           <ResizablePanel
             ref={sidebarPanelRef}
             defaultSize={0}
-            minSize={22}
-            maxSize={45}
+            minSize={15}
+            maxSize={20}
             collapsible={true}
             collapsedSize={0}
             onCollapse={handleSidebarCollapsed}
@@ -702,15 +320,6 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       </div>
       </div>
     </div>
-    <style jsx global>{`
-      .backtest-chart-shell .klinecharts-pro-period-bar {
-        display: none !important;
-      }
-
-      .backtest-chart-shell .klinecharts-pro-content {
-        height: 100% !important;
-      }
-    `}</style>
     </TooltipProvider>
   );
 }

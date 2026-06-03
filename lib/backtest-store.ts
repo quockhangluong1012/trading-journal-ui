@@ -166,6 +166,7 @@ export interface PlaceOrderRequest {
   positionSize: number;
   stopLoss?: number | null;
   takeProfit?: number | null;
+  orderedAt?: string | null;
 }
 
 export interface UpdateOrderRequest {
@@ -267,6 +268,45 @@ function dedupeOrdersById(list: BacktestOrder[]): BacktestOrder[] {
     byId.set(order.id, order);
   });
   return Array.from(byId.values());
+}
+
+function isValidTimestamp(value: string | null | undefined): value is string {
+  if (!value) {
+    return false;
+  }
+
+  const time = new Date(value).getTime();
+  return Number.isFinite(time);
+}
+
+function normalizeOrderOrderedAt(order: BacktestOrder, orderedAt: string | null | undefined): BacktestOrder {
+  if (!isValidTimestamp(orderedAt)) {
+    return order;
+  }
+
+  return {
+    ...order,
+    orderedAt,
+  };
+}
+
+function getOrderById(list: BacktestOrder[], orderId: number): BacktestOrder | undefined {
+  return list.find((order) => order.id === orderId);
+}
+
+function preserveKnownOrderPlacementTimes(
+  orders: BacktestOrder[],
+  knownOrders: BacktestOrder[],
+): BacktestOrder[] {
+  const knownById = new Map<number, string>();
+
+  for (const order of knownOrders) {
+    if (isValidTimestamp(order.orderedAt)) {
+      knownById.set(order.id, order.orderedAt);
+    }
+  }
+
+  return orders.map((order) => normalizeOrderOrderedAt(order, knownById.get(order.id)));
 }
 
 // ─── API Functions ──────────────────────────────────────────────────────
@@ -594,34 +634,38 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
         }
 
         for (const filled of result.filledOrders) {
+          const pendingOrder = getOrderById(pendingOrders, filled.id);
+          const filledOrder = normalizeOrderOrderedAt(filled, pendingOrder?.orderedAt);
           pendingOrders = pendingOrders.filter((o) => o.id !== filled.id);
-          activePositions = upsertOrderById(activePositions, filled);
+          activePositions = upsertOrderById(activePositions, filledOrder);
           toast.success(`Pending ${filled.side} Limit triggered at ${filled.filledPrice}`);
         }
 
         for (const closed of result.closedPositions) {
+          const activePosition = getOrderById(activePositions, closed.id);
+          const closedOrder = normalizeOrderOrderedAt(closed, activePosition?.orderedAt);
           activePositions = activePositions.filter((o) => o.id !== closed.id);
-          closedPositions = upsertOrderById(closedPositions, closed);
-          const pnl = closed.pnl ?? 0;
+          closedPositions = upsertOrderById(closedPositions, closedOrder);
+          const pnl = closedOrder.pnl ?? 0;
           const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
           
           let reason = "closed";
-          if (closed.exitPrice) {
-            if (closed.side === "Long") {
-              if (closed.stopLoss && closed.exitPrice <= closed.stopLoss) reason = "hit Stop Loss";
-              else if (closed.takeProfit && closed.exitPrice >= closed.takeProfit) reason = "hit Take Profit";
+          if (closedOrder.exitPrice) {
+            if (closedOrder.side === "Long") {
+              if (closedOrder.stopLoss && closedOrder.exitPrice <= closedOrder.stopLoss) reason = "hit Stop Loss";
+              else if (closedOrder.takeProfit && closedOrder.exitPrice >= closedOrder.takeProfit) reason = "hit Take Profit";
             } else {
-              if (closed.stopLoss && closed.exitPrice >= closed.stopLoss) reason = "hit Stop Loss";
-              else if (closed.takeProfit && closed.exitPrice <= closed.takeProfit) reason = "hit Take Profit";
+              if (closedOrder.stopLoss && closedOrder.exitPrice >= closedOrder.stopLoss) reason = "hit Stop Loss";
+              else if (closedOrder.takeProfit && closedOrder.exitPrice <= closedOrder.takeProfit) reason = "hit Take Profit";
             }
           }
 
           if (reason === "hit Stop Loss") {
-            toast.error(`${closed.side} Position ${reason}. PnL: ${pnlText}`);
+            toast.error(`${closedOrder.side} Position ${reason}. PnL: ${pnlText}`);
           } else if (reason === "hit Take Profit") {
-            toast.success(`${closed.side} Position ${reason}. PnL: ${pnlText}`);
+            toast.success(`${closedOrder.side} Position ${reason}. PnL: ${pnlText}`);
           } else {
-            toast.info(`${closed.side} Position ${reason}. PnL: ${pnlText}`);
+            toast.info(`${closedOrder.side} Position ${reason}. PnL: ${pnlText}`);
           }
         }
 
@@ -757,7 +801,7 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   // ── Orders & Positions ──
 
   placeOrder: async (req) => {
-    const order = await placeOrderApi(req);
+    const order = normalizeOrderOrderedAt(await placeOrderApi(req), req.orderedAt);
 
     set((s) => {
       if (order.status === "Pending") {
@@ -801,7 +845,15 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
     
     // Optimistically load orders again to sync up perfectly or move it locally
     // For exact P&L, it's safer to fetch the orders again
-    const orders = await fetchSessionOrders(get().session!.id);
+    const knownOrders = [
+      ...get().pendingOrders,
+      ...get().activePositions,
+      ...get().closedPositions,
+    ];
+    const orders = preserveKnownOrderPlacementTimes(
+      await fetchSessionOrders(get().session!.id),
+      knownOrders,
+    );
     set({
       pendingOrders: dedupeOrdersById(orders.filter((o) => o.status === "Pending")),
       activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
@@ -810,7 +862,15 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
   },
 
   loadOrders: async (sessionId) => {
-    const orders = await fetchSessionOrders(sessionId);
+    const knownOrders = [
+      ...get().pendingOrders,
+      ...get().activePositions,
+      ...get().closedPositions,
+    ];
+    const orders = preserveKnownOrderPlacementTimes(
+      await fetchSessionOrders(sessionId),
+      knownOrders,
+    );
     set({
       pendingOrders: dedupeOrdersById(orders.filter((o) => o.status === "Pending")),
       activePositions: dedupeOrdersById(orders.filter((o) => o.status === "Active")),
