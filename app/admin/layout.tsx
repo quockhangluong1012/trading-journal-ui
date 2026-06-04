@@ -43,13 +43,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden bg-background">
+    <div className="relative min-h-screen flex flex-col bg-background">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_24%),radial-gradient(circle_at_82%_10%,rgba(79,70,229,0.08),transparent_24%)]" />
-      <div className="relative z-10 flex min-h-screen flex-col">
+      <div className="relative z-10 flex flex-col">
         <Header />
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1">
           <AdminSidebar />
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 p-4 sm:p-6 lg:p-8">
             <div className="mx-auto w-full max-w-7xl">
               {children}
             </div>

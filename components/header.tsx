@@ -27,6 +27,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 const routeLabels: Record<string, string> = {
   analytics: "Analytics",
   admin: "Admin Portal",
+  backtest: "Backtest",
   coach: "AI Coach",
   "daily-notes": "Daily Notes",
   history: "Trade History",
@@ -40,11 +41,18 @@ const routeLabels: Record<string, string> = {
   settings: "Settings",
   setup: "Setups",
   trade: "Trade Workspace",
+  "trade/live": "Live Trade",
 };
 
 function formatSectionLabel(pathname: string): string {
   if (pathname === "/") {
     return "Dashboard";
+  }
+
+  // Check exact path match first (e.g. /trade/live)
+  const pathWithoutLeadingSlash = pathname.replace(/^\//, "");
+  if (routeLabels[pathWithoutLeadingSlash]) {
+    return routeLabels[pathWithoutLeadingSlash];
   }
 
   const segment = pathname.split("/").filter(Boolean)[0];
@@ -70,16 +78,19 @@ export function Header() {
   const sectionLabel = formatSectionLabel(pathname);
   const isAdminRoute = pathname.startsWith("/admin");
   const [isDailyNotesDialogOpen, setIsDailyNotesDialogOpen] = useState(false);
-  const shouldShowTradingPlan = Boolean(user) && !isAdminRoute && pathname !== "/";
+  const isBacktestSessionPage = /^\/backtest\/\d+/.test(pathname);
+  const shouldShowTradingPlan = Boolean(user) && !isAdminRoute && pathname !== "/" && !isBacktestSessionPage;
   const dailyNotes = useDailyNotes(shouldShowTradingPlan ? user?.email ?? user?.username ?? null : null);
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/72 backdrop-blur-xl transition-all duration-300 shadow-sm shadow-slate-950/5 dark:shadow-black/10">
+      <header className="z-50 border-b border-border/60 bg-background/72 backdrop-blur-xl transition-all duration-300 shadow-sm shadow-slate-950/5 dark:shadow-black/10">
         <div className="px-4 py-3 md:px-6">
           <div className="flex min-h-11 items-center gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <SidebarTrigger className="size-9 rounded-full border border-border/70 bg-background/75 shadow-sm hover:bg-accent/60" />
+              {!isAdminRoute && (
+                <SidebarTrigger className="size-9 rounded-full border border-border/70 bg-background/75 shadow-sm hover:bg-accent/60" />
+              )}
               <span className="truncate text-sm font-semibold text-foreground">{sectionLabel}</span>
             </div>
 

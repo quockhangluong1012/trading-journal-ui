@@ -1,0 +1,332 @@
+"use client";
+
+import { useCallback, useEffect, useRef, use, useState } from "react";
+import { useBacktestStore, type Timeframe, type ChartDrawing as StoredChartDrawing } from "@/lib/backtest-store";
+import type { ImperativePanelHandle } from "react-resizable-panels";
+import { useTheme } from "next-themes";
+import { Flag, PanelLeftOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BacktestSidebar } from "@/components/backtest/backtest-sidebar";
+import { TradingViewPlatform, type ChartDrawing } from "@/components/backtest/tradingview-platform";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Header } from "@/components/header";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { useRouter } from "next/navigation";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+
+const sessionDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const sessionTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "UTC",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+function formatSessionTimestamp(timestamp: string | null): string {
+  if (!timestamp) {
+    return "Waiting for candles";
+  }
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "Waiting for candles";
+  }
+
+  const datePart = sessionDateFormatter.format(date);
+  const timePart = sessionTimeFormatter.format(date);
+
+  return `${datePart} ${timePart} UTC`;
+}
+
+export default function BacktestWorkspace({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const sessionId = parseInt(resolvedParams.id, 10);
+  const router = useRouter();
+  const [isSwitchingTimeframe, setIsSwitchingTimeframe] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
+  const { resolvedTheme } = useTheme();
+  const sidebarPanelRef = useRef<ImperativePanelHandle | null>(null);
+
+  if (isNaN(sessionId)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-8 bg-background">
+        <div className="text-center">
+          <h2 className="text-xl font-bold text-destructive">Invalid Session ID</h2>
+          <p className="text-muted-foreground">The backtest session ID provided in the URL is invalid. Please navigate back to the Backtest Dashboard.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const session = useBacktestStore((state) => state.session);
+  const candles = useBacktestStore((state) => state.candles);
+  const resumeSession = useBacktestStore((state) => state.resumeSession);
+  const isPlaying = useBacktestStore((state) => state.isPlaying);
+  const startPlayback = useBacktestStore((state) => state.startPlayback);
+  const pausePlayback = useBacktestStore((state) => state.pausePlayback);
+  const playbackSpeed = useBacktestStore((state) => state.playbackSpeed);
+  const setPlaybackSpeed = useBacktestStore((state) => state.setPlaybackSpeed);
+  const activeTimeframe = useBacktestStore((state) => state.activeTimeframe);
+  const switchTimeframe = useBacktestStore((state) => state.switchTimeframe);
+  const advanceCandle = useBacktestStore((state) => state.advanceCandle);
+  const pendingOrders = useBacktestStore((state) => state.pendingOrders);
+  const activePositions = useBacktestStore((state) => state.activePositions);
+  const closedPositions = useBacktestStore((state) => state.closedPositions);
+  const loadTradingZones = useBacktestStore((state) => state.loadTradingZones);
+  const finishSession = useBacktestStore((state) => state.finishSession);
+  const drawings = useBacktestStore((state) => state.drawings);
+  const setDrawings = useBacktestStore((state) => state.setDrawings);
+  const saveDrawings = useBacktestStore((state) => state.saveDrawings);
+
+  const displayedTimestamp = candles.length > 0
+    ? candles[candles.length - 1].timestamp
+    : session?.currentTimestamp ?? null;
+  const formattedTimestamp = formatSessionTimestamp(displayedTimestamp);
+
+  // Initial load
+  useEffect(() => {
+    resumeSession(sessionId);
+    loadTradingZones();
+    return () => {
+      pausePlayback();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
+  const previousPrice = candles.length > 1 ? candles[candles.length - 2].close : null;
+
+  const togglePlayback = useCallback(() => {
+    if (isPlaying) pausePlayback();
+    else startPlayback(sessionId);
+  }, [isPlaying, pausePlayback, sessionId, startPlayback]);
+
+  const handleSkip = useCallback(() => {
+    advanceCandle(sessionId);
+  }, [advanceCandle, sessionId]);
+
+  // Persist chart drawings with a short debounce so rapid edits (e.g. dragging)
+  // coalesce into a single save once the user pauses.
+  const drawingsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDrawingsChange = useCallback((next: ChartDrawing[]) => {
+    setDrawings(next as unknown as StoredChartDrawing[]);
+    if (drawingsSaveTimerRef.current) {
+      clearTimeout(drawingsSaveTimerRef.current);
+    }
+    drawingsSaveTimerRef.current = setTimeout(() => {
+      void saveDrawings(sessionId).catch(() => {
+        toast.error("Failed to save chart drawings.");
+      });
+    }, 800);
+  }, [saveDrawings, sessionId, setDrawings]);
+
+  useEffect(() => () => {
+    if (drawingsSaveTimerRef.current) {
+      clearTimeout(drawingsSaveTimerRef.current);
+    }
+  }, []);
+
+  const requestChartResize = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+  }, []);
+
+  const handleExpandSidebar = useCallback(() => {
+    sidebarPanelRef.current?.resize(32);
+  }, []);
+
+  const handleSidebarCollapsed = useCallback(() => {
+    setIsSidebarCollapsed(true);
+    requestChartResize();
+  }, [requestChartResize]);
+
+  const handleSidebarExpanded = useCallback(() => {
+    setIsSidebarCollapsed(false);
+    requestChartResize();
+  }, [requestChartResize]);
+
+  const handleTimeframeChange = async (nextTimeframe: Timeframe) => {
+    if (nextTimeframe === activeTimeframe || isSwitchingTimeframe) {
+      return;
+    }
+
+    setIsSwitchingTimeframe(true);
+    try {
+      await switchTimeframe(sessionId, nextTimeframe);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to switch timeframe.";
+      toast.error(message);
+    } finally {
+      setIsSwitchingTimeframe(false);
+    }
+  };
+
+  const handleFinishSession = async () => {
+    setIsFinishing(true);
+
+    try {
+      await finishSession(sessionId, currentPrice > 0 ? currentPrice : null);
+      toast.success("Backtest session finished.");
+      router.push(`/backtest/${sessionId}/results`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to finish session.";
+      toast.error(message);
+    } finally {
+      setIsFinishing(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlayback();
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        handleSkip();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSkip, togglePlayback]);
+
+  if (!session) return (
+    <div className="flex min-h-screen items-center justify-center p-8 bg-background">
+      <div className="flex flex-col items-center gap-4 text-center animate-pulse">
+        <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+        <h2 className="text-xl font-semibold text-muted-foreground">Loading Workspace...</h2>
+      </div>
+    </div>
+  );
+
+  return (
+    <TooltipProvider disableHoverableContent>
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
+        <ResizablePanelGroup direction="horizontal" className="h-full w-full min-h-0 flex-1 overflow-hidden rounded-lg border border-border/70 bg-card/80 shadow-sm backdrop-blur-md">
+          <ResizablePanel
+            defaultSize={100}
+            minSize={50}
+            onResize={requestChartResize}
+            className="relative min-h-0 w-full overflow-hidden bg-background"
+          >
+            <TradingViewPlatform
+              key={sessionId}
+              asset={session.asset}
+              timeframe={activeTimeframe}
+              candles={candles}
+              pendingOrders={pendingOrders}
+              activePositions={activePositions}
+              closedPositions={closedPositions}
+              theme={resolvedTheme}
+              isPlaying={isPlaying}
+              playbackSpeed={playbackSpeed}
+              formattedTimestamp={formattedTimestamp}
+              startDate={session.startDate}
+              endDate={session.endDate}
+              currentTimestamp={displayedTimestamp}
+              initialDrawings={drawings as unknown as ChartDrawing[]}
+              onDrawingsChange={handleDrawingsChange}
+              activeTimeframe={activeTimeframe}
+              isSwitchingTimeframe={isSwitchingTimeframe}
+              onTimeframeChange={(nextTimeframe: Timeframe) => {
+                void handleTimeframeChange(nextTimeframe);
+              }}
+              finishAction={session.status === "InProgress" ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" className="h-7 rounded-md border-amber-500/40 bg-amber-500/5 px-2 text-xs font-semibold shadow-sm hover:bg-amber-500/10" title="Close open positions and cancel pending orders now.">
+                      <Flag className="mr-1.5 h-3.5 w-3.5 text-amber-600" />
+                      Finish
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Finish this backtest now?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Any open positions will be closed at the visible market price and pending orders will be cancelled before sending you to the results page.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isFinishing}>Keep Session Running</AlertDialogCancel>
+                      <AlertDialogAction disabled={isFinishing} onClick={() => void handleFinishSession()}>
+                        {isFinishing ? "Finishing..." : "Finish Session"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
+              onTogglePlayback={togglePlayback}
+              onSkip={handleSkip}
+              onPlaybackSpeedChange={setPlaybackSpeed}
+              className="absolute inset-0"
+            />
+
+            {isSidebarCollapsed && (
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="absolute right-3 top-3 z-20 h-9 w-9 rounded-md bg-background/90 shadow-sm backdrop-blur"
+                onClick={handleExpandSidebar}
+                title="Open trading panel"
+                aria-label="Open trading panel"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            )}
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel
+            ref={sidebarPanelRef}
+            defaultSize={0}
+            minSize={15}
+            maxSize={20}
+            collapsible={true}
+            collapsedSize={0}
+            onCollapse={handleSidebarCollapsed}
+            onExpand={handleSidebarExpanded}
+            className="z-10 hidden min-h-0 border-l border-border/70 bg-card md:block"
+          >
+            <BacktestSidebar
+              sessionId={sessionId}
+              currentPrice={currentPrice}
+              previousPrice={previousPrice}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      </div>
+      </div>
+    </div>
+    </TooltipProvider>
+  );
+}

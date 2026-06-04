@@ -14,11 +14,13 @@ import {
   BarChart3,
   ClipboardList,
   Wand2,
+  Activity,
   Sparkles,
   Trophy,
   GitBranch,
   FileText,
-  CalendarDays
+  CalendarDays,
+  TrendingUp
 } from "lucide-react"
 
 import {
@@ -45,6 +47,7 @@ const data = {
     {
       title: "Trading",
       items: [
+        { title: "Live Trade", url: "/trade/live", icon: TrendingUp },
         { title: "Trade History", url: "/history", icon: History },
         { title: "Setup", url: "/setup", icon: GitBranch },
         { title: "Templates", url: "/trade/templates", icon: FileText },
@@ -55,6 +58,7 @@ const data = {
       title: "Analysis",
       items: [
         { title: "Analytics", url: "/analytics", icon: BarChart3 },
+        { title: "Backtest", url: "/backtest", icon: Activity },
         { title: "Review", url: "/review", icon: ClipboardList },
         { title: "Review Wizard", url: "/review/wizard", icon: Wand2 },
       ],
