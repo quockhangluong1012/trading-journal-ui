@@ -571,7 +571,6 @@ interface DrawingToolDefinition {
 const DRAWING_TOOL_GROUPS: DrawingToolDefinition[][] = [
   [
     { id: "cursor", label: "Cursor", icon: MousePointer2, requiresSecondPoint: false },
-    { id: "crosshair", label: "Crosshair", icon: Crosshair, requiresSecondPoint: false },
   ],
   [
     { id: "trend-line", label: "Trend line", icon: Slash, requiresSecondPoint: true },
@@ -584,7 +583,6 @@ const DRAWING_TOOL_GROUPS: DrawingToolDefinition[][] = [
     { id: "long-position", label: "Long position", icon: MoveHorizontal, requiresSecondPoint: true },
     { id: "short-position", label: "Short position", icon: MoveHorizontal, requiresSecondPoint: true },
     { id: "text", label: "Text note", icon: Type, requiresSecondPoint: false },
-    { id: "measure", label: "Measure", icon: Ruler, requiresSecondPoint: true },
     { id: "fibonacci", label: "Fib retracement", icon: Equal, requiresSecondPoint: true },
   ],
 ];
@@ -3593,34 +3591,10 @@ export function TradingViewPlatform({
 
       <div className="my-0.5 h-px w-6 bg-border/80" />
       {renderToolbarButton({
-        label: "Magnet",
-        icon: Magnet,
-        pressed: isMagnetEnabled,
-        onClick: () => setIsMagnetEnabled((value) => !value),
-      })}
-      {renderToolbarButton({
-        label: "Lock drawings",
-        icon: Lock,
-        pressed: areDrawingsLocked,
-        onClick: () => setAreDrawingsLocked((value) => !value),
-      })}
-      {renderToolbarButton({
-        label: areDrawingsVisible ? "Hide drawings" : "Show drawings",
-        icon: areDrawingsVisible ? Eye : EyeOff,
-        pressed: !areDrawingsVisible,
-        onClick: () => setAreDrawingsVisible((value) => !value),
-      })}
-      {renderToolbarButton({
         label: "Undo drawing",
         icon: RotateCcw,
         disabled: chartDrawings.length === 0,
         onClick: undoLastDrawing,
-      })}
-      {renderToolbarButton({
-        label: "Delete selected drawing",
-        icon: X,
-        disabled: !selectedDrawingId,
-        onClick: deleteSelectedDrawing,
       })}
       {renderToolbarButton({
         label: "Clear drawings",
@@ -3630,16 +3604,6 @@ export function TradingViewPlatform({
       })}
 
       <div className="my-0.5 h-px w-6 bg-border/80" />
-      {renderToolbarButton({
-        label: "Zoom in",
-        icon: ZoomIn,
-        onClick: () => zoomChart(0.72),
-      })}
-      {renderToolbarButton({
-        label: "Zoom out",
-        icon: ZoomOut,
-        onClick: () => zoomChart(1.35),
-      })}
       {renderToolbarButton({
         label: "Reset view",
         icon: Maximize2,
