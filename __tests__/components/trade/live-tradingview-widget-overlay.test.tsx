@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LIVE_CHART_KILLZONES,
   LiveTradingViewWidget,
@@ -9,6 +9,7 @@ import {
   buildLiveKillzoneSegments,
   doesLivePriceTriggerPendingOrder,
   getActiveLiveKillzone,
+  getActiveLiveTradingZone,
   type LivePendingOrder,
 } from "@/components/trade/live-tradingview-widget";
 
@@ -166,6 +167,11 @@ describe("live TradingView ICT killzone overlay", () => {
     mockLiveOrderReferenceData();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("builds live order items for TradingView's chart context menu", () => {
     const onPlaceOrder = vi.fn();
     const widget = {
@@ -302,6 +308,60 @@ describe("live TradingView ICT killzone overlay", () => {
     });
   });
 
+  it("selects the active live trading zone from current chart time", () => {
+    const zones = [
+      {
+        id: 3,
+        name: "Asian Range",
+        description: null,
+        fromTime: "20:00:00",
+        toTime: "00:00:00",
+      },
+      {
+        id: 7,
+        name: "London",
+        description: null,
+        fromTime: "02:00",
+        toTime: "05:00",
+      },
+    ];
+
+    expect(
+      getActiveLiveTradingZone(
+        zones,
+        new Date("2026-06-04T06:30:00.000Z"),
+        "America/New_York",
+      ),
+    ).toMatchObject({ id: 7, name: "London" });
+  });
+
+  it("handles overnight live trading zone ranges", () => {
+    const zones = [
+      {
+        id: 3,
+        name: "Asian Range",
+        description: null,
+        fromTime: "20:00",
+        toTime: "00:00",
+      },
+    ];
+
+    expect(
+      getActiveLiveTradingZone(
+        zones,
+        new Date("2026-06-05T03:30:00.000Z"),
+        "America/New_York",
+      ),
+    ).toMatchObject({ id: 3 });
+    expect(
+      getActiveLiveTradingZone(
+        zones,
+        new Date("2026-06-05T04:00:00.000Z"),
+        "America/New_York",
+      ),
+    ).toBeNull();
+  });
+
   it("detects pending order triggers from an app-owned price update", () => {
     expect(
       doesLivePriceTriggerPendingOrder(
@@ -362,8 +422,40 @@ describe("live TradingView ICT killzone overlay", () => {
       screen.getByRole("button", { name: "Toggle ICT kill zones" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
-      screen.getByRole("combobox", { name: "Kill zone timezone" }),
+      screen.getByRole("combobox", { name: "Chart timezone" }),
     ).toBeInTheDocument();
+  });
+
+  it("creates the hosted TradingView chart in New York time without the volume indicator", async () => {
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    installTradingViewWidgetMock();
+
+    render(<LiveTradingViewWidget />);
+
+    await waitFor(() => {
+      const scripts = document.querySelectorAll<HTMLScriptElement>(
+        'script[src="https://s3.tradingview.com/tv.js"]',
+      );
+      expect(scripts.length).toBeGreaterThan(0);
+    });
+
+    const scripts = document.querySelectorAll<HTMLScriptElement>(
+      'script[src="https://s3.tradingview.com/tv.js"]',
+    );
+    fireEvent.load(scripts[scripts.length - 1]);
+
+    await waitFor(() => {
+      expect(tradingViewWidgetMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hide_volume: true,
+          timezone: "America/New_York",
+          studies: [],
+        }),
+      );
+    });
   });
 
   it("renders chart timeframes as individual buttons", async () => {
@@ -429,6 +521,44 @@ describe("live TradingView ICT killzone overlay", () => {
         description: "NAS100 short order is waiting for 17,000.50.",
       }),
     );
+  });
+
+  it("auto-selects the current ICT killzone when opening a live order ticket", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-06-04T06:30:00.000Z"));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+    render(<LiveTradingViewWidget />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Open live order ticket" }),
+    );
+
+    const ticket = screen.getByRole("form", { name: "Live order ticket" });
+    const londonZone = await within(ticket).findByRole("button", { name: /London/ });
+
+    expect(londonZone).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(within(ticket).getByRole("button", { name: "Short" }));
+    await user.clear(within(ticket).getByLabelText("Entry price"));
+    await user.type(within(ticket).getByLabelText("Entry price"), "17000.5");
+    await user.type(within(ticket).getByLabelText("Stop loss"), "17025");
+    await user.type(within(ticket).getByLabelText("Target T1"), "16950");
+    await user.click(await within(ticket).findByText("Waited for displacement"));
+    await user.click(
+      within(ticket).getByRole("button", { name: "Place short order" }),
+    );
+
+    expect(
+      screen.getByLabelText("Pending order NAS100 short at 17,000.50"),
+    ).toBeInTheDocument();
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Pending order saved",
+      }),
+    );
+
+    vi.useRealTimers();
   });
 
   it("cancels pending live orders from the chart overlay", async () => {

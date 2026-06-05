@@ -114,13 +114,14 @@ export type LiveChartTimeZone =
   | "Europe/London"
   | "Asia/Bangkok";
 
+// TradingView expects IANA zone ids. New York is UTC-4 during EDT and tracks DST.
 const DEFAULT_LIVE_CHART_TIME_ZONE: LiveChartTimeZone = "America/New_York";
 
 export const LIVE_CHART_TIME_ZONES: Array<{
   value: LiveChartTimeZone;
   label: string;
 }> = [
-  { value: "America/New_York", label: "NY" },
+  { value: "America/New_York", label: "NY UTC-4" },
   { value: "Etc/UTC", label: "UTC" },
   { value: "Europe/London", label: "LDN" },
   { value: "Asia/Bangkok", label: "BKK" },
@@ -459,6 +460,61 @@ export interface LiveTradingZone {
   description: string | null;
   fromTime: string;
   toTime: string;
+}
+
+function parseLiveTradingZoneTime(value: string): number | null {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) {
+    return null;
+  }
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
+    return null;
+  }
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return null;
+  }
+
+  return localTimeToMinuteOfDay(hour, minute);
+}
+
+function isMinuteInLiveTradingZone(
+  currentMinute: number,
+  startMinute: number,
+  endMinute: number,
+) {
+  if (endMinute <= startMinute) {
+    return currentMinute >= startMinute || currentMinute < endMinute;
+  }
+
+  return currentMinute >= startMinute && currentMinute < endMinute;
+}
+
+export function getActiveLiveTradingZone(
+  zones: readonly LiveTradingZone[],
+  now = new Date(),
+  timeZone: LiveChartTimeZone = DEFAULT_LIVE_CHART_TIME_ZONE,
+): LiveTradingZone | null {
+  const currentTime = getZonedDateParts(now, timeZone);
+  const currentMinute = localTimeToMinuteOfDay(
+    currentTime.hour,
+    currentTime.minute,
+  );
+
+  return zones.find((zone) => {
+    const startMinute = parseLiveTradingZoneTime(zone.fromTime);
+    const endMinute = parseLiveTradingZoneTime(zone.toTime);
+
+    if (startMinute == null || endMinute == null) {
+      return false;
+    }
+
+    return isMinuteInLiveTradingZone(currentMinute, startMinute, endMinute);
+  }) ?? null;
 }
 
 export interface LivePendingOrder {
@@ -1143,11 +1199,13 @@ function LiveOrderPriceOverlay({
 
 function LiveOrderTicket({
   symbol,
+  chartTimeZone,
   request,
   onClose,
   onPlacePendingOrder,
 }: {
   symbol: string;
+  chartTimeZone: LiveChartTimeZone;
   request: LiveOrderTicketRequest;
   onClose: () => void;
   onPlacePendingOrder: (order: LivePendingOrder) => void;
@@ -1318,6 +1376,31 @@ function LiveOrderTicket({
   }, [request.id, request.entryPrice, request.side, symbol]);
 
   useEffect(() => {
+    if (tradingZones.length === 0) {
+      return;
+    }
+
+    const activeZone = getActiveLiveTradingZone(
+      tradingZones,
+      new Date(),
+      chartTimeZone,
+    );
+
+    if (!activeZone) {
+      return;
+    }
+
+    setForm((current) =>
+      current.tradingZoneId
+        ? current
+        : {
+            ...current,
+            tradingZoneId: String(activeZone.id),
+          },
+    );
+  }, [chartTimeZone, tradingZones]);
+
+  useEffect(() => {
     let isActive = true;
 
     const loadReferenceData = async () => {
@@ -1457,7 +1540,21 @@ function LiveOrderTicket({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const validationError = buildLiveOrderValidationError(form, side);
+    const activeZone = form.tradingZoneId
+      ? null
+      : getActiveLiveTradingZone(tradingZones, new Date(), chartTimeZone);
+    const effectiveForm = activeZone
+      ? {
+          ...form,
+          tradingZoneId: String(activeZone.id),
+        }
+      : form;
+
+    if (activeZone) {
+      setForm(effectiveForm);
+    }
+
+    const validationError = buildLiveOrderValidationError(effectiveForm, side);
     if (validationError) {
       toast({
         variant: "destructive",
@@ -1467,15 +1564,15 @@ function LiveOrderTicket({
       return;
     }
 
-    const asset = form.asset.trim().toUpperCase();
-    const parsedEntry = parseLiveOrderPrice(form.entryPrice) ?? 0;
-    const parsedStopLoss = parseLiveOrderPrice(form.stopLoss) ?? 0;
-    const parsedTargetTier1 = parseLiveOrderPrice(form.targetTier1) ?? 0;
-    const tradingZoneId = Number.parseInt(form.tradingZoneId, 10);
-    const checklistIds = form.checkedChecklistIds
+    const asset = effectiveForm.asset.trim().toUpperCase();
+    const parsedEntry = parseLiveOrderPrice(effectiveForm.entryPrice) ?? 0;
+    const parsedStopLoss = parseLiveOrderPrice(effectiveForm.stopLoss) ?? 0;
+    const parsedTargetTier1 = parseLiveOrderPrice(effectiveForm.targetTier1) ?? 0;
+    const tradingZoneId = Number.parseInt(effectiveForm.tradingZoneId, 10);
+    const checklistIds = effectiveForm.checkedChecklistIds
       .map((id) => Number.parseInt(id, 10))
       .filter((id) => Number.isFinite(id));
-    const confidenceLevel = Number.parseInt(form.confidenceLevel, 10) || 0;
+    const confidenceLevel = Number.parseInt(effectiveForm.confidenceLevel, 10) || 0;
     const checklistModelId = Number.parseInt(selectedChecklistModelId, 10);
     const selectedTradingZone = tradingZones.find((zone) => zone.id === tradingZoneId);
 
@@ -1489,7 +1586,7 @@ function LiveOrderTicket({
         entryPrice: parsedEntry,
         stopLoss: parsedStopLoss,
         targetTier1: parsedTargetTier1,
-        notes: form.notes.trim(),
+        notes: effectiveForm.notes.trim(),
         confidenceLevel,
         tradeHistoryChecklists: checklistIds,
         tradingZoneId,
@@ -1722,6 +1819,7 @@ function LiveOrderTicket({
                         ? "border-amber-500/60 bg-amber-500/15 text-amber-600 dark:text-amber-300"
                         : "border-border/70 bg-card/70 text-muted-foreground hover:border-amber-500/40 hover:text-foreground",
                     )}
+                    aria-pressed={isSelected}
                     onClick={() => handleFieldChange("tradingZoneId", String(zone.id))}
                   >
                     <span className="block truncate font-semibold">{zone.name}</span>
@@ -2128,7 +2226,7 @@ export function LiveTradingViewWidget({ className }: LiveTradingViewWidgetProps)
           hide_top_toolbar: false,
           hide_legend: false,
           save_image: false,
-          hide_volume: false,
+          hide_volume: true,
           watchlist: [],
           container_id: widgetDiv.id,
           studies: [],
@@ -2432,8 +2530,8 @@ export function LiveTradingViewWidget({ className }: LiveTradingViewWidgetProps)
             onValueChange={(v) => setChartTimeZone(v as LiveChartTimeZone)}
           >
             <SelectTrigger
-              aria-label="Kill zone timezone"
-              className="h-8 w-[78px] rounded-md text-xs font-semibold"
+              aria-label="Chart timezone"
+              className="h-8 w-[96px] rounded-md text-xs font-semibold"
             >
               <SelectValue />
             </SelectTrigger>
@@ -2514,6 +2612,7 @@ export function LiveTradingViewWidget({ className }: LiveTradingViewWidgetProps)
         {showOrderTicket ? (
           <LiveOrderTicket
             symbol={symbol}
+            chartTimeZone={chartTimeZone}
             request={orderTicketRequest}
             onClose={() => setShowOrderTicket(false)}
             onPlacePendingOrder={handlePlacePendingOrder}
