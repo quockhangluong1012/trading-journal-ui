@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { buildRedirectWithNext } from "@/lib/auth-redirect";
 import { AppShellLoader } from "@/components/app-shell-loader";
+import { Header } from "@/components/header";
 import { LiveTradingViewWidget } from "@/components/trade/live-tradingview-widget";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -38,10 +39,13 @@ export default function LiveTradePage() {
 
   return (
     <TooltipProvider disableHoverableContent>
-      <div className="flex h-[calc(100vh-4rem)] flex-col overflow-hidden">
-        <div className="flex flex-1 flex-col overflow-hidden p-3 sm:p-4">
-          <LiveTradingViewWidget className="h-full" />
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <div className="shrink-0">
+          <Header />
         </div>
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
+          <LiveTradingViewWidget className="h-full" />
+        </main>
       </div>
     </TooltipProvider>
   );

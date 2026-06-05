@@ -32,6 +32,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth-context"
 
@@ -92,6 +93,24 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { setOpen, setOpenMobile } = useSidebar()
+  const shouldCollapseAfterNavigationRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!shouldCollapseAfterNavigationRef.current) {
+      return
+    }
+
+    shouldCollapseAfterNavigationRef.current = false
+    setOpen(false)
+    setOpenMobile(false)
+  }, [pathname, setOpen, setOpenMobile])
+
+  const handleMenuClick = React.useCallback((url: string) => {
+    if (url !== pathname) {
+      shouldCollapseAfterNavigationRef.current = true
+    }
+  }, [pathname])
 
   return (
     <Sidebar variant="inset" {...props}>
@@ -118,7 +137,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         tooltip={item.title}
                         className="h-10 rounded-xl px-3 text-[13px] font-medium text-sidebar-foreground/82 hover:bg-sidebar-accent/80 hover:text-sidebar-foreground data-[active=true]:bg-sidebar-primary/12 data-[active=true]:text-sidebar-primary data-[active=true]:shadow-sm"
                       >
-                        <Link href={item.url}>
+                        <Link href={item.url} onClick={() => handleMenuClick(item.url)}>
                           {item.icon && <item.icon />}
                           <span>{item.title}</span>
                         </Link>
