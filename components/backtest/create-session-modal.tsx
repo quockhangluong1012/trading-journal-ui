@@ -227,7 +227,6 @@ export function CreateSessionModal({
                         />
                       </PopoverContent>
                     </Popover>
-                    <FormDescription>Replay continues to the latest available data.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

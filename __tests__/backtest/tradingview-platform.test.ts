@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHART_PRICE_FORMAT,
+  clampReplayControlsPosition,
+  clampFloatingDrawingToolbarPosition,
   createChartDrawing,
   createChartDrawingDraft,
   calculateDrawingAnchorDelta,
   applyChartDrawingStyle,
   applyChartDrawingTemplate,
   buildIncrementalChartData,
+  buildCurrentPriceOrderAction,
   buildOrderMarkerOverlays,
   buildOrderPriceLines,
   buildTradingSessionOverlays,
@@ -14,8 +18,11 @@ import {
   calculateReplayProgress,
   formatDrawingMetricLabel,
   getChartDrawingStyle,
+  getDefaultFloatingDrawingToolbarPosition,
+  getDefaultReplayControlsPosition,
   completeChartDrawingDraft,
   estimateDrawingTimeFromLogical,
+  formatChartAxisPrice,
   isTwoPointDrawingTool,
   mapBacktestCandlesToChartData,
   moveChartDrawing,
@@ -86,6 +93,17 @@ describe("TradingView platform helpers", () => {
     expect(options.hide_side_toolbar).toBe(false);
     expect(options.allow_symbol_change).toBe(true);
     expect(options.save_image).toBe(true);
+  });
+
+  it("formats chart axis prices with up to five decimal places", () => {
+    expect(CHART_PRICE_FORMAT).toMatchObject({
+      type: "custom",
+      minMove: 0.00001,
+    });
+    expect(CHART_PRICE_FORMAT.formatter(1.087406)).toBe("1.08741");
+    expect(formatChartAxisPrice(23825.4)).toBe("23,825.4");
+    expect(formatChartAxisPrice(1.2)).toBe("1.2");
+    expect(formatChartAxisPrice(undefined)).toBe("--");
   });
 
   it("maps backtest candles to chronological chart data and keeps the newest duplicate", () => {
@@ -189,6 +207,112 @@ describe("TradingView platform helpers", () => {
       endDate: null,
       currentTimestamp: "2024-01-01T00:30:00Z",
     })).toBeNull();
+  });
+
+  it("defaults replay controls above the chart time axis", () => {
+    expect(getDefaultReplayControlsPosition({
+      containerWidth: 1200,
+      containerHeight: 500,
+      controlsWidth: 740,
+      controlsHeight: 56,
+    })).toEqual({
+      x: 230,
+      y: 396,
+    });
+  });
+
+  it("positions the current-price order action on the price scale", () => {
+    expect(buildCurrentPriceOrderAction({
+      price: 24394.1,
+      y: 118.4,
+      containerHeight: 520,
+    })).toEqual({
+      price: 24394.1,
+      label: "24,394.1",
+      y: 118.4,
+    });
+
+    expect(buildCurrentPriceOrderAction({
+      price: 24394.1,
+      y: -20,
+      containerHeight: 520,
+    })).toEqual({
+      price: 24394.1,
+      label: "24,394.1",
+      y: 18,
+    });
+  });
+
+  it("clamps dropped replay controls inside the chart and clear of the time axis", () => {
+    expect(clampReplayControlsPosition(
+      { x: 1100, y: 470 },
+      {
+        containerWidth: 1200,
+        containerHeight: 500,
+        controlsWidth: 740,
+        controlsHeight: 56,
+      },
+    )).toEqual({
+      x: 448,
+      y: 396,
+    });
+
+    expect(clampReplayControlsPosition(
+      { x: -80, y: -40 },
+      {
+        containerWidth: 1200,
+        containerHeight: 500,
+        controlsWidth: 740,
+        controlsHeight: 56,
+      },
+    )).toEqual({
+      x: 12,
+      y: 12,
+    });
+  });
+
+  it("positions the selected drawing quick editor near the object and clamps drag inside the chart", () => {
+    const drawingBounds = {
+      left: 120,
+      top: 140,
+      right: 420,
+      bottom: 260,
+    };
+
+    expect(getDefaultFloatingDrawingToolbarPosition({
+      drawingBounds,
+      containerWidth: 900,
+      containerHeight: 520,
+      toolbarWidth: 360,
+      toolbarHeight: 48,
+    })).toEqual({
+      x: 90,
+      y: 78,
+    });
+
+    expect(getDefaultFloatingDrawingToolbarPosition({
+      drawingBounds: { ...drawingBounds, top: 18, bottom: 118 },
+      containerWidth: 900,
+      containerHeight: 520,
+      toolbarWidth: 360,
+      toolbarHeight: 48,
+    })).toEqual({
+      x: 90,
+      y: 132,
+    });
+
+    expect(clampFloatingDrawingToolbarPosition(
+      { x: -240, y: 900 },
+      {
+        containerWidth: 900,
+        containerHeight: 520,
+        toolbarWidth: 360,
+        toolbarHeight: 48,
+      },
+    )).toEqual({
+      x: 12,
+      y: 460,
+    });
   });
 
   it("builds overlapping ICT trading session boxes from loaded chart candles", () => {

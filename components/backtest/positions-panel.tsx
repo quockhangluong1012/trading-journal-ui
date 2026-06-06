@@ -5,9 +5,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   ArrowDownRight,
   ArrowUpRight,
   ChevronDown,
+  ChevronUp,
   Clock3,
   ListOrdered,
   Pencil,
@@ -34,7 +45,9 @@ import {
 interface PositionsPanelProps {
   sessionId: number;
   currentPrice: number;
+  isCollapsed?: boolean;
   onCollapse?: () => void;
+  onExpand?: () => void;
 }
 
 function HistoryStat({
@@ -103,9 +116,13 @@ function formatDuration(start: string | null | undefined, end: string | null | u
   return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
-export function PositionsPanel({ currentPrice, onCollapse }: PositionsPanelProps) {
+type PendingConfirmation = { type: "close" | "cancel"; id: number };
+
+export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand }: PositionsPanelProps) {
   const { session, activePositions, pendingOrders, closedPositions, closeOrder, cancelOrder } = useBacktestStore();
   const [editModal, setEditModal] = useState<{ isOpen: boolean; order: BacktestOrder | null }>({ isOpen: false, order: null });
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
   const historySummary = useMemo(() => {
     const totalPnl = closedPositions.reduce((sum, order) => sum + (order.pnl ?? 0), 0);
     const wins = closedPositions.filter((order) => (order.pnl ?? 0) > 0).length;
@@ -126,23 +143,24 @@ export function PositionsPanel({ currentPrice, onCollapse }: PositionsPanelProps
     };
   }, [closedPositions]);
 
-  const handleClosePosition = async (id: number) => {
-    if (!window.confirm("Are you sure you want to close this position?")) return;
-    try {
-      await closeOrder(id, currentPrice);
-      toast.success("Position closed");
-    } catch (err) {
-      toast.error("Failed to close position");
-    }
-  };
+  const handleConfirmAction = async () => {
+    if (!pendingConfirmation) return;
 
-  const handleCancelOrder = async (id: number) => {
-    if (!window.confirm("Are you sure you want to cancel this order?")) return;
+    const { type, id } = pendingConfirmation;
+    setIsConfirming(true);
     try {
-      await cancelOrder(id);
-      toast.success("Pending order cancelled");
+      if (type === "close") {
+        await closeOrder(id, currentPrice);
+        toast.success("Position closed");
+      } else {
+        await cancelOrder(id);
+        toast.success("Pending order cancelled");
+      }
+      setPendingConfirmation(null);
     } catch (err) {
-      toast.error("Failed to cancel order");
+      toast.error(type === "close" ? "Failed to close position" : "Failed to cancel order");
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -157,6 +175,38 @@ export function PositionsPanel({ currentPrice, onCollapse }: PositionsPanelProps
     const formatted = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: maxDigits }).format(val);
     return val > 0 ? `+${formatted}` : formatted;
   };
+
+  if (isCollapsed) {
+    return (
+      <div className="flex h-full items-center gap-2 border-t bg-secondary/10 px-3 text-xs">
+        <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
+          Open {activePositions.length}
+        </Badge>
+        <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
+          Pending {pendingOrders.length}
+        </Badge>
+        <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
+          Closed {closedPositions.length}
+        </Badge>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-muted-foreground">Last price {formatCurrency(currentPrice)}</span>
+          {onExpand && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-full border border-border/60 bg-background shadow-sm"
+              onClick={onExpand}
+              title="Expand positions and orders panel"
+              aria-label="Expand positions and orders panel"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-card overflow-hidden text-sm">
@@ -290,11 +340,11 @@ export function PositionsPanel({ currentPrice, onCollapse }: PositionsPanelProps
                            {session?.leverage || 50}:1
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-secondary" onClick={() => setEditModal({ isOpen: true, order: pos })}>
+                          <div className="flex items-center justify-end gap-1 opacity-60 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-secondary" aria-label="Edit position" onClick={() => setEditModal({ isOpen: true, order: pos })}>
                               <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-rose-500/20 hover:text-rose-500" onClick={() => handleClosePosition(pos.id)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-rose-500/20 hover:text-rose-500" aria-label="Close position" onClick={() => setPendingConfirmation({ type: "close", id: pos.id })}>
                               <X className="h-4 w-4" />
                             </Button>
                           </div>
@@ -354,11 +404,11 @@ export function PositionsPanel({ currentPrice, onCollapse }: PositionsPanelProps
                         <td className="px-4 py-3 text-right font-mono">{formatCurrency(ord.stopLoss)}</td>
                         <td className="px-4 py-3 text-right font-mono">{formatCurrency(currentPrice)}</td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-secondary" onClick={() => setEditModal({ isOpen: true, order: ord })}>
+                          <div className="flex items-center justify-end gap-1 opacity-60 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-secondary" aria-label="Edit order" onClick={() => setEditModal({ isOpen: true, order: ord })}>
                               <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                             </Button>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-rose-500/20 hover:text-rose-500" onClick={() => handleCancelOrder(ord.id)}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-rose-500/20 hover:text-rose-500" aria-label="Cancel order" onClick={() => setPendingConfirmation({ type: "cancel", id: ord.id })}>
                               <X className="h-4 w-4" />
                             </Button>
                           </div>
@@ -505,11 +555,47 @@ export function PositionsPanel({ currentPrice, onCollapse }: PositionsPanelProps
         </TabsContent>
       </Tabs>
 
-      <EditPositionModal 
-        isOpen={editModal.isOpen} 
-        order={editModal.order} 
-        onClose={() => setEditModal(prev => ({ ...prev, isOpen: false }))} 
+      <EditPositionModal
+        isOpen={editModal.isOpen}
+        order={editModal.order}
+        onClose={() => setEditModal(prev => ({ ...prev, isOpen: false }))}
       />
+
+      <AlertDialog
+        open={pendingConfirmation !== null}
+        onOpenChange={(open) => {
+          if (!open && !isConfirming) setPendingConfirmation(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingConfirmation?.type === "close" ? "Close this position?" : "Cancel this order?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingConfirmation?.type === "close"
+                ? "This position will be closed at the current market price and moved to your order history."
+                : "This pending order will be cancelled and removed from the order book."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isConfirming}>Keep</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isConfirming}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmAction();
+              }}
+            >
+              {isConfirming
+                ? "Working..."
+                : pendingConfirmation?.type === "close"
+                  ? "Close Position"
+                  : "Cancel Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

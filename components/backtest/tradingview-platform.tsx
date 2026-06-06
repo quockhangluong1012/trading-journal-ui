@@ -13,6 +13,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type Logical,
+  type PriceFormat,
   type UTCTimestamp,
 } from "lightweight-charts";
 import {
@@ -20,6 +21,7 @@ import {
   Eye,
   EyeOff,
   FilePenLine,
+  GripVertical,
   Lock,
   Magnet,
   Maximize2,
@@ -28,10 +30,15 @@ import {
   MousePointer2,
   MoveHorizontal,
   MoveVertical,
+  PaintBucket,
   Pause,
+  Palette,
   Play,
+  Plus,
   RotateCcw,
   Ruler,
+  Save,
+  Settings2,
   SkipForward,
   Slash,
   Square,
@@ -44,7 +51,9 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -66,6 +75,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BacktestOrder, CandleData, PlaybackSpeed, Timeframe } from "@/lib/backtest-store";
 import { cn } from "@/lib/utils";
 
@@ -136,6 +146,15 @@ const AXIS_LABEL_TEXT_COLOR = "#ffffff";
 const SECONDS_PER_HOUR = 60 * 60;
 const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR;
 const DEFAULT_DRAWING_COLOR = "#2563eb";
+const CHART_PRICE_DECIMALS = 5;
+const CHART_PRICE_MIN_MOVE = 1 / 10 ** CHART_PRICE_DECIMALS;
+const REPLAY_CONTROLS_MARGIN = 12;
+const REPLAY_CONTROLS_TIME_AXIS_CLEARANCE = 48;
+const FLOATING_DRAWING_TOOLBAR_MARGIN = 12;
+const FLOATING_DRAWING_TOOLBAR_OFFSET = 14;
+const FLOATING_DRAWING_TOOLBAR_DEFAULT_WIDTH = 740;
+const FLOATING_DRAWING_TOOLBAR_DEFAULT_HEIGHT = 48;
+const CURRENT_PRICE_ACTION_EDGE_MARGIN = 18;
 const DRAWING_COLORS = ["#2563eb", "#059669", "#f97316", "#e11d48", "#7c3aed", "#0f172a"];
 const MIN_DRAWING_DISTANCE = 4;
 const DRAWING_STROKE_WIDTHS = [1, 2, 3, 4, 5];
@@ -301,6 +320,7 @@ interface TradingViewPlatformProps {
   isSwitchingTimeframe?: boolean;
   onTimeframeChange?: (timeframe: Timeframe) => void;
   finishAction?: ReactNode;
+  onOpenOrderTicket?: (price: number) => void;
   onTogglePlayback: () => void;
   onSkip: () => void;
   onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
@@ -320,6 +340,48 @@ interface ChartPalette {
 interface ChartData {
   candles: Array<CandlestickData<UTCTimestamp>>;
   volumes: Array<HistogramData<UTCTimestamp>>;
+}
+
+export interface FloatingToolbarPosition {
+  x: number;
+  y: number;
+}
+
+export interface ReplayControlsPosition extends FloatingToolbarPosition {}
+
+export interface ReplayControlsBounds {
+  containerWidth: number;
+  containerHeight: number;
+  controlsWidth: number;
+  controlsHeight: number;
+  margin?: number;
+  bottomReserved?: number;
+}
+
+export interface FloatingDrawingToolbarBounds {
+  containerWidth: number;
+  containerHeight: number;
+  toolbarWidth: number;
+  toolbarHeight: number;
+  margin?: number;
+}
+
+export interface DrawingScreenBounds {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface DefaultFloatingDrawingToolbarPositionOptions extends FloatingDrawingToolbarBounds {
+  drawingBounds: DrawingScreenBounds | null;
+  offset?: number;
+}
+
+export interface CurrentPriceOrderAction {
+  price: number;
+  label: string;
+  y: number;
 }
 
 export type OrderPriceLineOptions = CreatePriceLineOptions & { id: string };
@@ -460,6 +522,20 @@ interface DrawingDragState {
   surfaceRect: { left: number; top: number; width: number; height: number };
 }
 
+interface ReplayControlsDragState {
+  pointerStart: { x: number; y: number };
+  startPosition: ReplayControlsPosition;
+  containerSize: { width: number; height: number };
+  controlsSize: { width: number; height: number };
+}
+
+interface FloatingToolbarDragState {
+  pointerStart: { x: number; y: number };
+  startPosition: FloatingToolbarPosition;
+  containerSize: { width: number; height: number };
+  toolbarSize: { width: number; height: number };
+}
+
 // Seed the auto-increment id counter past any persisted drawings so newly
 // created drawings ("drawing-<n>") never collide with hydrated ones.
 function nextDrawingIdSeed(drawings?: ChartDrawing[]): number {
@@ -571,6 +647,7 @@ interface DrawingToolDefinition {
 const DRAWING_TOOL_GROUPS: DrawingToolDefinition[][] = [
   [
     { id: "cursor", label: "Cursor", icon: MousePointer2, requiresSecondPoint: false },
+    { id: "crosshair", label: "Crosshair", icon: Crosshair, requiresSecondPoint: false },
   ],
   [
     { id: "trend-line", label: "Trend line", icon: Slash, requiresSecondPoint: true },
@@ -836,6 +913,141 @@ export function calculateReplayProgress({
   }
 
   return Math.min(100, Math.max(0, ((current - start) / (end - start)) * 100));
+}
+
+function clampOverlayAxis(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return Math.round(fallback);
+  }
+
+  if (max < min) {
+    return Math.round(fallback);
+  }
+
+  return Math.round(Math.min(max, Math.max(min, value)));
+}
+
+export function buildCurrentPriceOrderAction({
+  price,
+  y,
+  containerHeight,
+}: {
+  price: number;
+  y: number;
+  containerHeight: number;
+}): CurrentPriceOrderAction | null {
+  if (
+    !Number.isFinite(price) ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(containerHeight) ||
+    containerHeight <= 0
+  ) {
+    return null;
+  }
+
+  return {
+    price,
+    label: formatChartAxisPrice(price),
+    y: Math.min(
+      Math.max(CURRENT_PRICE_ACTION_EDGE_MARGIN, containerHeight - CURRENT_PRICE_ACTION_EDGE_MARGIN),
+      Math.max(CURRENT_PRICE_ACTION_EDGE_MARGIN, y),
+    ),
+  };
+}
+
+export function clampReplayControlsPosition(
+  position: ReplayControlsPosition,
+  bounds: ReplayControlsBounds,
+): ReplayControlsPosition {
+  const margin = bounds.margin ?? REPLAY_CONTROLS_MARGIN;
+  const bottomReserved = bounds.bottomReserved ?? REPLAY_CONTROLS_TIME_AXIS_CLEARANCE;
+  const containerWidth = Math.max(0, bounds.containerWidth);
+  const containerHeight = Math.max(0, bounds.containerHeight);
+  const controlsWidth = Math.max(0, bounds.controlsWidth);
+  const controlsHeight = Math.max(0, bounds.controlsHeight);
+
+  const minX = margin;
+  const maxX = containerWidth - controlsWidth - margin;
+  const fallbackX = Math.max(0, (containerWidth - controlsWidth) / 2);
+
+  const minY = margin;
+  const maxY = containerHeight - controlsHeight - Math.max(margin, bottomReserved);
+  const fallbackY = Math.max(0, (containerHeight - controlsHeight) / 2);
+
+  return {
+    x: clampOverlayAxis(position.x, minX, maxX, fallbackX),
+    y: clampOverlayAxis(position.y, minY, maxY, fallbackY),
+  };
+}
+
+export function getDefaultReplayControlsPosition(bounds: ReplayControlsBounds): ReplayControlsPosition {
+  const bottomReserved = bounds.bottomReserved ?? REPLAY_CONTROLS_TIME_AXIS_CLEARANCE;
+
+  return clampReplayControlsPosition(
+    {
+      x: (bounds.containerWidth - bounds.controlsWidth) / 2,
+      y: bounds.containerHeight - bounds.controlsHeight - bottomReserved,
+    },
+    { ...bounds, bottomReserved },
+  );
+}
+
+export function clampFloatingDrawingToolbarPosition(
+  position: FloatingToolbarPosition,
+  bounds: FloatingDrawingToolbarBounds,
+): FloatingToolbarPosition {
+  const margin = bounds.margin ?? FLOATING_DRAWING_TOOLBAR_MARGIN;
+  const containerWidth = Math.max(0, bounds.containerWidth);
+  const containerHeight = Math.max(0, bounds.containerHeight);
+  const toolbarWidth = Math.max(0, bounds.toolbarWidth);
+  const toolbarHeight = Math.max(0, bounds.toolbarHeight);
+
+  const minX = margin;
+  const maxX = containerWidth - toolbarWidth - margin;
+  const fallbackX = Math.max(0, (containerWidth - toolbarWidth) / 2);
+
+  const minY = margin;
+  const maxY = containerHeight - toolbarHeight - margin;
+  const fallbackY = Math.max(0, (containerHeight - toolbarHeight) / 2);
+
+  return {
+    x: clampOverlayAxis(position.x, minX, maxX, fallbackX),
+    y: clampOverlayAxis(position.y, minY, maxY, fallbackY),
+  };
+}
+
+export function getDefaultFloatingDrawingToolbarPosition({
+  drawingBounds,
+  containerWidth,
+  containerHeight,
+  toolbarWidth,
+  toolbarHeight,
+  margin = FLOATING_DRAWING_TOOLBAR_MARGIN,
+  offset = FLOATING_DRAWING_TOOLBAR_OFFSET,
+}: DefaultFloatingDrawingToolbarPositionOptions): FloatingToolbarPosition {
+  if (!drawingBounds) {
+    return clampFloatingDrawingToolbarPosition(
+      {
+        x: (containerWidth - toolbarWidth) / 2,
+        y: margin,
+      },
+      { containerWidth, containerHeight, toolbarWidth, toolbarHeight, margin },
+    );
+  }
+
+  const drawingCenterX = drawingBounds.left + (drawingBounds.right - drawingBounds.left) / 2;
+  const preferredTopY = drawingBounds.top - toolbarHeight - offset;
+  const preferredY = preferredTopY >= margin
+    ? preferredTopY
+    : drawingBounds.bottom + offset;
+
+  return clampFloatingDrawingToolbarPosition(
+    {
+      x: drawingCenterX - toolbarWidth / 2,
+      y: preferredY,
+    },
+    { containerWidth, containerHeight, toolbarWidth, toolbarHeight, margin },
+  );
 }
 
 function getUtcDayStartSeconds(time: number): number {
@@ -1316,6 +1528,22 @@ function formatPrice(value: number | undefined): string {
     minimumFractionDigits: value >= 100 ? 2 : 5,
   }).format(value);
 }
+
+export function formatChartAxisPrice(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "--";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: CHART_PRICE_DECIMALS,
+  }).format(value);
+}
+
+export const CHART_PRICE_FORMAT = {
+  type: "custom",
+  minMove: CHART_PRICE_MIN_MOVE,
+  formatter: formatChartAxisPrice,
+} satisfies PriceFormat;
 
 function isDrawableChartTool(tool: ChartDrawingTool): tool is DrawableChartTool {
   return tool !== "cursor" && tool !== "crosshair";
@@ -2008,6 +2236,22 @@ function renderDrawingSelectionHandles(drawing: PositionedChartDrawing, color: s
   ));
 }
 
+function getPositionedDrawingScreenBounds(drawing: PositionedChartDrawing | null): DrawingScreenBounds | null {
+  if (!drawing || drawing.points.length === 0) {
+    return null;
+  }
+
+  const xs = drawing.points.map((point) => point.x);
+  const ys = drawing.points.map((point) => point.y);
+
+  return {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  };
+}
+
 function renderPositionedChartDrawing(
   drawing: PositionedChartDrawing,
   width: number,
@@ -2307,12 +2551,15 @@ export function TradingViewPlatform({
   isSwitchingTimeframe = false,
   onTimeframeChange,
   finishAction,
+  onOpenOrderTicket,
   onTogglePlayback,
   onSkip,
   onPlaybackSpeedChange,
 }: TradingViewPlatformProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const drawingSurfaceRef = useRef<HTMLDivElement>(null);
+  const replayControlsRef = useRef<HTMLDivElement>(null);
+  const selectedDrawingToolbarRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
@@ -2333,6 +2580,8 @@ export function TradingViewPlatform({
   const shouldProjectDrawingsRef = useRef(false);
   const shouldProjectTradingSessionsRef = useRef(false);
   const dragStateRef = useRef<DrawingDragState | null>(null);
+  const replayControlsDragRef = useRef<ReplayControlsDragState | null>(null);
+  const selectedDrawingToolbarDragRef = useRef<FloatingToolbarDragState | null>(null);
   const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
   // True while the user has panned back to review past candles. While set, the
   // data-update effect stops snapping the view to the live edge so newly
@@ -2341,6 +2590,7 @@ export function TradingViewPlatform({
   // Current vertical (price) zoom level. 1 = the chart's default scaleMargins.
   const verticalZoomRef = useRef(1);
   const [orderMarkerPositions, setOrderMarkerPositions] = useState<PositionedOrderMarkerOverlay[]>([]);
+  const [currentPriceOrderAction, setCurrentPriceOrderAction] = useState<CurrentPriceOrderAction | null>(null);
   // Hydrate once from persisted drawings; later prop changes are ignored so a
   // re-fetch can't clobber the user's in-progress edits. The parent remounts
   // this component per session (key={sessionId}), which re-runs this initializer.
@@ -2354,10 +2604,17 @@ export function TradingViewPlatform({
   const [areDrawingsLocked, setAreDrawingsLocked] = useState(false);
   const [areDrawingsVisible, setAreDrawingsVisible] = useState(true);
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
+  const [replayControlsSize, setReplayControlsSize] = useState({ width: 0, height: 0 });
+  const [replayControlsPosition, setReplayControlsPosition] = useState<ReplayControlsPosition | null>(null);
+  const [hasCustomReplayControlsPosition, setHasCustomReplayControlsPosition] = useState(false);
+  const [selectedDrawingToolbarSize, setSelectedDrawingToolbarSize] = useState({ width: 0, height: 0 });
+  const [selectedDrawingToolbarPosition, setSelectedDrawingToolbarPosition] = useState<FloatingToolbarPosition | null>(null);
+  const [hasCustomSelectedDrawingToolbarPosition, setHasCustomSelectedDrawingToolbarPosition] = useState(false);
   const [overlayRevision, setOverlayRevision] = useState(0);
   const [customTemplates, setCustomTemplates] = useState<DrawingStyleTemplate[]>([]);
   const [templateNameDialogOpen, setTemplateNameDialogOpen] = useState(false);
   const [templateNameDraft, setTemplateNameDraft] = useState("");
+  const [drawingSettingsDialogOpen, setDrawingSettingsDialogOpen] = useState(false);
   const [fibonacciDialogOpen, setFibonacciDialogOpen] = useState(false);
   const [fibonacciEditLevels, setFibonacciEditLevels] = useState<FibonacciLevel[]>([]);
   const [fibonacciEditDrawingId, setFibonacciEditDrawingId] = useState<string | null>(null);
@@ -2440,6 +2697,38 @@ export function TradingViewPlatform({
   const selectedDrawingStyle = selectedDrawing ? getChartDrawingStyle(selectedDrawing) : null;
   const isDrawingMode = isDrawableChartTool(activeTool) && !areDrawingsLocked;
 
+  const syncCurrentPriceOrderAction = useCallback(() => {
+    const candleSeries = candleSeriesRef.current;
+    const container = containerRef.current;
+    const price = latestCandle?.close;
+
+    if (!candleSeries || !container || typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
+      setCurrentPriceOrderAction((current) => (current === null ? current : null));
+      return;
+    }
+
+    const y = candleSeries.priceToCoordinate(price);
+    const nextAction = y == null
+      ? null
+      : buildCurrentPriceOrderAction({
+          price,
+          y: Number(y),
+          containerHeight: container.clientHeight,
+        });
+
+    setCurrentPriceOrderAction((current) => {
+      if (
+        current?.price === nextAction?.price &&
+        current?.label === nextAction?.label &&
+        current?.y === nextAction?.y
+      ) {
+        return current;
+      }
+
+      return nextAction;
+    });
+  }, [latestCandle?.close]);
+
   const syncOrderMarkerPositions = useCallback(() => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
@@ -2510,6 +2799,56 @@ export function TradingViewPlatform({
     });
   }, []);
 
+  const syncReplayControlsSize = useCallback(() => {
+    const controls = replayControlsRef.current;
+    if (!controls) {
+      return;
+    }
+
+    const rect = controls.getBoundingClientRect();
+    const nextSize = {
+      width: rect.width,
+      height: rect.height,
+    };
+
+    if (nextSize.width <= 0 || nextSize.height <= 0) {
+      return;
+    }
+
+    setReplayControlsSize((previousSize) => {
+      if (previousSize.width === nextSize.width && previousSize.height === nextSize.height) {
+        return previousSize;
+      }
+
+      return nextSize;
+    });
+  }, []);
+
+  const syncSelectedDrawingToolbarSize = useCallback(() => {
+    const toolbar = selectedDrawingToolbarRef.current;
+    if (!toolbar) {
+      return;
+    }
+
+    const rect = toolbar.getBoundingClientRect();
+    const nextSize = {
+      width: rect.width,
+      height: rect.height,
+    };
+
+    if (nextSize.width <= 0 || nextSize.height <= 0) {
+      return;
+    }
+
+    setSelectedDrawingToolbarSize((previousSize) => {
+      if (previousSize.width === nextSize.width && previousSize.height === nextSize.height) {
+        return previousSize;
+      }
+
+      return nextSize;
+    });
+  }, []);
+
   const syncDrawingProjection = useCallback(() => {
     syncChartSize();
     // Only bump the overlay revision (which re-renders the SVG layer) when there
@@ -2523,8 +2862,9 @@ export function TradingViewPlatform({
 
   const syncViewportOverlays = useCallback(() => {
     syncOrderMarkerPositions();
+    syncCurrentPriceOrderAction();
     syncDrawingProjection();
-  }, [syncDrawingProjection, syncOrderMarkerPositions]);
+  }, [syncCurrentPriceOrderAction, syncDrawingProjection, syncOrderMarkerPositions]);
 
   // Keep a ref to the latest sync fn so scheduleOrderMarkerSync can stay stable
   // ([] deps). Otherwise it changes identity on every tick (orderMarkerOverlays
@@ -2636,6 +2976,31 @@ export function TradingViewPlatform({
     )));
   }, [selectedDrawingId]);
 
+  const updateSelectedDrawingPoint = useCallback((
+    pointIndex: number,
+    patch: Partial<ChartDrawingAnchor>,
+  ) => {
+    if (!selectedDrawingId) {
+      return;
+    }
+
+    setChartDrawings((drawings) => drawings.map((drawing) => {
+      if (drawing.id !== selectedDrawingId) {
+        return drawing;
+      }
+
+      const currentPoint = drawing.points[pointIndex];
+      if (!currentPoint) {
+        return drawing;
+      }
+
+      return replaceChartDrawingPoint(drawing, pointIndex, {
+        ...currentPoint,
+        ...patch,
+      });
+    }));
+  }, [selectedDrawingId]);
+
   const selectDrawing = useCallback((drawingId: string) => {
     if (areDrawingsLocked) {
       return;
@@ -2670,6 +3035,64 @@ export function TradingViewPlatform({
       window.removeEventListener("resize", syncDrawingProjection);
     };
   }, [syncChartSize, syncDrawingProjection]);
+
+  useEffect(() => {
+    const controls = replayControlsRef.current;
+
+    syncReplayControlsSize();
+
+    if (!controls || typeof window === "undefined") {
+      return;
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(syncReplayControlsSize);
+      observer.observe(controls);
+
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener("resize", syncReplayControlsSize);
+    return () => {
+      window.removeEventListener("resize", syncReplayControlsSize);
+    };
+  }, [syncReplayControlsSize]);
+
+  useEffect(() => {
+    if (
+      chartSize.width <= 0 ||
+      chartSize.height <= 0 ||
+      replayControlsSize.width <= 0 ||
+      replayControlsSize.height <= 0
+    ) {
+      return;
+    }
+
+    const bounds = {
+      containerWidth: chartSize.width,
+      containerHeight: chartSize.height,
+      controlsWidth: replayControlsSize.width,
+      controlsHeight: replayControlsSize.height,
+    };
+
+    setReplayControlsPosition((currentPosition) => {
+      const nextPosition = hasCustomReplayControlsPosition && currentPosition
+        ? clampReplayControlsPosition(currentPosition, bounds)
+        : getDefaultReplayControlsPosition(bounds);
+
+      if (
+        currentPosition &&
+        currentPosition.x === nextPosition.x &&
+        currentPosition.y === nextPosition.y
+      ) {
+        return currentPosition;
+      }
+
+      return nextPosition;
+    });
+  }, [chartSize.height, chartSize.width, hasCustomReplayControlsPosition, replayControlsSize.height, replayControlsSize.width]);
 
   // Scale the candle price-scale margins to match a vertical-zoom level, keeping
   // the same top:bottom ratio as the default layout so zoom 1 is a no-op and the
@@ -2800,6 +3223,28 @@ export function TradingViewPlatform({
     };
   }, [chartData.candles, isMagnetEnabled]);
 
+  const updateChartCrosshairFromPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+
+    if (!chart || !candleSeries) {
+      return null;
+    }
+
+    const anchor = getChartAnchorFromPointer(event);
+    if (!anchor) {
+      chart.clearCrosshairPosition();
+      return null;
+    }
+
+    chart.setCrosshairPosition(anchor.price, anchor.time, candleSeries);
+    return anchor;
+  }, [getChartAnchorFromPointer]);
+
+  const clearChartCrosshair = useCallback(() => {
+    chartRef.current?.clearCrosshairPosition();
+  }, []);
+
   const positionedChartDrawings = useMemo(() => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
@@ -2850,6 +3295,15 @@ export function TradingViewPlatform({
       return result;
     }, []);
   }, [areDrawingsVisible, chartDrawings, chartSize.height, chartSize.width, overlayRevision]);
+
+  const selectedPositionedDrawing = useMemo(
+    () => positionedChartDrawings.find((drawing) => drawing.id === selectedDrawingId) ?? null,
+    [positionedChartDrawings, selectedDrawingId],
+  );
+  const selectedDrawingScreenBounds = useMemo(
+    () => getPositionedDrawingScreenBounds(selectedPositionedDrawing),
+    [selectedPositionedDrawing],
+  );
 
   const positionedTradingSessions = useMemo(() => {
     const chart = chartRef.current;
@@ -2928,6 +3382,86 @@ export function TradingViewPlatform({
       },
     });
   }, [chartSize.height, chartSize.width, drawingDraft, overlayRevision]);
+
+  useEffect(() => {
+    setHasCustomSelectedDrawingToolbarPosition(false);
+    if (!selectedDrawingId) {
+      setSelectedDrawingToolbarPosition(null);
+      setDrawingSettingsDialogOpen(false);
+    }
+  }, [selectedDrawingId]);
+
+  useEffect(() => {
+    if (!selectedDrawingId) {
+      return;
+    }
+
+    syncSelectedDrawingToolbarSize();
+
+    const toolbar = selectedDrawingToolbarRef.current;
+    if (!toolbar || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      syncSelectedDrawingToolbarSize();
+    });
+    observer.observe(toolbar);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [customTemplates.length, selectedDrawing?.text, selectedDrawingId, selectedDrawingStyle?.strokeWidth, syncSelectedDrawingToolbarSize]);
+
+  useEffect(() => {
+    if (!selectedDrawingId || chartSize.width <= 0 || chartSize.height <= 0) {
+      setSelectedDrawingToolbarPosition(null);
+      return;
+    }
+
+    const toolbarWidth = selectedDrawingToolbarSize.width > 0
+      ? selectedDrawingToolbarSize.width
+      : Math.min(
+          FLOATING_DRAWING_TOOLBAR_DEFAULT_WIDTH,
+          Math.max(280, chartSize.width - FLOATING_DRAWING_TOOLBAR_MARGIN * 2),
+        );
+    const toolbarHeight = selectedDrawingToolbarSize.height > 0
+      ? selectedDrawingToolbarSize.height
+      : FLOATING_DRAWING_TOOLBAR_DEFAULT_HEIGHT;
+    const bounds = {
+      containerWidth: chartSize.width,
+      containerHeight: chartSize.height,
+      toolbarWidth,
+      toolbarHeight,
+    };
+
+    setSelectedDrawingToolbarPosition((currentPosition) => {
+      const nextPosition = hasCustomSelectedDrawingToolbarPosition && currentPosition
+        ? clampFloatingDrawingToolbarPosition(currentPosition, bounds)
+        : getDefaultFloatingDrawingToolbarPosition({
+            ...bounds,
+            drawingBounds: selectedDrawingScreenBounds,
+          });
+
+      if (
+        currentPosition &&
+        currentPosition.x === nextPosition.x &&
+        currentPosition.y === nextPosition.y
+      ) {
+        return currentPosition;
+      }
+
+      return nextPosition;
+    });
+  }, [
+    chartSize.height,
+    chartSize.width,
+    hasCustomSelectedDrawingToolbarPosition,
+    selectedDrawingId,
+    selectedDrawingScreenBounds,
+    selectedDrawingToolbarSize.height,
+    selectedDrawingToolbarSize.width,
+  ]);
 
   const handleDrawingPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     // ── Check existing drawing hits first (regardless of activeTool) ──
@@ -3073,6 +3607,8 @@ export function TradingViewPlatform({
   ]);
 
   const handleDrawingPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    updateChartCrosshairFromPointer(event);
+
     // Drag update (check FIRST — stale drawingDraft from a prior incomplete
     // drawing operation must not block live drag of an existing object).
     const dragState = dragStateRef.current;
@@ -3157,7 +3693,7 @@ export function TradingViewPlatform({
         : currentDraft);
       return;
     }
-  }, [drawingDraft, getChartAnchorFromPointer, scheduleOrderMarkerSync]);
+  }, [drawingDraft, getChartAnchorFromPointer, scheduleOrderMarkerSync, updateChartCrosshairFromPointer]);
 
   const handleDrawingPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     (event.target as Element).releasePointerCapture?.(event.pointerId);
@@ -3174,10 +3710,11 @@ export function TradingViewPlatform({
 
   const handleDrawingPointerCancel = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     (event.target as Element).releasePointerCapture?.(event.pointerId);
+    clearChartCrosshair();
     setDrawingDraft(null);
     dragStateRef.current = null;
     chartPanRef.current = null;
-  }, []);
+  }, [clearChartCrosshair]);
 
   const openFibonacciDialog = useCallback((drawingId: string) => {
     const drawing = chartDrawings.find((d) => d.id === drawingId);
@@ -3222,6 +3759,184 @@ export function TradingViewPlatform({
       }
     }
   }, [chartDrawings, positionedChartDrawings, openFibonacciDialog]);
+
+  const handleSelectedDrawingToolbarPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const container = containerRef.current;
+    const toolbar = selectedDrawingToolbarRef.current;
+    if (!container || !toolbar) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const toolbarRect = toolbar.getBoundingClientRect();
+    if (
+      containerRect.width <= 0 ||
+      containerRect.height <= 0 ||
+      toolbarRect.width <= 0 ||
+      toolbarRect.height <= 0
+    ) {
+      return;
+    }
+
+    const bounds = {
+      containerWidth: containerRect.width,
+      containerHeight: containerRect.height,
+      toolbarWidth: toolbarRect.width,
+      toolbarHeight: toolbarRect.height,
+    };
+    const startPosition = clampFloatingDrawingToolbarPosition(
+      {
+        x: toolbarRect.left - containerRect.left,
+        y: toolbarRect.top - containerRect.top,
+      },
+      bounds,
+    );
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    selectedDrawingToolbarDragRef.current = {
+      pointerStart: { x: event.clientX, y: event.clientY },
+      startPosition,
+      containerSize: { width: containerRect.width, height: containerRect.height },
+      toolbarSize: { width: toolbarRect.width, height: toolbarRect.height },
+    };
+    setHasCustomSelectedDrawingToolbarPosition(true);
+    setSelectedDrawingToolbarPosition(startPosition);
+  }, []);
+
+  const handleSelectedDrawingToolbarPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const dragState = selectedDrawingToolbarDragRef.current;
+    if (!dragState) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nextPosition = clampFloatingDrawingToolbarPosition(
+      {
+        x: dragState.startPosition.x + event.clientX - dragState.pointerStart.x,
+        y: dragState.startPosition.y + event.clientY - dragState.pointerStart.y,
+      },
+      {
+        containerWidth: dragState.containerSize.width,
+        containerHeight: dragState.containerSize.height,
+        toolbarWidth: dragState.toolbarSize.width,
+        toolbarHeight: dragState.toolbarSize.height,
+      },
+    );
+
+    setSelectedDrawingToolbarPosition((currentPosition) => (
+      currentPosition?.x === nextPosition.x && currentPosition.y === nextPosition.y
+        ? currentPosition
+        : nextPosition
+    ));
+  }, []);
+
+  const handleSelectedDrawingToolbarPointerEnd = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!selectedDrawingToolbarDragRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    selectedDrawingToolbarDragRef.current = null;
+  }, []);
+
+  const handleReplayControlsPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    const container = containerRef.current;
+    const controls = replayControlsRef.current;
+    if (!container || !controls) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const controlsRect = controls.getBoundingClientRect();
+    if (
+      containerRect.width <= 0 ||
+      containerRect.height <= 0 ||
+      controlsRect.width <= 0 ||
+      controlsRect.height <= 0
+    ) {
+      return;
+    }
+
+    const bounds = {
+      containerWidth: containerRect.width,
+      containerHeight: containerRect.height,
+      controlsWidth: controlsRect.width,
+      controlsHeight: controlsRect.height,
+    };
+    const startPosition = clampReplayControlsPosition(
+      {
+        x: controlsRect.left - containerRect.left,
+        y: controlsRect.top - containerRect.top,
+      },
+      bounds,
+    );
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    replayControlsDragRef.current = {
+      pointerStart: { x: event.clientX, y: event.clientY },
+      startPosition,
+      containerSize: { width: containerRect.width, height: containerRect.height },
+      controlsSize: { width: controlsRect.width, height: controlsRect.height },
+    };
+    setHasCustomReplayControlsPosition(true);
+    setReplayControlsPosition(startPosition);
+  }, []);
+
+  const handleReplayControlsPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const dragState = replayControlsDragRef.current;
+    if (!dragState) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nextPosition = clampReplayControlsPosition(
+      {
+        x: dragState.startPosition.x + event.clientX - dragState.pointerStart.x,
+        y: dragState.startPosition.y + event.clientY - dragState.pointerStart.y,
+      },
+      {
+        containerWidth: dragState.containerSize.width,
+        containerHeight: dragState.containerSize.height,
+        controlsWidth: dragState.controlsSize.width,
+        controlsHeight: dragState.controlsSize.height,
+      },
+    );
+
+    setReplayControlsPosition((currentPosition) => (
+      currentPosition?.x === nextPosition.x && currentPosition.y === nextPosition.y
+        ? currentPosition
+        : nextPosition
+    ));
+  }, []);
+
+  const handleReplayControlsPointerEnd = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!replayControlsDragRef.current) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    replayControlsDragRef.current = null;
+  }, []);
 
   const undoLastDrawing = useCallback(() => {
     setChartDrawings((drawings) => drawings.slice(0, -1));
@@ -3325,8 +4040,22 @@ export function TradingViewPlatform({
       autoSize: true,
       crosshair: {
         mode: CrosshairMode.Normal,
-        horzLine: { color: palette.crosshair, labelBackgroundColor: palette.muted },
-        vertLine: { color: palette.crosshair, labelBackgroundColor: palette.muted },
+        horzLine: {
+          color: palette.crosshair,
+          labelBackgroundColor: palette.muted,
+          labelVisible: true,
+          style: LineStyle.Dashed,
+          visible: true,
+          width: 1,
+        },
+        vertLine: {
+          color: palette.crosshair,
+          labelBackgroundColor: palette.muted,
+          labelVisible: true,
+          style: LineStyle.Dashed,
+          visible: true,
+          width: 1,
+        },
       },
       grid: {
         horzLines: { color: palette.grid, style: LineStyle.Solid },
@@ -3356,6 +4085,7 @@ export function TradingViewPlatform({
       borderUpColor: palette.up,
       downColor: palette.down,
       priceLineColor: palette.text,
+      priceFormat: CHART_PRICE_FORMAT,
       wickDownColor: palette.down,
       wickUpColor: palette.up,
       upColor: palette.up,
@@ -3386,6 +4116,7 @@ export function TradingViewPlatform({
       volumeSeriesRef.current = null;
       orderPriceLinesRef.current = [];
       setOrderMarkerPositions([]);
+      setCurrentPriceOrderAction(null);
       previousCandleCountRef.current = 0;
     };
   }, []);
@@ -3401,8 +4132,22 @@ export function TradingViewPlatform({
 
     chart.applyOptions({
       crosshair: {
-        horzLine: { color: palette.crosshair, labelBackgroundColor: palette.muted },
-        vertLine: { color: palette.crosshair, labelBackgroundColor: palette.muted },
+        horzLine: {
+          color: palette.crosshair,
+          labelBackgroundColor: palette.muted,
+          labelVisible: true,
+          style: LineStyle.Dashed,
+          visible: true,
+          width: 1,
+        },
+        vertLine: {
+          color: palette.crosshair,
+          labelBackgroundColor: palette.muted,
+          labelVisible: true,
+          style: LineStyle.Dashed,
+          visible: true,
+          width: 1,
+        },
       },
       grid: {
         horzLines: { color: palette.grid },
@@ -3591,6 +4336,26 @@ export function TradingViewPlatform({
 
       <div className="my-0.5 h-px w-6 bg-border/80" />
       {renderToolbarButton({
+        label: isMagnetEnabled ? "Magnet snap: on" : "Magnet snap: off",
+        icon: Magnet,
+        pressed: isMagnetEnabled,
+        onClick: () => setIsMagnetEnabled((enabled) => !enabled),
+      })}
+      {renderToolbarButton({
+        label: areDrawingsLocked ? "Unlock drawings" : "Lock drawings",
+        icon: Lock,
+        pressed: areDrawingsLocked,
+        onClick: () => setAreDrawingsLocked((locked) => !locked),
+      })}
+      {renderToolbarButton({
+        label: areDrawingsVisible ? "Hide drawings" : "Show drawings",
+        icon: areDrawingsVisible ? Eye : EyeOff,
+        pressed: !areDrawingsVisible,
+        onClick: () => setAreDrawingsVisible((visible) => !visible),
+      })}
+
+      <div className="my-0.5 h-px w-6 bg-border/80" />
+      {renderToolbarButton({
         label: "Undo drawing",
         icon: RotateCcw,
         disabled: chartDrawings.length === 0,
@@ -3604,6 +4369,16 @@ export function TradingViewPlatform({
       })}
 
       <div className="my-0.5 h-px w-6 bg-border/80" />
+      {renderToolbarButton({
+        label: "Zoom in",
+        icon: ZoomIn,
+        onClick: () => zoomChart(0.8),
+      })}
+      {renderToolbarButton({
+        label: "Zoom out",
+        icon: ZoomOut,
+        onClick: () => zoomChart(1.25),
+      })}
       {renderToolbarButton({
         label: "Reset view",
         icon: Maximize2,
@@ -3677,6 +4452,7 @@ export function TradingViewPlatform({
         onPointerMove={handleDrawingPointerMove}
         onPointerUp={handleDrawingPointerUp}
         onPointerCancel={handleDrawingPointerCancel}
+        onPointerLeave={clearChartCrosshair}
         onDoubleClick={handleDrawingDoubleClick}
       >
         {chartSize.width > 0 && chartSize.height > 0 ? (
@@ -3702,6 +4478,205 @@ export function TradingViewPlatform({
       </div>
 
       {drawingToolbar}
+
+      {selectedDrawing && selectedDrawingStyle && selectedDrawingToolbarPosition ? (
+        <div
+          ref={selectedDrawingToolbarRef}
+          className="pointer-events-auto absolute z-50 flex max-w-[calc(100%-1.5rem)] items-center gap-1 overflow-x-auto rounded-md border border-border/70 bg-background/95 p-1.5 shadow-lg backdrop-blur"
+          style={{ left: selectedDrawingToolbarPosition.x, top: selectedDrawingToolbarPosition.y }}
+          data-testid="selected-drawing-quick-editor"
+        >
+          <button
+            type="button"
+            aria-label="Move drawing quick editor"
+            title="Move"
+            className="flex h-8 w-5 shrink-0 touch-none cursor-grab items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+            onPointerDown={handleSelectedDrawingToolbarPointerDown}
+            onPointerMove={handleSelectedDrawingToolbarPointerMove}
+            onPointerUp={handleSelectedDrawingToolbarPointerEnd}
+            onPointerCancel={handleSelectedDrawingToolbarPointerEnd}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+
+          <Select
+            value={selectedDrawingId ?? undefined}
+            onValueChange={(value) => {
+              setDrawingDraft(null);
+              setSelectedDrawingId(value);
+              setActiveTool("cursor");
+            }}
+          >
+            <SelectTrigger className="h-8 w-[132px] shrink-0 rounded-md text-xs font-semibold" aria-label="Select drawing object">
+              <FilePenLine className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {chartDrawings.map((drawing, index) => (
+                <SelectItem key={drawing.id} value={drawing.id}>
+                  {index + 1}. {getDrawingToolDefinition(drawing.tool)?.label ?? "Drawing"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select onValueChange={(value) => applyTemplateToCurrentTarget(value)}>
+            <SelectTrigger className="h-8 w-[116px] shrink-0 rounded-md text-xs font-semibold" aria-label="Apply drawing style template">
+              <Palette className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder="Template" />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {DRAWING_STYLE_TEMPLATES.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.label}
+                </SelectItem>
+              ))}
+              {customTemplates.length > 0 ? (
+                <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">Custom</div>
+              ) : null}
+              {customTemplates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <button
+            type="button"
+            aria-label="Save current style as template"
+            title="Save template"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              setTemplateNameDraft("");
+              setTemplateNameDialogOpen(true);
+            }}
+          >
+            <Save className="h-4 w-4" />
+          </button>
+
+          <div aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-border/70" />
+
+          <div className="flex shrink-0 items-center gap-1">
+            {DRAWING_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`Set stroke color to ${color}`}
+                title={color}
+                className={cn(
+                  "h-5 w-5 rounded-full border border-background shadow-sm ring-offset-background transition",
+                  selectedDrawingStyle.strokeColor === color && "ring-2 ring-ring ring-offset-1",
+                )}
+                style={{ backgroundColor: color }}
+                onClick={() => applyStyleToCurrentTarget({ strokeColor: color })}
+              />
+            ))}
+          </div>
+
+          <Select
+            value={selectedDrawingStyle.lineStyle}
+            onValueChange={(value) => applyStyleToCurrentTarget({ lineStyle: value as ChartDrawingLineStyle })}
+          >
+            <SelectTrigger className="h-8 w-[82px] shrink-0 rounded-md text-xs font-semibold" aria-label="Drawing line style">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {DRAWING_LINE_STYLE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={String(selectedDrawingStyle.strokeWidth)}
+            onValueChange={(value) => applyStyleToCurrentTarget({ strokeWidth: Number(value) })}
+          >
+            <SelectTrigger className="h-8 w-[68px] shrink-0 rounded-md text-xs font-semibold" aria-label="Drawing stroke width">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {DRAWING_STROKE_WIDTHS.map((width) => (
+                <SelectItem key={width} value={String(width)}>
+                  {width}px
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="hidden w-28 shrink-0 items-center gap-2 md:flex">
+            <PaintBucket className="h-3.5 w-3.5 text-muted-foreground" />
+            <Slider
+              aria-label="Drawing fill opacity"
+              value={[Math.round(selectedDrawingStyle.fillOpacity * 100)]}
+              min={0}
+              max={45}
+              step={1}
+              onValueChange={([value]) => applyStyleToCurrentTarget({ fillOpacity: (value ?? 0) / 100 })}
+            />
+          </div>
+
+          <button
+            type="button"
+            aria-label="Open drawing settings"
+            title="Settings"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => setDrawingSettingsDialogOpen(true)}
+          >
+            <Settings2 className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            aria-label={areDrawingsLocked ? "Unlock drawings" : "Lock drawings"}
+            title={areDrawingsLocked ? "Unlock" : "Lock"}
+            className={cn(
+              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              areDrawingsLocked && "bg-primary/10 text-primary",
+            )}
+            onClick={() => setAreDrawingsLocked((locked) => !locked)}
+          >
+            <Lock className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            aria-label="Delete selected drawing"
+            title="Delete"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            onClick={deleteSelectedDrawing}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {currentPriceOrderAction && onOpenOrderTicket ? (
+        <div
+          className="pointer-events-auto absolute right-2 z-40 flex -translate-y-1/2 items-center gap-1"
+          style={{ top: currentPriceOrderAction.y }}
+        >
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={`Place order at ${currentPriceOrderAction.label}`}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-white/45 bg-slate-950 text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-900/30 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
+                onClick={() => onOpenOrderTicket(currentPriceOrderAction.price)}
+                title={`Place order at ${currentPriceOrderAction.label}`}
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left">Place order</TooltipContent>
+          </Tooltip>
+          <span className="rounded-sm bg-slate-950 px-2 py-1 text-xs font-semibold tabular-nums text-white shadow-sm dark:bg-slate-100 dark:text-slate-950">
+            {currentPriceOrderAction.label}
+          </span>
+        </div>
+      ) : null}
 
       {orderMarkerPositions.map((marker) => {
         const isBuyMarker = marker.side === "Long";
@@ -3746,174 +4721,27 @@ export function TradingViewPlatform({
             <span className="tabular-nums text-primary">{latestPrice}</span>
           </div>
         </div>
-
-        {selectedDrawingId !== null ? (
-          <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-md border border-border/70 bg-background/90 px-2 py-1.5 shadow-sm backdrop-blur">
-            <div className="flex items-center gap-1.5">
-              <FilePenLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <Select
-                value={selectedDrawingId}
-                onValueChange={(value) => {
-                  setDrawingDraft(null);
-                  setSelectedDrawingId(value);
-                  setActiveTool("cursor");
-                }}
-              >
-                <SelectTrigger className="h-8 w-[136px] rounded-md text-xs font-semibold" aria-label="Select drawing object">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  {chartDrawings.map((drawing, index) => (
-                    <SelectItem key={drawing.id} value={drawing.id}>
-                      {index + 1}. {getDrawingToolDefinition(drawing.tool)?.label ?? "Drawing"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div aria-hidden="true" className="h-4 w-px bg-border/60" />
-
-            <Select onValueChange={(value) => applyTemplateToCurrentTarget(value)}>
-              <SelectTrigger className="h-8 w-[118px] rounded-md text-xs font-semibold" aria-label="Apply drawing style template">
-                <SelectValue placeholder="Template" />
-              </SelectTrigger>
-              <SelectContent align="start">
-                {DRAWING_STYLE_TEMPLATES.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
-                    {template.label}
-                  </SelectItem>
-                ))}
-                {customTemplates.length > 0 ? (
-                  <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">Custom</div>
-                ) : null}
-                {customTemplates.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
-                    {template.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <button
-              type="button"
-              aria-label="Save current style as template"
-              className="h-7 w-7 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground inline-flex items-center justify-center text-sm font-bold leading-none"
-              onClick={() => {
-                setTemplateNameDraft("");
-                setTemplateNameDialogOpen(true);
-              }}
-              title="Save current style as template"
-            >
-              +
-            </button>
-            {customTemplates.length > 0 ? (
-              <button
-                type="button"
-                aria-label="Delete last custom template"
-                className="h-7 w-7 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive inline-flex items-center justify-center text-xs font-bold leading-none"
-                onClick={() => {
-                  const last = customTemplates[customTemplates.length - 1];
-                  if (last) deleteCustomTemplate(last.id);
-                }}
-                title="Delete last custom template"
-              >
-                &times;
-              </button>
-            ) : null}
-
-            <div aria-hidden="true" className="h-4 w-px bg-border/60" />
-
-            <div className="flex items-center gap-1">
-              {DRAWING_COLORS.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  aria-label={`Set color to ${color}`}
-                  className={cn(
-                    "h-4 w-4 rounded-full border border-background shadow-sm ring-offset-background transition",
-                    selectedDrawingStyle?.strokeColor === color && "ring-2 ring-ring ring-offset-1",
-                  )}
-                  style={{ backgroundColor: color }}
-                  onClick={() => applyStyleToCurrentTarget({ strokeColor: color })}
-                />
-              ))}
-            </div>
-
-            <Select
-              value={selectedDrawingStyle?.lineStyle ?? DEFAULT_DRAWING_STYLE.lineStyle}
-              onValueChange={(value) => applyStyleToCurrentTarget({ lineStyle: value as ChartDrawingLineStyle })}
-            >
-              <SelectTrigger className="h-8 w-[88px] rounded-md text-xs font-semibold" aria-label="Drawing line style">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="start">
-                {DRAWING_LINE_STYLE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={String(selectedDrawingStyle?.strokeWidth ?? DEFAULT_DRAWING_STYLE.strokeWidth)}
-              onValueChange={(value) => applyStyleToCurrentTarget({ strokeWidth: Number(value) })}
-            >
-              <SelectTrigger className="h-8 w-[72px] rounded-md text-xs font-semibold" aria-label="Drawing stroke width">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="start">
-                {DRAWING_STROKE_WIDTHS.map((width) => (
-                  <SelectItem key={width} value={String(width)}>
-                    {width}px
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <div className="hidden w-24 items-center gap-2 md:flex">
-              <span className="text-[11px] font-semibold text-muted-foreground">Fill</span>
-              <Slider
-                aria-label="Drawing fill opacity"
-                value={[Math.round((selectedDrawingStyle?.fillOpacity ?? DEFAULT_DRAWING_STYLE.fillOpacity) * 100)]}
-                min={0}
-                max={45}
-                step={1}
-                onValueChange={([value]) => applyStyleToCurrentTarget({ fillOpacity: (value ?? 0) / 100 })}
-              />
-            </div>
-
-            {selectedDrawing ? (
-              <Input
-                value={selectedDrawing.text ?? ""}
-                onChange={(event) => updateSelectedDrawingText(event.target.value)}
-                className="h-7 w-32 rounded-md px-2 text-xs"
-                aria-label="Drawing text"
-              />
-            ) : null}
-
-            {selectedDrawing ? (
-              <Select
-                value={String(selectedDrawingStyle?.textSize ?? DEFAULT_DRAWING_STYLE.textSize)}
-                onValueChange={(value) => applyStyleToCurrentTarget({ textSize: Number(value) })}
-              >
-                <SelectTrigger className="h-8 w-[74px] rounded-md text-xs font-semibold" aria-label="Drawing text size">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  {DRAWING_TEXT_SIZES.map((size) => (
-                    <SelectItem key={size} value={String(size)}>
-                      {size}px
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
-      <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-md border border-border/70 bg-background/95 px-2 py-1.5 shadow-sm backdrop-blur">
+      <div
+        ref={replayControlsRef}
+        className="pointer-events-auto absolute z-30 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-md border border-border/70 bg-background/95 px-2 py-1.5 shadow-sm backdrop-blur"
+        style={replayControlsPosition
+          ? { left: replayControlsPosition.x, top: replayControlsPosition.y }
+          : { left: "50%", bottom: REPLAY_CONTROLS_TIME_AXIS_CLEARANCE, transform: "translateX(-50%)" }}
+      >
+        <button
+          type="button"
+          aria-label="Move replay controls"
+          title="Move replay controls"
+          className="flex h-8 w-5 shrink-0 touch-none cursor-grab items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
+          onPointerDown={handleReplayControlsPointerDown}
+          onPointerMove={handleReplayControlsPointerMove}
+          onPointerUp={handleReplayControlsPointerEnd}
+          onPointerCancel={handleReplayControlsPointerEnd}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
         <Button
           type="button"
           variant="ghost"
@@ -3951,19 +4779,6 @@ export function TradingViewPlatform({
             ))}
           </SelectContent>
         </Select>
-        <div className="hidden min-w-40 items-center gap-2 sm:flex">
-          <span className="max-w-40 truncate text-[11px] font-semibold tabular-nums text-muted-foreground">
-            {formattedTimestamp}
-          </span>
-          {progress !== null ? (
-            <span className="h-1.5 w-20 overflow-hidden rounded-full bg-muted">
-              <span
-                className="block h-full rounded-full bg-primary"
-                style={{ width: `${progress}%` }}
-              />
-            </span>
-          ) : null}
-        </div>
         {onTimeframeChange ? (
           <>
             <div aria-hidden="true" className="h-4 w-px bg-border/60" />
@@ -4004,6 +4819,366 @@ export function TradingViewPlatform({
           </div>
         </div>
       ) : null}
+
+      <Dialog open={drawingSettingsDialogOpen && selectedDrawing !== null} onOpenChange={setDrawingSettingsDialogOpen}>
+        <DialogContent className="max-h-[min(90vh,720px)] overflow-hidden p-0 sm:max-w-2xl" showCloseButton={false}>
+          {selectedDrawing && selectedDrawingStyle ? (
+            <>
+              <DialogHeader className="border-b px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <DialogTitle className="truncate text-xl font-semibold">
+                      {getDrawingToolDefinition(selectedDrawing.tool)?.label ?? "Drawing"}
+                    </DialogTitle>
+                    <DialogDescription className="sr-only">
+                      Edit selected drawing style, text, coordinates, display, and templates.
+                    </DialogDescription>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close drawing settings"
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={() => setDrawingSettingsDialogOpen(false)}
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </DialogHeader>
+
+              <Tabs defaultValue="style" className="min-h-0 gap-0">
+                <TabsList className="mx-5 mt-3 grid h-10 w-auto grid-cols-4 rounded-none border-b bg-transparent p-0">
+                  <TabsTrigger className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="style">
+                    Style
+                  </TabsTrigger>
+                  <TabsTrigger className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="text">
+                    Text
+                  </TabsTrigger>
+                  <TabsTrigger className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="coordinates">
+                    Coordinates
+                  </TabsTrigger>
+                  <TabsTrigger className="rounded-none border-b-2 border-transparent data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none" value="display">
+                    Display
+                  </TabsTrigger>
+                </TabsList>
+
+                <div className="max-h-[58vh] overflow-y-auto px-5 py-4">
+                  <TabsContent value="style" className="m-0 space-y-5">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">Line style</Label>
+                        <Select
+                          value={selectedDrawingStyle.lineStyle}
+                          onValueChange={(value) => applyStyleToCurrentTarget({ lineStyle: value as ChartDrawingLineStyle })}
+                        >
+                          <SelectTrigger className="h-9 rounded-md">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {DRAWING_LINE_STYLE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">Line width</Label>
+                        <Select
+                          value={String(selectedDrawingStyle.strokeWidth)}
+                          onValueChange={(value) => applyStyleToCurrentTarget({ strokeWidth: Number(value) })}
+                        >
+                          <SelectTrigger className="h-9 rounded-md">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {DRAWING_STROKE_WIDTHS.map((width) => (
+                              <SelectItem key={width} value={String(width)}>
+                                {width}px
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">Line color</Label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {DRAWING_COLORS.map((color) => (
+                          <button
+                            key={`settings-stroke-${color}`}
+                            type="button"
+                            aria-label={`Set line color to ${color}`}
+                            className={cn(
+                              "h-8 w-8 rounded-md border border-border shadow-sm ring-offset-background transition",
+                              selectedDrawingStyle.strokeColor === color && "ring-2 ring-ring ring-offset-1",
+                            )}
+                            style={{ backgroundColor: color }}
+                            onClick={() => applyStyleToCurrentTarget({ strokeColor: color })}
+                          />
+                        ))}
+                        <Input
+                          type="color"
+                          aria-label="Custom line color"
+                          className="h-8 w-12 rounded-md p-1"
+                          value={selectedDrawingStyle.strokeColor}
+                          onChange={(event) => applyStyleToCurrentTarget({ strokeColor: event.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 rounded-md border border-border/70 p-3">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id="drawing-fill-enabled"
+                          checked={selectedDrawingStyle.fillOpacity > 0}
+                          onCheckedChange={(checked) => {
+                            applyStyleToCurrentTarget({
+                              fillOpacity: checked === true ? DEFAULT_DRAWING_STYLE.fillOpacity : 0,
+                            });
+                          }}
+                        />
+                        <Label htmlFor="drawing-fill-enabled" className="text-sm font-medium">Fill</Label>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-[1fr_180px]">
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">Opacity</Label>
+                          <Slider
+                            aria-label="Drawing fill opacity"
+                            value={[Math.round(selectedDrawingStyle.fillOpacity * 100)]}
+                            min={0}
+                            max={45}
+                            step={1}
+                            onValueChange={([value]) => applyStyleToCurrentTarget({ fillOpacity: (value ?? 0) / 100 })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">Fill color</Label>
+                          <Input
+                            type="color"
+                            aria-label="Custom fill color"
+                            className="h-9 w-full rounded-md p-1"
+                            value={selectedDrawingStyle.fillColor}
+                            onChange={(event) => applyStyleToCurrentTarget({ fillColor: event.target.value })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="text" className="m-0 space-y-5">
+                    <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">Text</Label>
+                        <textarea
+                          value={selectedDrawing.text ?? ""}
+                          onChange={(event) => updateSelectedDrawingText(event.target.value)}
+                          placeholder="Add text"
+                          className={cn(
+                            "border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 flex w-full bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                            "min-h-28 resize-none rounded-md border",
+                          )}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">Text size</Label>
+                        <Select
+                          value={String(selectedDrawingStyle.textSize)}
+                          onValueChange={(value) => applyStyleToCurrentTarget({ textSize: Number(value) })}
+                        >
+                          <SelectTrigger className="h-9 rounded-md">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {DRAWING_TEXT_SIZES.map((size) => (
+                              <SelectItem key={size} value={String(size)}>
+                                {size}px
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">Text color</Label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {DRAWING_COLORS.map((color) => (
+                          <button
+                            key={`settings-text-${color}`}
+                            type="button"
+                            aria-label={`Set text color to ${color}`}
+                            className={cn(
+                              "h-8 w-8 rounded-md border border-border shadow-sm ring-offset-background transition",
+                              selectedDrawingStyle.textColor === color && "ring-2 ring-ring ring-offset-1",
+                            )}
+                            style={{ backgroundColor: color }}
+                            onClick={() => applyStyleToCurrentTarget({ textColor: color })}
+                          />
+                        ))}
+                        <Input
+                          type="color"
+                          aria-label="Custom text color"
+                          className="h-8 w-12 rounded-md p-1"
+                          value={selectedDrawingStyle.textColor}
+                          onChange={(event) => applyStyleToCurrentTarget({ textColor: event.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="coordinates" className="m-0 space-y-4">
+                    {selectedDrawing.points.map((point, index) => (
+                      <div key={`${selectedDrawing.id}-point-${index}`} className="grid gap-3 rounded-md border border-border/70 p-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor={`${selectedDrawing.id}-time-${index}`} className="text-xs font-semibold text-muted-foreground">
+                            Point {index + 1} time
+                          </Label>
+                          <Input
+                            id={`${selectedDrawing.id}-time-${index}`}
+                            type="number"
+                            value={String(point.time)}
+                            className="h-9 rounded-md tabular-nums"
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (Number.isFinite(value)) {
+                                updateSelectedDrawingPoint(index, { time: value as UTCTimestamp, logical: undefined });
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`${selectedDrawing.id}-price-${index}`} className="text-xs font-semibold text-muted-foreground">
+                            Point {index + 1} price
+                          </Label>
+                          <Input
+                            id={`${selectedDrawing.id}-price-${index}`}
+                            type="number"
+                            step={CHART_PRICE_MIN_MOVE}
+                            value={String(point.price)}
+                            className="h-9 rounded-md tabular-nums"
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              if (Number.isFinite(value)) {
+                                updateSelectedDrawingPoint(index, { price: value });
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </TabsContent>
+
+                  <TabsContent value="display" className="m-0 space-y-4">
+                    <div className="space-y-3 rounded-md border border-border/70 p-3">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id="drawing-text-visible"
+                          checked={Boolean(selectedDrawing.text)}
+                          onCheckedChange={(checked) => updateSelectedDrawingText(checked === true ? selectedDrawing.text || "Note" : "")}
+                        />
+                        <Label htmlFor="drawing-text-visible" className="text-sm font-medium">Text label</Label>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id="all-drawings-visible"
+                          checked={areDrawingsVisible}
+                          onCheckedChange={(checked) => setAreDrawingsVisible(checked === true)}
+                        />
+                        <Label htmlFor="all-drawings-visible" className="text-sm font-medium">Show drawings</Label>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id="all-drawings-locked"
+                          checked={areDrawingsLocked}
+                          onCheckedChange={(checked) => setAreDrawingsLocked(checked === true)}
+                        />
+                        <Label htmlFor="all-drawings-locked" className="text-sm font-medium">Lock drawings</Label>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 rounded-md border border-border/70 p-3 sm:grid-cols-[1fr_auto]">
+                      <Select onValueChange={(value) => applyTemplateToCurrentTarget(value)}>
+                        <SelectTrigger className="h-9 rounded-md" aria-label="Apply drawing style template">
+                          <SelectValue placeholder="Template" />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          {DRAWING_STYLE_TEMPLATES.map((template) => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.label}
+                            </SelectItem>
+                          ))}
+                          {customTemplates.length > 0 ? (
+                            <div className="px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">Custom</div>
+                          ) : null}
+                          {customTemplates.map((template) => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setTemplateNameDraft("");
+                          setTemplateNameDialogOpen(true);
+                        }}
+                      >
+                        <Save className="h-4 w-4" />
+                        Save
+                      </Button>
+                    </div>
+
+                    {customTemplates.length > 0 ? (
+                      <div className="grid gap-3 rounded-md border border-border/70 p-3 sm:grid-cols-[1fr_auto]">
+                        <Select onValueChange={(value) => deleteCustomTemplate(value)}>
+                          <SelectTrigger className="h-9 rounded-md" aria-label="Delete custom drawing template">
+                            <SelectValue placeholder="Custom template" />
+                          </SelectTrigger>
+                          <SelectContent align="start">
+                            {customTemplates.map((template) => (
+                              <SelectItem key={template.id} value={template.id}>
+                                {template.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center text-xs font-semibold text-muted-foreground">Delete selected template</div>
+                      </div>
+                    ) : null}
+
+                    {selectedDrawing.tool === "fibonacci" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openFibonacciDialog(selectedDrawing.id)}
+                      >
+                        Fibonacci levels
+                      </Button>
+                    ) : null}
+                  </TabsContent>
+                </div>
+              </Tabs>
+
+              <DialogFooter className="border-t px-5 py-3">
+                <Button type="button" variant="outline" onClick={() => setDrawingSettingsDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={() => setDrawingSettingsDialogOpen(false)}>
+                  OK
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={templateNameDialogOpen} onOpenChange={setTemplateNameDialogOpen}>
         <DialogContent className="sm:max-w-xs" showCloseButton={false}>
@@ -4088,19 +5263,18 @@ export function TradingViewPlatform({
                   }}
                   className="h-7 w-20 rounded-md text-xs"
                 />
-                <button
-                  type="button"
-                  className="h-6 w-6 shrink-0 rounded-full border shadow-sm"
-                  style={{ backgroundColor: level.color }}
-                  onClick={() => {
-                    const c = prompt("Enter hex color (e.g. #ff6600):", level.color);
-                    if (c && /^#[0-9a-fA-F]{6}$/.test(c.trim())) {
-                      setFibonacciEditLevels((prev) =>
-                        prev.map((l, i) => (i === index ? { ...l, color: c.trim() } : l)),
-                      );
-                    }
-                  }}
+                <Input
+                  type="color"
+                  aria-label="Change level color"
                   title="Change level color"
+                  className="h-7 w-9 shrink-0 cursor-pointer rounded-md p-1"
+                  value={level.color}
+                  onChange={(e) => {
+                    const c = e.target.value;
+                    setFibonacciEditLevels((prev) =>
+                      prev.map((l, i) => (i === index ? { ...l, color: c } : l)),
+                    );
+                  }}
                 />
                 <Input
                   value={level.label}
