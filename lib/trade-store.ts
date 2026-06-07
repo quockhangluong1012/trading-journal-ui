@@ -1,5 +1,11 @@
 import { PositionType } from "./enum/PositionType"
 import { TradeStatus } from "./enum/TradeStatus"
+import type { Trade } from "@/app/types/trade"
+
+// `Trade` has a single canonical definition in `@/app/types/trade`. It is
+// re-exported here so existing consumers that import it from this module keep
+// working. Type-only import/export means no runtime circular dependency.
+export type { Trade }
 
 export interface EmotionTagApi {
   id: number
@@ -49,48 +55,6 @@ export interface PsychologyEntry {
   journalEntry: string
   overallMood: number
 }
-
-export interface Trade {
-  id: string
-  asset: string
-  tradingSetupId?: string
-  position: PositionType
-  entryPrice: number
-  targetTier1: number
-  targetTier2: number
-  targetTier3: number
-  stopLoss: number
-  notes: string
-  date: string
-  status: TradeStatus
-  exitPrice?: number
-  pnl?: number
-  tradingResult?: string
-  hitStopLoss?: boolean
-  closedDate?: string
-  screenshots?: TradeScreenshot[]
-  emotionTags?: string[]
-  confidenceLevel?: number
-  analysisTags?: string[]
-  tradingSession?: string
-  sessionId?: string
-  pretradeChecklist?: string[]
-  powerOf3Phase?: number | null
-  dailyBias?: number | null
-  marketStructure?: number | null
-  premiumDiscount?: number | null
-  riskGuardrails?: {
-    accountEquity?: number
-    riskPercentage?: number
-    maxDailyLoss?: number
-    takeProfit?: number
-    positionSize?: number
-  }
-
-  aiSummary?: string
-}
-
-
 
 export interface UserSession {
   id: string
@@ -206,16 +170,16 @@ export function getOpenPositions(trades: Trade[]) {
   return trades.filter((t) => t.status === TradeStatus.Open)
 }
 
-// Calculate unrealized PnL for open position (simplified calculation)
+// Calculate unrealized PnL for an open position given a real market price.
+// Uses the recorded position size (units/contracts) when available; otherwise
+// falls back to a single unit. There is currently no live price feed in this
+// client, so callers should only invoke this once a real `currentPrice` exists.
 export function calculateUnrealizedPnL(trade: Trade, currentPrice: number): number {
   const multiplier = trade.position === PositionType.Long ? 1 : -1
-  const percentage = ((currentPrice - trade.entryPrice) / trade.entryPrice) * multiplier
-  
-  if (trade.riskGuardrails?.accountEquity) {
-    return percentage * trade.riskGuardrails.accountEquity
-  }
-  
-  return (currentPrice - trade.entryPrice) * multiplier * 1 // Assuming 1 unit
+  const positionSize = trade.riskGuardrails?.positionSize
+  const units = positionSize && positionSize > 0 ? positionSize : 1
+
+  return (currentPrice - trade.entryPrice) * multiplier * units
 }
 
 // Psychology analytics helpers
@@ -546,16 +510,3 @@ export function generateInsights(analytics: AnalyticsSnapshot, trades: Trade[]):
   return insights
 }
 
-// Mock current prices for demo
-export const mockCurrentPrices: Record<string, number> = {
-  "BTC/USD": 43200,
-  "ETH/USD": 2380,
-  AAPL: 183,
-  TSLA: 248,
-  NVDA: 545,
-  SPY: 478,
-  AMD: 162,
-  GOOGL: 158,
-  META: 535,
-  MSFT: 412,
-}

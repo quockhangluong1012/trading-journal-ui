@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CHART_PRICE_FORMAT,
+  clampReplayControlsPosition,
+  clampFloatingDrawingToolbarPosition,
   createChartDrawing,
   createChartDrawingDraft,
   calculateDrawingAnchorDelta,
   applyChartDrawingStyle,
   applyChartDrawingTemplate,
   buildIncrementalChartData,
+  buildCurrentPriceOrderAction,
   buildOrderMarkerOverlays,
   buildOrderPriceLines,
   buildTradingSessionOverlays,
@@ -14,8 +18,11 @@ import {
   calculateReplayProgress,
   formatDrawingMetricLabel,
   getChartDrawingStyle,
+  getDefaultFloatingDrawingToolbarPosition,
+  getDefaultReplayControlsPosition,
   completeChartDrawingDraft,
   estimateDrawingTimeFromLogical,
+  formatChartAxisPrice,
   isTwoPointDrawingTool,
   mapBacktestCandlesToChartData,
   moveChartDrawing,
@@ -86,6 +93,17 @@ describe("TradingView platform helpers", () => {
     expect(options.hide_side_toolbar).toBe(false);
     expect(options.allow_symbol_change).toBe(true);
     expect(options.save_image).toBe(true);
+  });
+
+  it("formats chart axis prices with up to five decimal places", () => {
+    expect(CHART_PRICE_FORMAT).toMatchObject({
+      type: "custom",
+      minMove: 0.00001,
+    });
+    expect(CHART_PRICE_FORMAT.formatter(1.087406)).toBe("1.08741");
+    expect(formatChartAxisPrice(23825.4)).toBe("23,825.4");
+    expect(formatChartAxisPrice(1.2)).toBe("1.2");
+    expect(formatChartAxisPrice(undefined)).toBe("--");
   });
 
   it("maps backtest candles to chronological chart data and keeps the newest duplicate", () => {
@@ -191,6 +209,112 @@ describe("TradingView platform helpers", () => {
     })).toBeNull();
   });
 
+  it("defaults replay controls above the chart time axis", () => {
+    expect(getDefaultReplayControlsPosition({
+      containerWidth: 1200,
+      containerHeight: 500,
+      controlsWidth: 740,
+      controlsHeight: 56,
+    })).toEqual({
+      x: 230,
+      y: 396,
+    });
+  });
+
+  it("positions the current-price order action on the price scale", () => {
+    expect(buildCurrentPriceOrderAction({
+      price: 24394.1,
+      y: 118.4,
+      containerHeight: 520,
+    })).toEqual({
+      price: 24394.1,
+      label: "24,394.1",
+      y: 118.4,
+    });
+
+    expect(buildCurrentPriceOrderAction({
+      price: 24394.1,
+      y: -20,
+      containerHeight: 520,
+    })).toEqual({
+      price: 24394.1,
+      label: "24,394.1",
+      y: 18,
+    });
+  });
+
+  it("clamps dropped replay controls inside the chart and clear of the time axis", () => {
+    expect(clampReplayControlsPosition(
+      { x: 1100, y: 470 },
+      {
+        containerWidth: 1200,
+        containerHeight: 500,
+        controlsWidth: 740,
+        controlsHeight: 56,
+      },
+    )).toEqual({
+      x: 448,
+      y: 396,
+    });
+
+    expect(clampReplayControlsPosition(
+      { x: -80, y: -40 },
+      {
+        containerWidth: 1200,
+        containerHeight: 500,
+        controlsWidth: 740,
+        controlsHeight: 56,
+      },
+    )).toEqual({
+      x: 12,
+      y: 12,
+    });
+  });
+
+  it("positions the selected drawing quick editor near the object and clamps drag inside the chart", () => {
+    const drawingBounds = {
+      left: 120,
+      top: 140,
+      right: 420,
+      bottom: 260,
+    };
+
+    expect(getDefaultFloatingDrawingToolbarPosition({
+      drawingBounds,
+      containerWidth: 900,
+      containerHeight: 520,
+      toolbarWidth: 360,
+      toolbarHeight: 48,
+    })).toEqual({
+      x: 90,
+      y: 78,
+    });
+
+    expect(getDefaultFloatingDrawingToolbarPosition({
+      drawingBounds: { ...drawingBounds, top: 18, bottom: 118 },
+      containerWidth: 900,
+      containerHeight: 520,
+      toolbarWidth: 360,
+      toolbarHeight: 48,
+    })).toEqual({
+      x: 90,
+      y: 132,
+    });
+
+    expect(clampFloatingDrawingToolbarPosition(
+      { x: -240, y: 900 },
+      {
+        containerWidth: 900,
+        containerHeight: 520,
+        toolbarWidth: 360,
+        toolbarHeight: 48,
+      },
+    )).toEqual({
+      x: 12,
+      y: 460,
+    });
+  });
+
   it("builds overlapping ICT trading session boxes from loaded chart candles", () => {
     const chartCandles = mapBacktestCandlesToChartData([
       { timestamp: "2024-01-01T00:15:00Z", open: 100, high: 104, low: 96, close: 101, volume: 900 },
@@ -226,6 +350,37 @@ describe("TradingView platform helpers", () => {
         endTime: toChartTimestamp("2024-01-01T21:00:00Z"),
         high: 120,
         low: 88,
+      }),
+    ]);
+  });
+
+  it("builds a separate session box per UTC day across multi-day candle ranges", () => {
+    const chartCandles = mapBacktestCandlesToChartData([
+      // Day 1 — London session window (07:00–16:00 UTC)
+      { timestamp: "2024-01-01T08:00:00Z", open: 100, high: 110, low: 90, close: 105, volume: 900 },
+      { timestamp: "2024-01-01T13:00:00Z", open: 105, high: 115, low: 95, close: 108, volume: 900 },
+      // Day 2 — London session window
+      { timestamp: "2024-01-02T09:00:00Z", open: 108, high: 130, low: 100, close: 120, volume: 900 },
+    ]).candles;
+
+    const londonSessions = buildTradingSessionOverlays(chartCandles).filter(
+      (session) => session.sessionId === "london",
+    );
+
+    expect(londonSessions).toEqual([
+      expect.objectContaining({
+        id: `london-${toChartTimestamp("2024-01-01T07:00:00Z")}`,
+        startTime: toChartTimestamp("2024-01-01T07:00:00Z"),
+        endTime: toChartTimestamp("2024-01-01T16:00:00Z"),
+        high: 115,
+        low: 90,
+      }),
+      expect.objectContaining({
+        id: `london-${toChartTimestamp("2024-01-02T07:00:00Z")}`,
+        startTime: toChartTimestamp("2024-01-02T07:00:00Z"),
+        endTime: toChartTimestamp("2024-01-02T16:00:00Z"),
+        high: 130,
+        low: 100,
       }),
     ]);
   });
@@ -473,6 +628,75 @@ describe("TradingView platform helpers", () => {
         anchorPrice: 1.1682,
         side: "Short",
         text: "Short 2 @ 1.17100",
+      }),
+    ]);
+  });
+
+  it("anchors an order to the candle whose bucket contains its timestamp, not the nearest one", () => {
+    // An order placed on a fine timeframe (00:50) lands in the back half of the
+    // 00:00–01:00 H1 bar after a timeframe switch. It must stay on the 00:00 bar
+    // it was placed inside — not snap forward to the closer 01:00 bar.
+    const activePosition = createOrder({
+      id: 31,
+      status: "Active",
+      side: "Long",
+      positionSize: 1,
+      entryPrice: 1.2,
+      filledPrice: 1.2,
+      orderedAt: "2024-01-01T00:50:00Z",
+      filledAt: "2024-01-01T00:50:00Z",
+    });
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 1.18, high: 1.21, low: 1.17, close: 1.2, volume: 1000 },
+      { timestamp: "2024-01-01T01:00:00Z", open: 1.2, high: 1.23, low: 1.19, close: 1.22, volume: 1200 },
+    ]).candles;
+
+    const markers = buildOrderMarkerOverlays({
+      activePositions: [activePosition],
+      closedPositions: [],
+      chartCandles,
+    });
+
+    expect(markers).toEqual([
+      expect.objectContaining({
+        id: "active-entry-31",
+        time: toChartTimestamp("2024-01-01T00:00:00Z"),
+        anchorPrice: 1.17,
+      }),
+    ]);
+  });
+
+  it("anchors to the latest revealed candle when the order time sits just past its start", () => {
+    // The backend stamps an order with the simulated clock, which at the
+    // unaligned session-start edge can sit a few minutes past the last revealed
+    // bar's start. The marker should stick to that last bar, not fall through to
+    // a drifting live-edge fallback.
+    const activePosition = createOrder({
+      id: 32,
+      status: "Active",
+      side: "Long",
+      positionSize: 1,
+      entryPrice: 1.3,
+      filledPrice: 1.3,
+      orderedAt: "2024-01-01T00:22:00Z",
+      filledAt: null,
+    });
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 1.28, high: 1.31, low: 1.27, close: 1.29, volume: 1000 },
+      { timestamp: "2024-01-01T00:15:00Z", open: 1.29, high: 1.33, low: 1.285, close: 1.3, volume: 1200 },
+    ]).candles;
+
+    const markers = buildOrderMarkerOverlays({
+      activePositions: [activePosition],
+      closedPositions: [],
+      chartCandles,
+    });
+
+    expect(markers).toEqual([
+      expect.objectContaining({
+        id: "active-entry-32",
+        time: toChartTimestamp("2024-01-01T00:15:00Z"),
+        anchorPrice: 1.285,
       }),
     ]);
   });

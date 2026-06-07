@@ -234,12 +234,10 @@ describe("trade detail page", () => {
       )
     })
 
-    expect(updateTradeMock).toHaveBeenCalledWith(
-      "1",
-      expect.objectContaining({
-        tradingSetupId: "9",
-      }),
-    )
+    // The page is the single write path — it must not also write through the
+    // trade context/store (which would double-fire the request and toast).
+    expect(apiPutMock).toHaveBeenCalledTimes(1)
+    expect(updateTradeMock).not.toHaveBeenCalled()
   })
 
   it("renders ICT edit controls and saves updated ICT context", async () => {
@@ -275,12 +273,7 @@ describe("trade detail page", () => {
       )
     })
 
-    expect(updateTradeMock).toHaveBeenCalledWith(
-      "1",
-      expect.objectContaining({
-        dailyBias: 1,
-      }),
-    )
+    expect(updateTradeMock).not.toHaveBeenCalled()
   })
 
   it("resets unsaved ICT edits when edit mode is canceled", async () => {

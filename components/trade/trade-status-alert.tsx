@@ -8,32 +8,53 @@ export function TradeStatusAlert({
   currentPrice,
 }: {
   trade: Trade;
-  currentPrice: number;
+  /** Real market/exit price. Omit (or pass null) when no live price exists. */
+  currentPrice?: number | null;
 }) {
   const isLong = trade.position === PositionType.Long;
   const hasTargetTier1 = trade.targetTier1 > 0;
   const hasTargetTier2 = (trade.targetTier2 ?? 0) > 0;
   const hasTargetTier3 = (trade.targetTier3 ?? 0) > 0;
-  const priceChangePercent =
-    ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100;
+  const hasLivePrice = typeof currentPrice === "number" && currentPrice > 0;
+
+  if (trade.status !== TradeStatus.Closed && !hasLivePrice) {
+    return (
+      <div className="rounded-lg bg-secondary/30 border border-border/60 p-4">
+        <div className="flex items-center gap-3">
+          <Target className="h-5 w-5 text-muted-foreground" />
+          <div>
+            <p className="font-medium text-foreground">Position Active</p>
+            <p className="text-sm text-muted-foreground">
+              Live price tracking isn&apos;t connected yet — close the trade to
+              record its result.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const priceChangePercent = hasLivePrice
+    ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
+    : 0;
   const adjustedPercent = isLong ? priceChangePercent : -priceChangePercent;
 
-  // Determine alerts
-  const isNearStopLoss = isLong
-    ? currentPrice <= trade.stopLoss * 1.05 && currentPrice > trade.stopLoss
-    : currentPrice >= trade.stopLoss * 0.95 && currentPrice < trade.stopLoss;
-  const hitStopLoss = isLong
-    ? currentPrice <= trade.stopLoss
-    : currentPrice >= trade.stopLoss;
-  const hitT1 = hasTargetTier1 &&
+  // Determine alerts (only meaningful with a real current price)
+  const isNearStopLoss = hasLivePrice &&
+    (isLong
+      ? currentPrice <= trade.stopLoss * 1.05 && currentPrice > trade.stopLoss
+      : currentPrice >= trade.stopLoss * 0.95 && currentPrice < trade.stopLoss);
+  const hitStopLoss = hasLivePrice &&
+    (isLong ? currentPrice <= trade.stopLoss : currentPrice >= trade.stopLoss);
+  const hitT1 = hasLivePrice && hasTargetTier1 &&
     (isLong
       ? currentPrice >= trade.targetTier1
       : currentPrice <= trade.targetTier1);
-  const hitT2 = hasTargetTier2 &&
+  const hitT2 = hasLivePrice && hasTargetTier2 &&
     (isLong
       ? currentPrice >= trade.targetTier2!
       : currentPrice <= trade.targetTier2!);
-  const hitT3 = hasTargetTier3 &&
+  const hitT3 = hasLivePrice && hasTargetTier3 &&
     (isLong
       ? currentPrice >= trade.targetTier3!
       : currentPrice <= trade.targetTier3!);

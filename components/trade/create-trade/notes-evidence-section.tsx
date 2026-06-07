@@ -36,7 +36,7 @@ export function NotesEvidenceSection({
       description="Capture why the trade exists and attach chart context or setup screenshots for later review."
       icon={<ImagePlus className="h-4 w-4 text-primary" />}
     >
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <Label htmlFor="trade-notes">Trade Notes</Label>
@@ -55,12 +55,12 @@ export function NotesEvidenceSection({
             placeholder="Add your rationale, market conditions, trigger, or execution notes..."
             value={formData.notes}
             onChange={(event) => handleInputChange("notes", event.target.value)}
-            rows={12}
-            className={cn(surfaceFieldClassName, "min-h-96 resize-y")}
+            rows={10}
+            className={cn(surfaceFieldClassName, "min-h-64 resize-y")}
           />
         </div>
 
-        <div className="space-y-4 rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
+        <div className="space-y-3 rounded-xl border border-border/60 bg-background/60 p-3">
           <div>
             <p className="text-sm font-medium text-foreground">Screenshots</p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -70,9 +70,9 @@ export function NotesEvidenceSection({
 
           <label
             htmlFor="screenshot-upload"
-            className="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border/70 bg-linear-to-br from-muted/20 to-background px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+            className="group flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/70 bg-muted/15 px-4 py-5 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
           >
-            <ImagePlus className="mb-3 h-8 w-8 text-muted-foreground transition-transform group-hover:scale-105 group-hover:text-primary" />
+            <ImagePlus className="mb-2 h-7 w-7 text-muted-foreground transition-colors group-hover:text-primary" />
             <span className="text-sm font-medium text-foreground">
               Click to upload screenshots
             </span>
