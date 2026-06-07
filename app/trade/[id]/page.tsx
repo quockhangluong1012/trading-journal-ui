@@ -4,10 +4,7 @@ import { useState, useEffect, useMemo, use } from "react";
 import type { ElementType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppPageShell } from "@/components/app-page-shell";
-import { useTrades } from "@/lib/trade-context";
 import {
-  mockCurrentPrices,
-  calculateUnrealizedPnL,
   EmotionTagApi,
   getTagCategory,
   PreTradeChecklistApi,
@@ -173,12 +170,16 @@ const premiumDiscountLabels: Record<number, string> = {
   2: "Equilibrium",
 }
 
+const numberToInput = (value?: number | null) =>
+  value !== undefined && value !== null ? value.toString() : ""
+
 const buildFormDataFromTrade = (trade: Trade) => ({
   notes: trade.notes,
   targetTier1: trade.targetTier1.toString(),
   targetTier2: trade.targetTier2.toString(),
   targetTier3: trade.targetTier3.toString(),
   stopLoss: trade.stopLoss.toString(),
+  exitPrice: numberToInput(trade.exitPrice),
   tradingSetupId: trade.tradingSetupId || "",
   analysisTags: trade.analysisTags || [],
   emotionTags: trade.emotionTags || [],
@@ -186,13 +187,17 @@ const buildFormDataFromTrade = (trade: Trade) => ({
   tradingSession: trade.tradingSession || "",
   screenshots: trade.screenshots || [],
   pretradeChecklist: trade.pretradeChecklist || [],
-  pnl:
-    trade.pnl !== undefined && trade.pnl !== null ? trade.pnl.toString() : "",
+  pnl: numberToInput(trade.pnl),
   aiSummary: trade.aiSummary || "",
   powerOf3Phase: trade.powerOf3Phase ?? null,
   dailyBias: trade.dailyBias ?? null,
   marketStructure: trade.marketStructure ?? null,
   premiumDiscount: trade.premiumDiscount ?? null,
+  accountEquity: numberToInput(trade.riskGuardrails?.accountEquity),
+  riskPercentage: numberToInput(trade.riskGuardrails?.riskPercentage),
+  maxDailyLoss: numberToInput(trade.riskGuardrails?.maxDailyLoss),
+  positionSize: numberToInput(trade.riskGuardrails?.positionSize),
+  takeProfit: numberToInput(trade.riskGuardrails?.takeProfit),
 })
 
 function TradeDetailContent({ id }: { id: string }) {
@@ -206,7 +211,6 @@ function TradeDetailContent({ id }: { id: string }) {
     }
   }, [user, isAuthLoading, pathname, router])
 
-  const { trades, updateTrade, deleteTrade, closeTrade } = useTrades();
   const [trade, setTrade] = useState<Trade | null>(null);
   const [isTradeLoading, setIsTradeLoading] = useState(true);
   const [tradeLoadError, setTradeLoadError] = useState<string | null>(null);
@@ -229,6 +233,7 @@ function TradeDetailContent({ id }: { id: string }) {
     targetTier2: "",
     targetTier3: "",
     stopLoss: "",
+    exitPrice: "",
     tradingSetupId: "",
     analysisTags: [] as string[],
     emotionTags: [] as string[],
@@ -242,6 +247,11 @@ function TradeDetailContent({ id }: { id: string }) {
     dailyBias: null as number | null,
     marketStructure: null as number | null,
     premiumDiscount: null as number | null,
+    accountEquity: "",
+    riskPercentage: "",
+    maxDailyLoss: "",
+    positionSize: "",
+    takeProfit: "",
   });
   const [apiTags, setApiTags] = useState<EmotionTagApi[]>([]);
   const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>(
@@ -403,19 +413,18 @@ function TradeDetailContent({ id }: { id: string }) {
       .finally(() => setIsTradeLoading(false));
   }, [id, isAuthLoading, user]);
 
-  const currentPrice = trade
-    ? mockCurrentPrices[trade.asset] || trade.entryPrice
-    : 0;
-  const unrealizedPnL =
-    trade?.status === TradeStatus.Open
-      ? calculateUnrealizedPnL(trade, currentPrice)
-      : 0;
+  // This client has no live market-data feed, so the only real price we can
+  // show is a closed trade's recorded exit price. Open trades intentionally
+  // have no "live" price — we don't fabricate one from a demo table.
+  const livePrice =
+    trade && trade.status === TradeStatus.Closed
+      ? trade.exitPrice ?? null
+      : null;
 
   // Calculate risk/reward metrics
   const metrics = useMemo(() => {
     if (!trade) return null;
 
-    const isLong = trade.position === PositionType.Long;
     const riskPerUnit = Math.abs(trade.entryPrice - trade.stopLoss);
     const rewardT1 = trade.targetTier1 > 0
       ? Math.abs(trade.targetTier1 - trade.entryPrice)
@@ -438,9 +447,9 @@ function TradeDetailContent({ id }: { id: string }) {
         validRiskRewards.length
       : 0;
 
-    const priceChange = currentPrice - trade.entryPrice;
-    const priceChangePercent = (priceChange / trade.entryPrice) * 100;
-    const adjustedPercent = isLong ? priceChangePercent : -priceChangePercent;
+    const positionSize = trade.riskGuardrails?.positionSize ?? null;
+    const riskDollars =
+      positionSize && positionSize > 0 ? riskPerUnit * positionSize : null;
 
     const lifecycleEndTime =
       trade.status === TradeStatus.Closed && trade.closedDate
@@ -460,14 +469,14 @@ function TradeDetailContent({ id }: { id: string }) {
     return {
       riskPerUnit,
       riskPercent,
+      riskDollars,
       rrT1,
       rrT2,
       rrT3,
       averageRiskReward,
-      priceChangePercent: adjustedPercent,
       daysInTrade,
     };
-  }, [trade, currentPrice]);
+  }, [trade]);
 
   const selectedTradingZone = useMemo(() => {
     if (!trade?.tradingSession) {
@@ -575,54 +584,13 @@ function TradeDetailContent({ id }: { id: string }) {
   };
 
   const isOpenTrade = trade.status === TradeStatus.Open;
-  const displayedPnL = isOpenTrade ? unrealizedPnL : trade.pnl || 0;
-  const displayedPrice = isOpenTrade ? currentPrice : trade.exitPrice;
+  // No live feed: open trades have no realized/live P&L or "current" price.
+  const realizedPnL = !isOpenTrade ? trade.pnl ?? null : null;
+  const exitPriceValue = !isOpenTrade ? trade.exitPrice ?? null : null;
   const timeInTradeLabel = isOpenTrade ? "Time Open" : "Time Held";
   const timeInTradeValue = metrics
     ? `${metrics.daysInTrade} day${metrics.daysInTrade === 1 ? "" : "s"}`
     : "-";
-  const quickStats = [
-    {
-      label: "Stop Loss",
-      value: formatTradePrice(trade.stopLoss),
-      helper: metrics
-        ? `${metrics.riskPercent.toFixed(1)}% risk from entry`
-        : "Planned downside protection.",
-      icon: Shield,
-      tone: "negative" as const,
-    },
-    {
-      label: "Risk / Unit",
-      value: metrics ? formatCurrency(metrics.riskPerUnit) : "-",
-      helper: "Distance between entry and stop.",
-      icon: Percent,
-      tone: "warning" as const,
-    },
-    {
-      label: timeInTradeLabel,
-      value: timeInTradeValue,
-      helper: isOpenTrade
-        ? "Position is still active."
-        : `Closed ${formatDisplayDate(trade.closedDate)}`,
-      icon: Clock,
-      tone: "accent" as const,
-    },
-    {
-      label: "Confidence",
-      value: trade.confidenceLevel ? `${trade.confidenceLevel}/5` : "Not set",
-      helper: getConfidenceLabel(trade.confidenceLevel),
-      icon: Brain,
-      tone: (
-        trade.confidenceLevel && trade.confidenceLevel >= 4
-          ? "positive"
-          : trade.confidenceLevel && trade.confidenceLevel >= 2
-            ? "accent"
-            : trade.confidenceLevel
-              ? "warning"
-              : "default"
-      ) as "positive" | "accent" | "warning" | "default",
-    },
-  ];
   const headlineMetrics = [
     {
       label: "Entry Price",
@@ -635,39 +603,51 @@ function TradeDetailContent({ id }: { id: string }) {
     },
     {
       label: isOpenTrade ? "Current Price" : "Exit Price",
-      value:
-        displayedPrice != null
-          ? formatTradePrice(displayedPrice)
-          : isOpenTrade
-            ? "Awaiting close"
-            : "Exit price not recorded",
-      helper:
-        isOpenTrade && metrics
-          ? `${metrics.priceChangePercent >= 0 ? "+" : ""}${metrics.priceChangePercent.toFixed(2)}% from entry`
-          : trade.closedDate
-            ? `Closed ${formatDisplayDate(trade.closedDate)}`
-            : "Recorded once the trade is closed.",
+      value: isOpenTrade
+        ? "Live price unavailable"
+        : exitPriceValue != null
+          ? formatTradePrice(exitPriceValue)
+          : "Exit price not recorded",
+      helper: isOpenTrade
+        ? "No live market feed is connected."
+        : trade.closedDate
+          ? `Closed ${formatDisplayDate(trade.closedDate)}`
+          : "Recorded once the trade is closed.",
       icon: isOpenTrade ? BarChart3 : CheckCircle2,
       tone: (
-        isOpenTrade && metrics && metrics.priceChangePercent >= 0
-          ? "positive"
-          : isOpenTrade
-            ? "negative"
-            : trade.pnl != null
-              ? trade.pnl >= 0
-                ? "positive"
-                : "negative"
-              : "accent"
-      ) as "positive" | "negative" | "accent",
+        isOpenTrade
+          ? "default"
+          : realizedPnL != null
+            ? realizedPnL >= 0
+              ? "positive"
+              : "negative"
+            : "accent"
+      ) as "positive" | "negative" | "accent" | "default",
     },
     {
       label: isOpenTrade ? "Live P&L" : "Realized P&L",
-      value: `${displayedPnL >= 0 ? "+" : ""}${formatCurrency(displayedPnL)}`,
+      value: isOpenTrade
+        ? "Not tracked"
+        : realizedPnL != null
+          ? `${realizedPnL >= 0 ? "+" : ""}${formatCurrency(realizedPnL)}`
+          : "Not recorded",
       helper: isOpenTrade
-        ? "Tracking against the latest available price."
-        : "Final result recorded when the trade was closed.",
-      icon: displayedPnL >= 0 ? TrendingUp : TrendingDown,
-      tone: (displayedPnL >= 0 ? "positive" : "negative") as "positive" | "negative",
+        ? "Connect a price source to track live P&L."
+        : realizedPnL != null
+          ? "Final result recorded when the trade was closed."
+          : "Add a P&L when you close this trade.",
+      icon: isOpenTrade
+        ? Activity
+        : (realizedPnL ?? 0) >= 0
+          ? TrendingUp
+          : TrendingDown,
+      tone: (
+        isOpenTrade
+          ? "default"
+          : (realizedPnL ?? 0) >= 0
+            ? "positive"
+            : "negative"
+      ) as "positive" | "negative" | "default",
     },
     {
       label: "Average R:R",
@@ -689,9 +669,25 @@ function TradeDetailContent({ id }: { id: string }) {
     ? Math.min(metrics.averageRiskReward, 3) * (100 / 3)
     : 0;
 
+  const parseOptionalFloat = (value: string): number | null => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      const riskGuardrailPayload = {
+        accountEquity: parseOptionalFloat(formData.accountEquity),
+        riskPercentage: parseOptionalFloat(formData.riskPercentage),
+        maxDailyLoss: parseOptionalFloat(formData.maxDailyLoss),
+        takeProfit: parseOptionalFloat(formData.takeProfit),
+        positionSize: parseOptionalFloat(formData.positionSize),
+      };
+      const hasAnyRiskGuardrail = Object.values(riskGuardrailPayload).some(
+        (value) => value != null,
+      );
+
       const payload = {
         id: Number(trade.id),
         asset: trade.asset,
@@ -708,7 +704,7 @@ function TradeDetailContent({ id }: { id: string }) {
         notes: formData.notes,
         date: trade.date,
         status: trade.status,
-        exitPrice: trade.exitPrice || null,
+        exitPrice: parseOptionalFloat(formData.exitPrice),
         pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : null,
         closedDate: trade.closedDate || null,
         screenshots:
@@ -740,15 +736,7 @@ function TradeDetailContent({ id }: { id: string }) {
         dailyBias: formData.dailyBias,
         marketStructure: formData.marketStructure,
         premiumDiscount: formData.premiumDiscount,
-        riskGuardrail: trade.riskGuardrails
-          ? {
-              accountEquity: trade.riskGuardrails.accountEquity || null,
-              riskPercentage: trade.riskGuardrails.riskPercentage || null,
-              maxDailyLoss: trade.riskGuardrails.maxDailyLoss || null,
-              takeProfit: trade.riskGuardrails.takeProfit || null,
-              positionSize: trade.riskGuardrails.positionSize || null,
-            }
-          : null,
+        riskGuardrail: hasAnyRiskGuardrail ? riskGuardrailPayload : null,
         aiSummary: formData.aiSummary,
       };
 
@@ -766,7 +754,9 @@ function TradeDetailContent({ id }: { id: string }) {
         description: "Your trade details have been successfully saved.",
       });
 
-      // Update local state to reflect changes instantly or we could refetch. Local state update for immediate feedback:
+      // Reflect the saved changes locally for immediate feedback. The detail
+      // page owns the single write to the API above; the shared trade list
+      // store re-fetches when other pages mount, so we don't write twice.
       setTrade((prev) =>
         prev
           ? {
@@ -776,6 +766,7 @@ function TradeDetailContent({ id }: { id: string }) {
               targetTier2: Number.parseFloat(formData.targetTier2) || 0,
               targetTier3: Number.parseFloat(formData.targetTier3) || 0,
               stopLoss: Number.parseFloat(formData.stopLoss) || 0,
+              exitPrice: parseOptionalFloat(formData.exitPrice) ?? undefined,
               tradingSetupId: formData.tradingSetupId || undefined,
               analysisTags: formData.analysisTags,
               emotionTags: formData.emotionTags,
@@ -789,31 +780,18 @@ function TradeDetailContent({ id }: { id: string }) {
               dailyBias: formData.dailyBias,
               marketStructure: formData.marketStructure,
               premiumDiscount: formData.premiumDiscount,
+              riskGuardrails: hasAnyRiskGuardrail
+                ? {
+                    accountEquity: riskGuardrailPayload.accountEquity ?? undefined,
+                    riskPercentage: riskGuardrailPayload.riskPercentage ?? undefined,
+                    maxDailyLoss: riskGuardrailPayload.maxDailyLoss ?? undefined,
+                    takeProfit: riskGuardrailPayload.takeProfit ?? undefined,
+                    positionSize: riskGuardrailPayload.positionSize ?? undefined,
+                  }
+                : undefined,
             }
           : prev,
       );
-
-      // Update context just in case other parts of the app need it updated before a full refetch
-      updateTrade(trade.id, {
-        notes: formData.notes,
-        targetTier1: Number.parseFloat(formData.targetTier1) || 0,
-        targetTier2: Number.parseFloat(formData.targetTier2) || 0,
-        targetTier3: Number.parseFloat(formData.targetTier3) || 0,
-        stopLoss: Number.parseFloat(formData.stopLoss) || 0,
-        tradingSetupId: formData.tradingSetupId || undefined,
-        analysisTags: formData.analysisTags,
-        emotionTags: formData.emotionTags,
-        confidenceLevel: formData.confidenceLevel,
-        tradingSession: formData.tradingSession,
-        screenshots: formData.screenshots,
-        pretradeChecklist: formData.pretradeChecklist,
-        pnl: formData.pnl !== "" ? Number.parseFloat(formData.pnl) : undefined,
-        aiSummary: formData.aiSummary,
-        powerOf3Phase: formData.powerOf3Phase,
-        dailyBias: formData.dailyBias,
-        marketStructure: formData.marketStructure,
-        premiumDiscount: formData.premiumDiscount,
-      });
 
       setIsEditing(false);
     } catch (error: any) {
@@ -888,7 +866,8 @@ function TradeDetailContent({ id }: { id: string }) {
           description: "Your trade has been successfully closed.",
         });
 
-        closeTrade(trade.id, exitPriceNum);
+        // Single close request above with the user-entered P&L. We navigate to
+        // /history, which re-fetches the trade list, so there's no second write.
         setCloseDialogOpen(false);
         router.push("/history");
       } catch (error: any) {
@@ -909,7 +888,7 @@ function TradeDetailContent({ id }: { id: string }) {
     setIsDeleting(true);
     try {
       await api.delete(`/v1/trade-histories/${trade.id}`);
-      deleteTrade(trade.id);
+      // /history re-fetches on mount, so a single delete here is enough.
       router.push("/history");
     } catch (error: any) {
       console.error("Error deleting trade:", error);
@@ -925,7 +904,7 @@ function TradeDetailContent({ id }: { id: string }) {
   return (
     <AppPageShell contentClassName="py-4 sm:py-6 lg:py-8">
         {/* Back Navigation */}
-        <div className="mb-5">
+        <div className="mb-4">
           <Link
             href="/history"
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -935,13 +914,10 @@ function TradeDetailContent({ id }: { id: string }) {
           </Link>
         </div>
 
-        <section className="relative mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-linear-to-br from-card via-card to-primary/5 px-5 py-5 shadow-sm sm:px-6">
-          <div aria-hidden="true" className="absolute right-0 top-0 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
-          <div aria-hidden="true" className="absolute bottom-0 left-0 h-32 w-32 rounded-full bg-accent/10 blur-3xl" />
-
-          <div className="relative flex flex-col gap-6">
+        <section className="mb-4 rounded-xl border border-border/70 bg-card/90 px-4 py-4 shadow-sm sm:px-5">
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge
                     variant="secondary"
@@ -986,28 +962,32 @@ function TradeDetailContent({ id }: { id: string }) {
 
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                    <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                       {trade.asset}
                     </h1>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium shadow-sm",
-                        displayedPnL >= 0
-                          ? "border-success/20 bg-success/10 text-success"
-                          : "border-destructive/20 bg-destructive/10 text-destructive",
-                      )}
-                    >
-                      {displayedPnL >= 0 ? <TrendingUp className="mr-1.5 h-4 w-4" /> : <TrendingDown className="mr-1.5 h-4 w-4" />}
-                      {isOpenTrade ? "Live" : "Final"} {displayedPnL >= 0 ? "+" : ""}
-                      {formatCurrency(displayedPnL)}
-                    </span>
+                    {isOpenTrade ? (
+                      <span className="inline-flex items-center rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-sm font-medium text-accent shadow-sm">
+                        <Clock className="mr-1.5 h-4 w-4" />
+                        Open position
+                      </span>
+                    ) : realizedPnL != null ? (
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium shadow-sm",
+                          realizedPnL >= 0
+                            ? "border-success/20 bg-success/10 text-success"
+                            : "border-destructive/20 bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        {realizedPnL >= 0 ? <TrendingUp className="mr-1.5 h-4 w-4" /> : <TrendingDown className="mr-1.5 h-4 w-4" />}
+                        Final {realizedPnL >= 0 ? "+" : ""}
+                        {formatCurrency(realizedPnL)}
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-                    Review execution quality, risk structure, and post-trade context without hunting across separate sections.
-                  </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2.5">
+                <div className="flex flex-wrap gap-2">
                   <SnapshotPill
                     icon={Calendar}
                     label="Opened"
@@ -1018,6 +998,34 @@ function TradeDetailContent({ id }: { id: string }) {
                     label={timeInTradeLabel}
                     value={timeInTradeValue}
                   />
+                  <SnapshotPill
+                    icon={Shield}
+                    label="Stop"
+                    value={formatTradePrice(trade.stopLoss)}
+                    className="border-destructive/20 bg-destructive/5"
+                  />
+                  {metrics?.riskDollars != null ? (
+                    <SnapshotPill
+                      icon={Percent}
+                      label="Risk"
+                      value={formatCurrency(metrics.riskDollars)}
+                      className="border-warning/20 bg-warning/5"
+                    />
+                  ) : metrics && metrics.riskPerUnit > 0 ? (
+                    <SnapshotPill
+                      icon={Percent}
+                      label="Risk / unit"
+                      value={formatCurrency(metrics.riskPerUnit)}
+                      className="border-warning/20 bg-warning/5"
+                    />
+                  ) : null}
+                  {trade.confidenceLevel ? (
+                    <SnapshotPill
+                      icon={Brain}
+                      label="Confidence"
+                      value={getConfidenceLabel(trade.confidenceLevel)}
+                    />
+                  ) : null}
                   {selectedTradingZone ? (
                     <SnapshotPill
                       icon={Clock}
@@ -1102,12 +1110,12 @@ function TradeDetailContent({ id }: { id: string }) {
         </section>
 
         {/* Status Alert */}
-        <div className="mb-5">
-          <TradeStatusAlert trade={trade} currentPrice={currentPrice} />
+        <div className="mb-4">
+          <TradeStatusAlert trade={trade} currentPrice={livePrice} />
         </div>
 
         <Tabs defaultValue="detail" className="space-y-5">
-          <TabsList className="grid w-full max-w-lg grid-cols-2 rounded-2xl border border-border/70 bg-card/80 p-1 shadow-sm">
+          <TabsList className="grid w-full max-w-lg grid-cols-2 rounded-xl border border-border/70 bg-card/80 p-1 shadow-sm">
             <TabsTrigger
               value="detail"
               className="gap-2 rounded-xl data-[state=active]:bg-background data-[state=active]:shadow-sm"
@@ -1124,28 +1132,24 @@ function TradeDetailContent({ id }: { id: string }) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="detail" className="space-y-6 outline-none">
-            {/* Key Metrics Cards */}
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {quickStats.map((metric) => (
-                <OverviewMetricCard key={metric.label} {...metric} />
-              ))}
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-3">
+          <TabsContent value="detail" className="space-y-5 outline-none">
+            <div className="grid gap-5 xl:grid-cols-3">
               {/* Main Content - 2 Columns wide on XL */}
-              <div className="space-y-6 xl:col-span-2">
+              <div className="space-y-5 xl:col-span-2">
                 {/* Price Level Visualization */}
                 {trade.status === TradeStatus.Open && (
                   <Card className="border-border/70 bg-card/90 shadow-sm">
                     <CardHeader className="pb-2 border-b border-border/50">
                       <CardTitle className="text-base font-medium flex items-center gap-2">
                         <Activity className="h-4 w-4 text-accent" />
-                        Live Execution Status
+                        Price Levels
                       </CardTitle>
+                      <CardDescription>
+                        Planned stop, entry, and target levels for this position.
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-6 pb-6">
-                      <PriceLevelBar trade={trade} currentPrice={trade.exitPrice ? trade.exitPrice : currentPrice} />
+                      <PriceLevelBar trade={trade} currentPrice={livePrice} />
                     </CardContent>
                   </Card>
                 )}
@@ -1159,19 +1163,33 @@ function TradeDetailContent({ id }: { id: string }) {
                         Edit Trade Outcome
                       </CardTitle>
                       <CardDescription>
-                        Update your Realized P&L for this closed trade.
+                        Update the exit price and Realized P&L for this closed trade.
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-4 pb-6">
-                      <div className="space-y-2 max-w-sm">
-                        <Label>Realized P&L</Label>
-                        <Input 
-                          type="number" 
-                          step="0.01"
-                          value={formData.pnl} 
-                          onChange={(e) => setFormData(prev => ({ ...prev, pnl: e.target.value }))}
-                          placeholder="e.g. 150.00"
-                        />
+                      <div className="grid gap-4 sm:grid-cols-2 max-w-xl">
+                        <div className="space-y-2">
+                          <Label htmlFor="editExitPrice">Exit Price</Label>
+                          <Input
+                            id="editExitPrice"
+                            type="number"
+                            step={TRADE_PRICE_INPUT_STEP}
+                            value={formData.exitPrice}
+                            onChange={(e) => setFormData(prev => ({ ...prev, exitPrice: e.target.value }))}
+                            placeholder={formatTradePrice(trade.entryPrice)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="editPnl">Realized P&L</Label>
+                          <Input
+                            id="editPnl"
+                            type="number"
+                            step="0.01"
+                            value={formData.pnl}
+                            onChange={(e) => setFormData(prev => ({ ...prev, pnl: e.target.value }))}
+                            placeholder="e.g. 150.00"
+                          />
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -1180,91 +1198,70 @@ function TradeDetailContent({ id }: { id: string }) {
                 {/* Trading Result (If Closed) */}
                 {trade.status === TradeStatus.Closed && trade.tradingResult && (
                   <Card className={cn(
-                    "border-none shadow-md relative overflow-hidden mb-6",
-                    trade.pnl && trade.pnl >= 0 
-                      ? "bg-linear-to-br from-emerald-500/10 to-emerald-500/5 ring-1 ring-emerald-500/20" 
-                      : "bg-linear-to-br from-destructive/10 to-destructive/5 ring-1 ring-destructive/20"
+                    "border shadow-sm",
+                    trade.pnl && trade.pnl >= 0
+                      ? "border-emerald-500/20 bg-emerald-500/5"
+                      : "border-destructive/20 bg-destructive/5",
                   )}>
-                    <div className={cn(
-                      "absolute top-0 left-0 w-1 h-full",
-                      trade.pnl && trade.pnl >= 0 ? "bg-emerald-500" : "bg-destructive"
-                    )} />
-                    <CardHeader className="pb-2 px-6 pt-5">
-                      <CardTitle className="text-lg font-bold flex items-center gap-2.5">
-                        <div className={cn(
-                          "p-1.5 rounded-md",
-                          trade.pnl && trade.pnl >= 0 ? "bg-emerald-500/20 text-emerald-500" : "bg-destructive/20 text-destructive"
-                        )}>
-                          <CheckCircle2 className="h-5 w-5" />
-                        </div>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-base font-medium">
+                        <CheckCircle2 className={cn("h-4 w-4", trade.pnl && trade.pnl >= 0 ? "text-emerald-500" : "text-destructive")} />
                         Final Trading Result
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="px-6 pb-6 pt-2">
-                      <div className="rounded-xl bg-background/50 backdrop-blur-sm p-5 border border-border/40 shadow-inner">
-                        <p className="text-[15px] text-foreground/90 whitespace-pre-wrap leading-relaxed font-medium">
-                          {getPlainTextFromRichText(trade.tradingResult)}
-                        </p>
-                      </div>
+                    <CardContent className="pt-0">
+                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                        {getPlainTextFromRichText(trade.tradingResult)}
+                      </p>
                     </CardContent>
                   </Card>
                 )}
 
                 {/* Trade Notes */}
-                <Card className="border-none bg-linear-to-br from-card to-card/50 shadow-md flex flex-col min-h-[400px] relative overflow-hidden group">
-                  <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-                  <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-primary/50 via-primary to-primary/50" />
-                  <CardHeader className="border-b border-border/40 bg-secondary/20 pb-4 pt-5 px-6">
-                    <CardTitle className="flex items-center gap-2.5 text-xl font-bold text-foreground">
-                      <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                        <FileText className="h-5 w-5" />
-                      </div>
+                <Card className="border-border/70 bg-card/90 shadow-sm">
+                  <CardHeader className="border-b border-border/50 pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base font-medium">
+                      <FileText className="h-4 w-4 text-primary" />
                       Trade Journal
                     </CardTitle>
-                    <CardDescription className="text-sm mt-1.5 text-muted-foreground/80">
+                    <CardDescription>
                       Document your rationale, execution thoughts, and market context.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="p-0 flex-1 flex flex-col relative z-10">
+                  <CardContent className="pt-4">
                     {isEditing ? (
-                      <div className="p-6 h-full flex flex-col">
-                        <Textarea
-                          value={formData.notes}
-                          onChange={(e) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              notes: e.target.value,
-                            }))
-                          }
-                          placeholder="Add your trade rationale, market conditions, or any other notes..."
-                          className="flex-1 w-full resize-none border border-border/50 bg-background/50 p-5 text-[15px] focus-visible:ring-1 focus-visible:ring-primary/50 rounded-xl min-h-[300px] shadow-inner"
-                        />
+                      <Textarea
+                        value={formData.notes}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            notes: e.target.value,
+                          }))
+                        }
+                        placeholder="Add your trade rationale, market conditions, or any other notes..."
+                        className="min-h-40 w-full resize-y border border-border/50 bg-background/50 p-3 text-sm focus-visible:ring-1 focus-visible:ring-primary/50"
+                      />
+                    ) : getPlainTextFromRichText(trade.notes || "") ? (
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                        {getPlainTextFromRichText(trade.notes)}
                       </div>
                     ) : (
-                      <div className="p-8 h-full bg-transparent prose prose-sm dark:prose-invert max-w-none flex-1">
-                        {getPlainTextFromRichText(trade.notes || "") ? (
-                          <div className="text-[15px] leading-loose text-foreground/90 whitespace-pre-wrap font-medium tracking-wide">
-                            {getPlainTextFromRichText(trade.notes)}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-70 py-16">
-                            <div className="p-4 rounded-full bg-secondary/50 ring-1 ring-border/50">
-                              <FileText className="h-10 w-10 text-muted-foreground/60" />
-                            </div>
-                            <div>
-                              <p className="text-lg font-semibold text-foreground/80">No notes added</p>
-                              <p className="text-sm text-muted-foreground mt-1 max-w-[250px] mx-auto leading-relaxed">Detailed journaling is the key to discovering your true trading edge.</p>
-                            </div>
-                          </div>
-                        )}
+                      <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/50 ring-1 ring-border/50">
+                          <FileText className="h-5 w-5 text-muted-foreground/60" />
+                        </div>
+                        <p className="text-sm font-semibold text-foreground/80">No notes added</p>
+                        <p className="max-w-[260px] text-xs leading-relaxed text-muted-foreground">
+                          Detailed journaling is the key to discovering your true trading edge.
+                        </p>
                       </div>
                     )}
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Right Column - Context, Psychology, Tags */}
-              <div className="space-y-6">
+              {/* Right Column - Targets and risk */}
+              <div className="space-y-5">
                 {/* Target Prices */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="pb-3 border-b border-border/50">
@@ -1295,17 +1292,168 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardContent>
                 </Card>
 
-                {/* Trade Context (Combined Zone, Tech, Psych) */}
+                {/* Risk & Position Sizing */}
                 <Card className="border-border/70 bg-card/90 shadow-sm">
+                  <CardHeader className="pb-3 border-b border-border/50">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Gauge className="h-4 w-4 text-amber-500" />
+                      Risk & Position
+                    </CardTitle>
+                    <CardDescription>
+                      Account equity, risk limits, and the position size used to size this trade.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    {isEditing ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="positionSize">Position Size (units)</Label>
+                          <Input
+                            id="positionSize"
+                            type="number"
+                            step="any"
+                            value={formData.positionSize}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, positionSize: e.target.value }))}
+                            placeholder="e.g. 100"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="accountEquity">Account Equity ($)</Label>
+                          <Input
+                            id="accountEquity"
+                            type="number"
+                            step="0.01"
+                            value={formData.accountEquity}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, accountEquity: e.target.value }))}
+                            placeholder="e.g. 25000"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="riskPercentage">Risk per Trade (%)</Label>
+                          <Input
+                            id="riskPercentage"
+                            type="number"
+                            step="0.1"
+                            value={formData.riskPercentage}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, riskPercentage: e.target.value }))}
+                            placeholder="e.g. 1"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="maxDailyLoss">Max Daily Loss ($)</Label>
+                          <Input
+                            id="maxDailyLoss"
+                            type="number"
+                            step="0.01"
+                            value={formData.maxDailyLoss}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, maxDailyLoss: e.target.value }))}
+                            placeholder="e.g. 500"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="takeProfit">Take Profit (price)</Label>
+                          <Input
+                            id="takeProfit"
+                            type="number"
+                            step={TRADE_PRICE_INPUT_STEP}
+                            value={formData.takeProfit}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, takeProfit: e.target.value }))}
+                            placeholder="Optional"
+                          />
+                        </div>
+                      </div>
+                    ) : (() => {
+                      const guardrails = trade.riskGuardrails;
+                      const hasGuardrails =
+                        !!guardrails &&
+                        Object.values(guardrails).some((value) => value != null);
+
+                      if (!hasGuardrails && metrics?.riskDollars == null) {
+                        return (
+                          <p className="text-sm text-muted-foreground text-center py-2">
+                            No risk or position data set. Add it in edit mode to track dollar risk.
+                          </p>
+                        );
+                      }
+
+                      const rows = [
+                        {
+                          label: "Position Size",
+                          value:
+                            guardrails?.positionSize != null
+                              ? `${guardrails.positionSize} units`
+                              : "Not set",
+                        },
+                        {
+                          label: "Risk on Trade",
+                          value:
+                            metrics?.riskDollars != null
+                              ? formatCurrency(metrics.riskDollars)
+                              : "Add position size",
+                        },
+                        {
+                          label: "Account Equity",
+                          value:
+                            guardrails?.accountEquity != null
+                              ? formatCurrency(guardrails.accountEquity)
+                              : "Not set",
+                        },
+                        {
+                          label: "Risk per Trade",
+                          value:
+                            guardrails?.riskPercentage != null
+                              ? `${guardrails.riskPercentage}%`
+                              : "Not set",
+                        },
+                        {
+                          label: "Max Daily Loss",
+                          value:
+                            guardrails?.maxDailyLoss != null
+                              ? formatCurrency(guardrails.maxDailyLoss)
+                              : "Not set",
+                        },
+                        {
+                          label: "Take Profit",
+                          value:
+                            guardrails?.takeProfit != null
+                              ? formatTradePrice(guardrails.takeProfit)
+                              : "Not set",
+                        },
+                      ];
+
+                      return (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {rows.map((row) => (
+                            <div
+                              key={row.label}
+                              className="rounded-lg border border-border/50 bg-secondary/20 p-3"
+                            >
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                {row.label}
+                              </div>
+                              <div className="mt-1 text-sm font-medium text-foreground">
+                                {row.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              </div>
+
+                {/* Trade Context (Combined Zone, Tech, Psych) */}
+                <Card className="border-border/70 bg-card/90 shadow-sm xl:col-span-3">
                   <CardHeader className="pb-3 border-b border-border/50">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
                       <Layers className="h-4 w-4 text-primary" />
                       Trade Context
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-5 space-y-6">
+                  <CardContent className="grid gap-5 pt-5 lg:grid-cols-2 2xl:grid-cols-3">
                     {/* Zone */}
-                    <div className="space-y-3">
+                    <div className="space-y-3 lg:col-span-2 2xl:col-span-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                           <Target className="h-3.5 w-3.5" /> Linked Setup
@@ -1381,9 +1529,9 @@ function TradeDetailContent({ id }: { id: string }) {
                       )}
                     </div>
 
-                    <Separator className="bg-border/50" />
+                    <Separator className="bg-border/50 lg:hidden" />
 
-                    <div className="space-y-3">
+                    <div className="min-w-0 space-y-3">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                         <Clock className="h-3.5 w-3.5" /> Session
                       </h4>
@@ -1397,10 +1545,10 @@ function TradeDetailContent({ id }: { id: string }) {
                       )}
                     </div>
 
-                    <Separator className="bg-border/50" />
+                    <Separator className="bg-border/50 lg:hidden" />
 
                     {/* Technicals */}
-                    <div className="space-y-3">
+                    <div className="min-w-0 space-y-3">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                         <Tags className="h-3.5 w-3.5" /> Technicals
                       </h4>
@@ -1420,9 +1568,9 @@ function TradeDetailContent({ id }: { id: string }) {
                       </div>
                     </div>
 
-                    <Separator className="bg-border/50" />
+                    <Separator className="bg-border/50 lg:hidden" />
 
-                    <div className="space-y-3">
+                    <div className="space-y-3 lg:col-span-2">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                         <Layers className="h-3.5 w-3.5" /> ICT Context
                       </h4>
@@ -1496,10 +1644,10 @@ function TradeDetailContent({ id }: { id: string }) {
                       )}
                     </div>
 
-                    <Separator className="bg-border/50" />
+                    <Separator className="bg-border/50 lg:hidden" />
 
                     {/* Psychology */}
-                    <div className="space-y-3">
+                    <div className="min-w-0 space-y-3">
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                         <Brain className="h-3.5 w-3.5" /> Psychology
                       </h4>
@@ -1536,7 +1684,6 @@ function TradeDetailContent({ id }: { id: string }) {
                     </div>
                   </CardContent>
                 </Card>
-              </div>
             </div>
 
             {/* Pre-trade Checklist (Model-based) */}
@@ -1791,54 +1938,42 @@ function TradeDetailContent({ id }: { id: string }) {
 
 
           <TabsContent value="ai_summary" className="space-y-4 outline-none">
-            <Card className="border-none bg-linear-to-b from-card to-card/50 shadow-lg relative overflow-hidden group">
-              <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-              <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-violet-500 via-fuchsia-500 to-cyan-500" />
-              <CardHeader className="border-b border-border/40 bg-secondary/20 pb-5 pt-6 px-7">
-                <CardTitle className="flex items-center gap-3 text-2xl font-bold text-foreground">
-                  <div className="p-2.5 rounded-xl bg-linear-to-br from-violet-500/20 to-fuchsia-500/20 text-fuchsia-500 ring-1 ring-fuchsia-500/30">
-                    <Brain className="h-6 w-6" />
-                  </div>
+            <Card className="border-border/70 bg-card/90 shadow-sm">
+              <CardHeader className="border-b border-border/50 pb-3">
+                <CardTitle className="flex items-center gap-2 text-base font-medium">
+                  <Brain className="h-4 w-4 text-fuchsia-500" />
                   AI Trade Analysis
                 </CardTitle>
-                <CardDescription className="text-[15px] mt-2 text-muted-foreground/80">
+                <CardDescription>
                   Advanced insights generated by your AI trading assistant.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-0 relative z-10">
+              <CardContent className="pt-4">
                 {isEditing ? (
-                  <div className="p-7 h-full flex flex-col">
-                    <Textarea
-                      value={formData.aiSummary}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          aiSummary: e.target.value,
-                        }))
-                      }
-                      placeholder="Input AI summary here..."
-                      className="min-h-[350px] resize-none border border-border/50 bg-background/60 p-6 text-[15px] focus-visible:ring-1 focus-visible:ring-fuchsia-500/50 rounded-2xl shadow-inner leading-relaxed"
-                    />
+                  <Textarea
+                    value={formData.aiSummary}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        aiSummary: e.target.value,
+                      }))
+                    }
+                    placeholder="Input AI summary here..."
+                    className="min-h-48 w-full resize-y border border-border/50 bg-background/50 p-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-fuchsia-500/50"
+                  />
+                ) : trade.aiSummary ? (
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                    {getPlainTextFromRichText(trade.aiSummary)}
                   </div>
                 ) : (
-                  <div className="p-8 min-h-[300px]">
-                    {trade.aiSummary ? (
-                      <div className="rounded-2xl bg-secondary/30 backdrop-blur-md p-6 border border-white/5 dark:border-white/10 shadow-inner">
-                        <div className="text-[15px] leading-loose text-foreground/90 whitespace-pre-wrap font-medium tracking-wide prose prose-sm dark:prose-invert max-w-none">
-                          {getPlainTextFromRichText(trade.aiSummary)}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-[250px] text-center space-y-4 opacity-70">
-                        <div className="p-5 rounded-full bg-secondary/50 ring-1 ring-border/50">
-                          <Brain className="h-10 w-10 text-muted-foreground/60" />
-                        </div>
-                        <div>
-                          <p className="text-lg font-semibold text-foreground/80">Analysis Pending</p>
-                          <p className="text-sm text-muted-foreground mt-1 max-w-[280px] mx-auto leading-relaxed">No AI summary has been generated for this trade yet.</p>
-                        </div>
-                      </div>
-                    )}
+                  <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/50 ring-1 ring-border/50">
+                      <Brain className="h-5 w-5 text-muted-foreground/60" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground/80">Analysis Pending</p>
+                    <p className="max-w-[280px] text-xs leading-relaxed text-muted-foreground">
+                      No AI summary has been generated for this trade yet.
+                    </p>
                   </div>
                 )}
               </CardContent>
@@ -1865,8 +2000,8 @@ function TradeDetailContent({ id }: { id: string }) {
                   </p>
                 </div>
                 <div className="rounded-lg bg-secondary/50 p-3">
-                  <p className="text-muted-foreground">Current Price</p>
-                  <p className="font-medium">{formatTradePrice(currentPrice)}</p>
+                  <p className="text-muted-foreground">Stop Loss</p>
+                  <p className="font-medium">{formatTradePrice(trade.stopLoss)}</p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -1875,7 +2010,7 @@ function TradeDetailContent({ id }: { id: string }) {
                   id="exitPrice"
                   type="number"
                   step={TRADE_PRICE_INPUT_STEP}
-                  placeholder={currentPrice.toString()}
+                  placeholder={trade.entryPrice.toString()}
                   value={exitPrice}
                   onChange={(e) => setExitPrice(e.target.value)}
                 />

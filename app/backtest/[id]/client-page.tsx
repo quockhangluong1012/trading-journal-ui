@@ -10,12 +10,14 @@ import {
   isBacktestOrderTicketShortcut,
   type BacktestOrderTicketOpenRequest,
 } from "@/components/backtest/backtest-order-ticket";
+import { isInteractiveEventTarget } from "@/components/backtest/keyboard-shortcuts";
 import { PositionsPanel } from "@/components/backtest/positions-panel";
 import { TradingViewPlatform, type ChartDrawing } from "@/components/backtest/tradingview-platform";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { Header } from "@/components/header";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertDialog,
@@ -67,6 +69,7 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const router = useRouter();
   const [isSwitchingTimeframe, setIsSwitchingTimeframe] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const positionsPanelRef = useRef<ImperativePanelHandle>(null);
   const [isPositionsPanelCollapsed, setIsPositionsPanelCollapsed] = useState(true);
   const [orderTicketOpenRequest, setOrderTicketOpenRequest] = useState<BacktestOrderTicketOpenRequest>({
@@ -111,9 +114,18 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     : session?.currentTimestamp ?? null;
   const formattedTimestamp = formatSessionTimestamp(displayedTimestamp);
 
+  const loadWorkspace = useCallback(async () => {
+    setLoadError(false);
+    try {
+      await resumeSession(sessionId);
+    } catch {
+      setLoadError(true);
+    }
+  }, [resumeSession, sessionId]);
+
   // Initial load
   useEffect(() => {
-    resumeSession(sessionId);
+    void loadWorkspace();
     loadTradingZones();
     return () => {
       pausePlayback();
@@ -204,8 +216,10 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+      // Bail if the user is typing in a field or operating any interactive
+      // control, so e.g. Space on a focused button doesn't also toggle replay.
+      if (isInteractiveEventTarget(e.target)) return;
+
       if (isBacktestOrderTicketShortcut(e)) {
         e.preventDefault();
         openOrderTicket(currentPrice > 0 && Number.isFinite(currentPrice) ? currentPrice : null);
@@ -221,6 +235,23 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentPrice, handleSkip, openOrderTicket, togglePlayback]);
+
+  if (loadError) return (
+    <div className="flex min-h-screen items-center justify-center p-8 bg-background">
+      <div className="w-full max-w-md rounded-lg border border-destructive/30 bg-destructive/10 p-6 text-center">
+        <h2 className="text-xl font-semibold text-destructive">Couldn&apos;t load workspace</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          We couldn&apos;t resume this backtest session. It may have expired, been removed, or the connection dropped.
+        </p>
+        <div className="mt-5 flex items-center justify-center gap-2">
+          <Button onClick={() => void loadWorkspace()}>Retry</Button>
+          <Button variant="outline" asChild>
+            <Link href="/backtest">Back to Sessions</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (!session) return (
     <div className="flex min-h-screen items-center justify-center p-8 bg-background">

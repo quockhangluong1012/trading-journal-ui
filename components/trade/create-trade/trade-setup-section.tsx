@@ -90,7 +90,7 @@ export function TradeSetupSection({
       description="Set the core execution details first, then define a clear profit ladder before the trade is live."
       icon={<FileText className="h-4 w-4 text-primary" />}
     >
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -234,7 +234,7 @@ export function TradeSetupSection({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+          <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="space-y-1">
                 <Label htmlFor="tradingSetupId">Linked setup</Label>
@@ -270,7 +270,7 @@ export function TradeSetupSection({
             </Select>
 
             {selectedTradingSetup ? (
-              <div className="rounded-2xl border border-primary/15 bg-primary/5 p-3">
+              <div className="rounded-xl border border-primary/15 bg-primary/5 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-foreground">{selectedTradingSetup.name}</p>
                   <Badge variant="outline" className="border-primary/20 bg-background/70 text-[10px] text-muted-foreground">
@@ -297,13 +297,13 @@ export function TradeSetupSection({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
+        <div className="rounded-xl border border-border/60 bg-background/60 p-3">
           <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             <Target className="h-3.5 w-3.5 text-emerald-400" />
             Profit ladder
           </div>
 
-          <div className="mt-4 grid gap-4">
+          <div className="mt-3 grid gap-3">
             <div className="space-y-2">
               <Label htmlFor="targetTier1">Tier 1 Target</Label>
               <Input

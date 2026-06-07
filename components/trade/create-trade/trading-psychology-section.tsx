@@ -35,8 +35,8 @@ export function TradingPsychologySection({
       description="Track your emotional state and conviction so you can spot behavioral patterns over time."
       icon={<Brain className="h-4 w-4 text-accent" />}
     >
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_260px]">
-        <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_240px]">
+        <div className="space-y-3">
           <Label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
             How are you feeling about this trade?
           </Label>
@@ -69,8 +69,8 @@ export function TradingPsychologySection({
                         type="button"
                         onClick={() => toggleEmotion(tag.id.toString())}
                         className={cn(
-                          "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_10px_rgba(0,0,0,0.1)]",
-                          colorMap[category].replace("border-border bg-secondary/40", "border-white/10 bg-background/50"),
+                          "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                          colorMap[category].replace("border-border bg-secondary/40", "border-slate-200/80 bg-background/60 dark:border-slate-700/70"),
                         )}
                       >
                         {tag.name}
@@ -93,8 +93,8 @@ export function TradingPsychologySection({
           />
         </div>
 
-        <div className="rounded-2xl border border-border/60 bg-background/70 p-4 shadow-sm">
-          <div className="space-y-2">
+        <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+          <div className="space-y-1.5">
             <Label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
               Confidence Level
             </Label>
@@ -103,7 +103,7 @@ export function TradingPsychologySection({
             ) : null}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {[1, 2, 3, 4, 5].map((level) => (
               <button
                 key={level}
@@ -120,11 +120,11 @@ export function TradingPsychologySection({
                   }
                 }}
                 className={cn(
-                  "flex h-12 w-12 items-center justify-center rounded-full border text-base font-bold transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
+                  "flex h-10 w-10 items-center justify-center rounded-full border text-sm font-bold transition-colors",
                   errors.confidenceLevel && confidenceLevel === 0 && "border-destructive/50",
                   confidenceLevel >= level
-                    ? "border-primary bg-primary/20 text-primary shadow-[0_0_15px_rgba(79,70,229,0.3)] ring-2 ring-primary/40 scale-110"
-                    : "border-white/10 bg-background/50 text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                    ? "border-primary bg-primary/15 text-primary ring-1 ring-primary/30"
+                    : "border-slate-200/80 bg-background/60 text-muted-foreground hover:border-primary/50 hover:text-foreground dark:border-slate-700/70",
                 )}
                 aria-label={`Confidence level ${level}`}
               >
@@ -133,10 +133,10 @@ export function TradingPsychologySection({
             ))}
           </div>
 
-          <p className="mt-4 text-sm font-medium text-foreground">
+          <p className="mt-3 text-sm font-medium text-foreground">
             {getConfidenceLabel(confidenceLevel)}
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-xs leading-snug text-muted-foreground">
             Use this to compare conviction against the eventual outcome in your review workflow.
           </p>
         </div>

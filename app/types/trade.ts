@@ -1,7 +1,7 @@
 import { EmotionType } from "@/lib/enum/EmotionType";
 import { PositionType } from "@/lib/enum/PositionType";
 import { TradeStatus } from "@/lib/enum/TradeStatus";
-import { TradeScreenshot } from "@/lib/trade-store";
+import type { TradeScreenshot } from "@/lib/trade-store";
 
 export interface EmotionTag {
   id: number;
@@ -45,6 +45,8 @@ export interface Trade {
   status: TradeStatus;
   exitPrice?: number;
   pnl?: number;
+  tradingResult?: string;
+  hitStopLoss?: boolean;
   closedDate?: string;
   screenshots?: TradeScreenshot[];
   emotionTags?: string[];

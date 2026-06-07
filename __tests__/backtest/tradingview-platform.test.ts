@@ -354,6 +354,37 @@ describe("TradingView platform helpers", () => {
     ]);
   });
 
+  it("builds a separate session box per UTC day across multi-day candle ranges", () => {
+    const chartCandles = mapBacktestCandlesToChartData([
+      // Day 1 — London session window (07:00–16:00 UTC)
+      { timestamp: "2024-01-01T08:00:00Z", open: 100, high: 110, low: 90, close: 105, volume: 900 },
+      { timestamp: "2024-01-01T13:00:00Z", open: 105, high: 115, low: 95, close: 108, volume: 900 },
+      // Day 2 — London session window
+      { timestamp: "2024-01-02T09:00:00Z", open: 108, high: 130, low: 100, close: 120, volume: 900 },
+    ]).candles;
+
+    const londonSessions = buildTradingSessionOverlays(chartCandles).filter(
+      (session) => session.sessionId === "london",
+    );
+
+    expect(londonSessions).toEqual([
+      expect.objectContaining({
+        id: `london-${toChartTimestamp("2024-01-01T07:00:00Z")}`,
+        startTime: toChartTimestamp("2024-01-01T07:00:00Z"),
+        endTime: toChartTimestamp("2024-01-01T16:00:00Z"),
+        high: 115,
+        low: 90,
+      }),
+      expect.objectContaining({
+        id: `london-${toChartTimestamp("2024-01-02T07:00:00Z")}`,
+        startTime: toChartTimestamp("2024-01-02T07:00:00Z"),
+        endTime: toChartTimestamp("2024-01-02T16:00:00Z"),
+        high: 130,
+        low: 100,
+      }),
+    ]);
+  });
+
   it("projects ICT trading sessions to chart pixels with bounded labels", () => {
     const sessions = buildTradingSessionOverlays(mapBacktestCandlesToChartData([
       { timestamp: "2024-01-01T17:00:00Z", open: 107, high: 120, low: 92, close: 113, volume: 1500 },
@@ -597,6 +628,75 @@ describe("TradingView platform helpers", () => {
         anchorPrice: 1.1682,
         side: "Short",
         text: "Short 2 @ 1.17100",
+      }),
+    ]);
+  });
+
+  it("anchors an order to the candle whose bucket contains its timestamp, not the nearest one", () => {
+    // An order placed on a fine timeframe (00:50) lands in the back half of the
+    // 00:00–01:00 H1 bar after a timeframe switch. It must stay on the 00:00 bar
+    // it was placed inside — not snap forward to the closer 01:00 bar.
+    const activePosition = createOrder({
+      id: 31,
+      status: "Active",
+      side: "Long",
+      positionSize: 1,
+      entryPrice: 1.2,
+      filledPrice: 1.2,
+      orderedAt: "2024-01-01T00:50:00Z",
+      filledAt: "2024-01-01T00:50:00Z",
+    });
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 1.18, high: 1.21, low: 1.17, close: 1.2, volume: 1000 },
+      { timestamp: "2024-01-01T01:00:00Z", open: 1.2, high: 1.23, low: 1.19, close: 1.22, volume: 1200 },
+    ]).candles;
+
+    const markers = buildOrderMarkerOverlays({
+      activePositions: [activePosition],
+      closedPositions: [],
+      chartCandles,
+    });
+
+    expect(markers).toEqual([
+      expect.objectContaining({
+        id: "active-entry-31",
+        time: toChartTimestamp("2024-01-01T00:00:00Z"),
+        anchorPrice: 1.17,
+      }),
+    ]);
+  });
+
+  it("anchors to the latest revealed candle when the order time sits just past its start", () => {
+    // The backend stamps an order with the simulated clock, which at the
+    // unaligned session-start edge can sit a few minutes past the last revealed
+    // bar's start. The marker should stick to that last bar, not fall through to
+    // a drifting live-edge fallback.
+    const activePosition = createOrder({
+      id: 32,
+      status: "Active",
+      side: "Long",
+      positionSize: 1,
+      entryPrice: 1.3,
+      filledPrice: 1.3,
+      orderedAt: "2024-01-01T00:22:00Z",
+      filledAt: null,
+    });
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T00:00:00Z", open: 1.28, high: 1.31, low: 1.27, close: 1.29, volume: 1000 },
+      { timestamp: "2024-01-01T00:15:00Z", open: 1.29, high: 1.33, low: 1.285, close: 1.3, volume: 1200 },
+    ]).candles;
+
+    const markers = buildOrderMarkerOverlays({
+      activePositions: [activePosition],
+      closedPositions: [],
+      chartCandles,
+    });
+
+    expect(markers).toEqual([
+      expect.objectContaining({
+        id: "active-entry-32",
+        time: toChartTimestamp("2024-01-01T00:15:00Z"),
+        anchorPrice: 1.285,
       }),
     ]);
   });

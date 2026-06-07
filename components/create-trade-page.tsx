@@ -936,204 +936,116 @@ export function CreateTradePage({
         : "Ready to continue"
 
   return (
-    <div className="relative space-y-6 pb-32">
-      {/* Background glow effects */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-[10%] left-[-5%] h-150 w-150 rounded-full bg-primary/8 blur-[96px]" />
-        <div className="absolute right-[-5%] top-[20%] h-125 w-125 rounded-full bg-accent/8 blur-[84px]" />
-        <div className="absolute bottom-[10%] left-[10%] h-175 w-175 rounded-full bg-emerald-500/5 blur-[120px]" />
-      </div>
-
-      <div className="mx-auto w-full max-w-6xl space-y-5">
-        <div className="relative overflow-hidden rounded-[2.75rem] border border-slate-200/80 bg-background/92 ring-1 ring-slate-300/60 shadow-[0_18px_42px_rgba(148,163,184,0.16)] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/92 dark:ring-white/5 dark:shadow-[0_18px_42px_rgba(2,8,23,0.3)]">
-          <div className="absolute inset-0 bg-linear-to-br from-primary/6 via-transparent to-accent/6 opacity-70" />
-          <div className="relative flex flex-col gap-6 px-6 py-7 sm:px-8 sm:py-8 md:flex-row md:items-center md:justify-between md:gap-8">
-            <div className="min-w-0 space-y-4">
+    <div className="mx-auto w-full max-w-7xl space-y-3 pb-28">
+      <section className="rounded-xl border border-slate-200/80 bg-background/90 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-950/85">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2.5">
             <Button
               variant="ghost"
               size="sm"
               asChild
-              className="-ml-2 w-fit gap-2 text-muted-foreground transition-all hover:text-foreground hover:bg-white/5"
+              className="-ml-2 h-8 shrink-0 gap-1.5 px-2 text-muted-foreground hover:text-foreground"
             >
               <Link href={returnTo}>
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </Link>
             </Button>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                variant="outline"
-                className="rounded-full border-primary/30 bg-primary/15 px-3 py-1.5 text-[11px] font-medium text-primary shadow-inner"
-              >
-                <Save className="mr-1.5 h-3.5 w-3.5" />
-                Trade Planner
-              </Badge>
-              <Badge
-                variant="outline"
-                className="rounded-full border-slate-200/80 bg-background/70 px-3 py-1.5 text-[11px] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-slate-200"
-              >
-                {activeSession ? "Session linked" : "Manual entry"}
-              </Badge>
-              <Badge
-                variant="outline"
-                className="rounded-full border-slate-200/80 bg-background/70 px-3 py-1.5 text-[11px] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/75 dark:text-slate-200"
-              >
-                Standalone page
-              </Badge>
-              <Badge
-                variant="outline"
-                className={cn(
-                  "rounded-full px-3 py-1.5 text-[11px] backdrop-blur-md",
-                  currentStepTone.pillClassName,
-                )}
-              >
-                Step {currentStep + 1} of {WIZARD_STEPS.length}
-              </Badge>
-            </div>
-
-            <div className="space-y-3">
-              <div className="inline-flex w-fit items-center rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-300">
-                Trade Workspace
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                  Create New Trade
+                </h1>
+                <Badge variant="outline" className="hidden h-6 rounded-md border-slate-200/80 bg-background/75 px-2 text-[10px] dark:border-slate-700/70 dark:bg-slate-900/75 sm:inline-flex">
+                  {activeSession ? "Session linked" : "Manual entry"}
+                </Badge>
               </div>
-              <h1 className="bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent drop-shadow-sm">
-                Create New Trade
-              </h1>
-              <p className="max-w-2xl text-sm font-medium leading-relaxed text-muted-foreground/80">
-                Capture execution details, risk guardrails, and trading psychology before the position goes live.
+              <p className="truncate text-xs text-muted-foreground">
+                Current focus: <span className="font-medium text-foreground">{currentStepMeta.label}</span>
+                <span className="text-muted-foreground/80"> - {currentStepMeta.description}</span>
               </p>
-              <div className="rounded-3xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/75 dark:shadow-[0_12px_30px_rgba(2,8,23,0.22)]">
-                <p className="text-sm font-medium text-foreground/85">
-                  Current focus: <span className="text-foreground">{currentStepMeta.label}</span>
-                  <span className="text-muted-foreground/80"> · {currentStepMeta.description}</span>
-                </p>
-              </div>
             </div>
           </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 md:min-w-105">
-              <TradeSummaryStat
-                label="Risk score"
-                value={`${riskMetrics.riskScore}/100`}
-                helper="Live based on stop and target setup"
-                valueClassName={riskTone.textClassName}
-              />
-              <TradeSummaryStat
-                label="Form completion"
-                value={`${completionProgress}%`}
-                helper="Core trade fields ready"
-                valueClassName={completionTone.textClassName}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-4xl border border-slate-200/80 bg-background/88 ring-1 ring-slate-300/50 shadow-[0_16px_38px_rgba(148,163,184,0.14)] backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/90 dark:ring-white/5 dark:shadow-[0_16px_38px_rgba(2,8,23,0.28)]">
-        <div className="border-b border-slate-200/70 px-5 py-5 sm:px-6 dark:border-slate-800/90">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Wizard progress
-              </p>
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight text-foreground">
-                  {currentStepMeta.label}
-                </h2>
-                <p className="mt-1 max-w-2xl text-sm text-muted-foreground/85">
-                  {currentStepMeta.description}
-                </p>
-              </div>
-            </div>
-            <Badge
-              variant="outline"
-              className={cn(
-                "rounded-full px-3 py-1.5 text-[11px] font-medium backdrop-blur-md",
-                currentStepTone.pillClassName,
-              )}
-            >
-              {currentStepReadiness.completed}/{currentStepReadiness.total} ready
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Badge variant="outline" className={cn("h-7 rounded-md px-2.5 text-[11px]", riskTone.pillClassName)}>
+              Risk {riskMetrics.riskScore}/100
+            </Badge>
+            <Badge variant="outline" className={cn("h-7 rounded-md px-2.5 text-[11px]", completionTone.pillClassName)}>
+              {completionProgress}% ready
             </Badge>
           </div>
         </div>
 
-        <div className="grid gap-3 p-4 lg:grid-cols-3">
-          {WIZARD_STEPS.map((step, index) => {
-            const StepIcon = step.icon
-            const stepState = stepReadiness[index]
-            const stepPercent = Math.round((stepState.completed / stepState.total) * 100)
-            const stepTone = getProgressTone(stepPercent)
-            const stepErrors = STEP_VALIDATION_FIELDS[index].filter((field) => validationErrors[field])
-            const isActive = index === currentStep
-            const isCompleted = index < currentStep || stepPercent === 100
+        <div className="mt-3 border-t border-slate-200/70 pt-3 dark:border-slate-700/60">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            Wizard progress
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {WIZARD_STEPS.map((step, index) => {
+              const StepIcon = step.icon
+              const stepState = stepReadiness[index]
+              const stepPercent = Math.round((stepState.completed / stepState.total) * 100)
+              const stepErrors = STEP_VALIDATION_FIELDS[index].filter((field) => validationErrors[field])
+              const isActive = index === currentStep
+              const isCompleted = index < currentStep || stepPercent === 100
 
-            return (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => handleStepChange(index)}
-                className={cn(
-                  "rounded-3xl border p-4 text-left transition-[border-color,background-color,box-shadow] duration-300",
-                  isActive
-                    ? "border-primary/45 bg-primary/10 shadow-[0_16px_40px_rgba(79,70,229,0.12)] dark:bg-primary/15 dark:shadow-[0_16px_40px_rgba(79,70,229,0.18)]"
-                    : "border-slate-200/70 bg-background/60 hover:border-slate-300/90 hover:bg-background/75 dark:border-slate-700/70 dark:bg-slate-950/72 dark:hover:border-slate-500/80 dark:hover:bg-slate-900/80",
-                )}
-              >
-                <div className="flex items-start justify-between gap-3">
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => handleStepChange(index)}
+                  aria-current={isActive ? "step" : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors",
+                    isActive
+                      ? "border-primary/45 bg-primary/10"
+                      : "border-slate-200/70 bg-background/60 hover:border-slate-300/90 hover:bg-background/80 dark:border-slate-700/70 dark:bg-slate-950/60 dark:hover:border-slate-500/80",
+                  )}
+                >
                   <div
                     className={cn(
-                      "flex h-11 w-11 items-center justify-center rounded-2xl border backdrop-blur-md",
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-xs font-semibold",
                       isActive
-                        ? "border-primary/45 bg-primary/15 text-primary"
-                        : "border-slate-200/70 bg-background/75 text-muted-foreground dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-300",
-                    )}
-                  >
-                    {isCompleted ? <Check className="h-5 w-5" /> : <StepIcon className="h-5 w-5" />}
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "rounded-full px-2.5 py-1 text-[10px] font-medium backdrop-blur-md",
-                      isActive
-                        ? currentStepTone.pillClassName
+                        ? "border-primary/35 bg-primary/15 text-primary"
                         : isCompleted
-                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
                           : stepErrors.length > 0
-                            ? "border-red-500/20 bg-red-500/10 text-red-400"
-                            : "border-slate-200/80 bg-background/80 text-muted-foreground dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-300",
+                            ? "border-red-500/30 bg-red-500/10 text-red-400"
+                            : "border-slate-200/70 bg-background text-muted-foreground dark:border-slate-700/70 dark:bg-slate-900",
                     )}
                   >
-                    {isActive ? "Active" : isCompleted ? "Ready" : stepErrors.length > 0 ? "Needs input" : "Upcoming"}
-                  </Badge>
-                </div>
-
-                <div className="mt-4 space-y-1.5">
-                  <p className="text-sm font-semibold text-foreground">{step.label}</p>
-                  <p className="text-xs leading-relaxed text-muted-foreground/80">
-                    {step.description}
-                  </p>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                    <span>{stepState.completed}/{stepState.total} ready</span>
-                    <span className={stepTone.textClassName}>{stepPercent}%</span>
+                    {isCompleted ? <Check className="h-3.5 w-3.5" /> : <StepIcon className="h-3.5 w-3.5" />}
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-secondary/70">
-                    <div
-                      className={cn("h-full rounded-full transition-all duration-300", stepTone.barClassName)}
-                      style={{ width: `${stepPercent}%` }}
-                    />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-foreground">
+                      <span className="mr-1 text-muted-foreground">{index + 1}.</span>
+                      {step.label}
+                    </p>
+                    <span
+                      className={cn(
+                        "text-[10px] font-medium",
+                        isActive
+                          ? currentStepTone.textClassName
+                          : isCompleted
+                            ? "text-emerald-400"
+                            : stepErrors.length > 0
+                              ? "text-red-400"
+                              : "text-muted-foreground",
+                      )}
+                    >
+                      {stepState.completed}/{stepState.total} ready
+                    </span>
                   </div>
-                </div>
-              </button>
-            )
-          })}
+                </button>
+              )
+            })}
+          </div>
         </div>
-      </div>
-      </div>
+      </section>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
           <div className="relative overflow-visible">
             <AnimatePresence mode="wait">
               {currentStep === 0 && (
@@ -1143,7 +1055,7 @@ export function CreateTradePage({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="space-y-6"
+                  className="space-y-4"
                 >
             <TradeSetupSection
               formData={formData}
@@ -1175,7 +1087,7 @@ export function CreateTradePage({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="space-y-6"
+                  className="space-y-4"
                 >
 
             <PreTradeChecklistSection
@@ -1247,7 +1159,7 @@ export function CreateTradePage({
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="space-y-6"
+                  className="space-y-4"
                 >
 
             <NotesEvidenceSection
@@ -1274,53 +1186,54 @@ export function CreateTradePage({
             </AnimatePresence>
           </div>
 
-          <aside className="order-last self-start space-y-6 xl:sticky xl:top-24">
-            <div className="overflow-hidden rounded-4xl border border-slate-200/80 bg-background/82 ring-1 ring-slate-300/40 shadow-[0_20px_44px_rgba(148,163,184,0.16)] backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-300 hover:border-slate-300/90 hover:shadow-[0_24px_52px_rgba(148,163,184,0.2)] dark:border-slate-700/70 dark:bg-slate-950/88 dark:ring-white/5 dark:shadow-[0_20px_44px_rgba(2,8,23,0.3)] dark:hover:border-slate-500/80 dark:hover:shadow-[0_24px_52px_rgba(2,8,23,0.34)]">
-              <div className="absolute inset-0 bg-linear-to-b from-white/6 to-transparent opacity-70" />
-              <div className="relative border-b border-slate-200/70 px-6 py-6 dark:border-slate-800/90">
-                <div className="flex flex-wrap items-center gap-2">
+          <aside className="order-last self-start space-y-3 xl:sticky xl:top-20">
+            <div className="overflow-hidden rounded-xl border border-slate-200/80 bg-background/90 shadow-sm dark:border-slate-700/70 dark:bg-slate-950/85">
+              <div className="border-b border-slate-200/70 px-3 py-3 dark:border-slate-700/60">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <Badge
                     variant="outline"
-                    className="rounded-full border-slate-200/80 bg-background/80 px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-200"
+                    className="rounded-full border-slate-200/80 bg-background/80 px-2.5 py-0.5 text-[10px] dark:border-slate-700/70 dark:bg-slate-900/80 dark:text-slate-200"
                   >
                     Open trade
                   </Badge>
                   <Badge
                     variant="outline"
                     className={cn(
-                      "rounded-full px-3 py-1.5 text-[11px] shadow-sm backdrop-blur-md",
+                      "rounded-full px-2.5 py-0.5 text-[10px]",
                       isLongPosition
                         ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-400"
                         : "border-red-500/30 bg-red-500/15 text-red-400",
                     )}
                   >
                     {isLongPosition ? (
-                      <TrendingUp className="mr-1.5 h-3.5 w-3.5" />
+                      <TrendingUp className="mr-1 h-3 w-3" />
                     ) : (
-                      <TrendingDown className="mr-1.5 h-3.5 w-3.5" />
+                      <TrendingDown className="mr-1 h-3 w-3" />
                     )}
                     {isLongPosition ? "Long" : "Short"}
                   </Badge>
                 </div>
 
-                <div className="mt-5">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                    Live preview
-                  </p>
-                  <h2 className="mt-2 bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
-                    {previewAsset}
-                  </h2>
-                  <p className="mt-1 text-sm font-medium text-muted-foreground/80">
+                <div className="mt-3 flex items-end justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                      Live preview
+                    </p>
+                    <h2 className="mt-0.5 truncate text-xl font-semibold tracking-tight text-foreground">
+                      {previewAsset}
+                    </h2>
+                  </div>
+                  <p className="shrink-0 text-xs font-medium text-muted-foreground/80">
                     {formatTradeDate(formData.date)}
                   </p>
                 </div>
 
-                <div className="mt-4 space-y-2">
+                <div className="mt-3 space-y-1.5">
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>Form completion</span>
                     <span className={completionTone.textClassName}>{completionProgress}%</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-secondary">
                     <div
                       className={cn(
                         "h-full rounded-full transition-all duration-300",
@@ -1332,21 +1245,21 @@ export function CreateTradePage({
                 </div>
               </div>
 
-              <div className="space-y-4 px-5 py-5">
-                <div className="rounded-2xl border border-slate-200/80 bg-background/80 p-4 shadow-[0_12px_30px_rgba(148,163,184,0.14)] dark:border-slate-700/70 dark:bg-slate-950/88 dark:shadow-[0_12px_30px_rgba(2,8,23,0.28)]">
-                  <div className="flex items-start gap-3">
+              <div className="space-y-3 px-3 py-3">
+                <div className="rounded-lg border border-slate-200/80 bg-background/80 p-3 dark:border-slate-700/70 dark:bg-slate-950/70">
+                  <div className="flex items-start gap-2.5">
                     <div
                       className={cn(
-                        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border",
+                        "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
                         currentStepAttentionItems.length > 0
                           ? "border-red-500/25 bg-red-500/10 text-red-400"
                           : "border-emerald-500/25 bg-emerald-500/10 text-emerald-400",
                       )}
                     >
                       {currentStepAttentionItems.length > 0 ? (
-                        <CircleAlert className="h-5 w-5" />
+                        <CircleAlert className="h-4 w-4" />
                       ) : (
-                        <Check className="h-5 w-5" />
+                        <Check className="h-4 w-4" />
                       )}
                     </div>
                     <div className="min-w-0 space-y-1.5">
@@ -1370,7 +1283,7 @@ export function CreateTradePage({
                     {sidebarGuidanceItems.map((item) => (
                       <div
                         key={item}
-                        className="flex items-start gap-2 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-sm text-foreground/90 dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-100"
+                        className="flex items-start gap-2 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2 text-sm text-foreground/90 dark:border-slate-700/70 dark:bg-slate-900/75 dark:text-slate-100"
                       >
                         <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                         <span>{item}</span>
@@ -1379,7 +1292,7 @@ export function CreateTradePage({
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="grid grid-cols-2 gap-2">
                   <TradeSummaryStat
                     label="Entry"
                     value={formData.entryPrice || "--"}
@@ -1407,7 +1320,7 @@ export function CreateTradePage({
                   />
                 </div>
 
-                <div className="rounded-2xl border border-slate-200/80 bg-background/80 p-4 shadow-[0_12px_30px_rgba(148,163,184,0.14)] dark:border-slate-700/70 dark:bg-slate-950/88 dark:shadow-[0_12px_30px_rgba(2,8,23,0.28)]">
+                <div className="rounded-lg border border-slate-200/80 bg-background/80 p-3 dark:border-slate-700/70 dark:bg-slate-950/70">
                   <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                     Captured context
                   </p>
@@ -1442,8 +1355,8 @@ export function CreateTradePage({
                 </div>
               </div>
 
-              <div className="border-t border-slate-200/70 px-5 py-5 dark:border-slate-800/90">
-                <div className="space-y-4">
+              <div className="border-t border-slate-200/70 px-3 py-3 dark:border-slate-700/60">
+                <div className="space-y-3">
                   <AiPreTradeValidation
                     asset={formData.asset}
                     position={formData.position === PositionType.Long ? "Long" : "Short"}
@@ -1467,63 +1380,57 @@ export function CreateTradePage({
           </aside>
         </div>
 
-        <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-3rem)] max-w-5xl -translate-x-1/2 overflow-hidden rounded-4xl border border-slate-200/80 bg-background/88 px-6 py-4 ring-1 ring-slate-300/40 shadow-[0_18px_38px_rgba(148,163,184,0.16)] backdrop-blur-md transition-[border-color,box-shadow,background-color] duration-300 dark:border-slate-700/70 dark:bg-slate-950/92 dark:ring-white/5 dark:shadow-[0_18px_38px_rgba(2,8,23,0.3)]">
-          <div className="absolute inset-0 bg-linear-to-r from-primary/10 via-transparent to-accent/10 opacity-30" />
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-sm font-semibold text-foreground">
-                  {currentStep === WIZARD_STEPS.length - 1
-                    ? "Final review before you submit"
-                    : `Step ${currentStep + 1}: ${currentStepMeta.label}`}
-                </p>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "rounded-full px-2.5 py-1 text-[10px] font-medium backdrop-blur-md",
-                    remainingRequiredCount > 0 ? completionTone.pillClassName : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-                  )}
-                >
-                  {remainingRequiredCount > 0
-                    ? `${remainingRequiredCount} required item${remainingRequiredCount === 1 ? "" : "s"} remaining`
-                    : "Ready to submit"}
-                </Badge>
-              </div>
-              <p className="text-xs font-medium text-muted-foreground/80">
+        <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 rounded-xl border border-slate-200/80 bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/92">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-semibold text-foreground">
                 {currentStep === WIZARD_STEPS.length - 1
-                  ? "This trade will be saved as open and synced to your dashboard immediately."
-                  : currentStepMeta.description}
+                  ? "Final review before you submit"
+                  : `Step ${currentStep + 1}: ${currentStepMeta.label}`}
               </p>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium",
+                  remainingRequiredCount > 0 ? completionTone.pillClassName : "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+                )}
+              >
+                {remainingRequiredCount > 0
+                  ? `${remainingRequiredCount} required item${remainingRequiredCount === 1 ? "" : "s"} remaining`
+                  : "Ready to submit"}
+              </Badge>
             </div>
 
-            <div className="flex flex-col-reverse gap-3 sm:flex-row">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button
                 key="back-button"
                 type="button"
                 variant="outline"
+                size="sm"
                 onClick={(e) => {
                   e.preventDefault()
                   if (currentStep > 0) handleStepChange(currentStep - 1)
                   else router.push(returnTo)
                 }}
-                className="rounded-xl border-slate-200/80 bg-white/75 hover:bg-white/90 sm:min-w-32 backdrop-blur-md transition-all duration-300 dark:border-slate-700/70 dark:bg-slate-900/75 dark:hover:bg-slate-900"
+                className="rounded-lg sm:min-w-24"
               >
                 {currentStep > 0 ? "Back" : "Cancel"}
               </Button>
               {currentStep < WIZARD_STEPS.length - 1 ? (
-                <Button 
+                <Button
                   key="continue-button"
-                  type="button" 
+                  type="button"
+                  size="sm"
                   onClick={(e) => {
                     e.preventDefault()
                     handleStepChange(currentStep + 1)
                   }}
-                  className="rounded-xl sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40"
+                  className="rounded-lg sm:min-w-40"
                 >
                   Continue to {nextStepLabel}
                 </Button>
               ) : (
-                <Button key="submit-button" type="submit" disabled={isSubmitting} className="rounded-xl gap-2 sm:min-w-44 shadow-lg shadow-primary/25 transition-all duration-300 hover:shadow-primary/40">
+                <Button key="submit-button" type="submit" size="sm" disabled={isSubmitting} className="gap-2 rounded-lg sm:min-w-40">
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (

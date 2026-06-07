@@ -51,28 +51,28 @@ export function OverviewMetricCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border p-4 shadow-sm backdrop-blur-sm",
+        "rounded-xl border p-3 shadow-sm",
         toneStyles[tone].container,
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             {label}
           </p>
-          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground tabular-nums">
+          <p className="mt-1 text-xl font-semibold tracking-tight text-foreground tabular-nums">
             {value}
           </p>
           {helper ? (
-            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
               {helper}
             </p>
           ) : null}
         </div>
         <div
           className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
             toneStyles[tone].iconWrap,
           )}
         >

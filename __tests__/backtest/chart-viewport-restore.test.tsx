@@ -1,219 +1,155 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor, screen } from '@testing-library/react';
-import { useBacktestStore } from '@/lib/backtest-store';
+import { describe, it, expect } from "vitest";
+
+import {
+  resolveFollowScrollRange,
+  resolveViewportFollowAction,
+} from "@/components/backtest/tradingview-platform";
 
 /**
- * Test Suite: Chart Viewport Restoration on Resume
- * 
- * Validates that when reopening a backtest session:
- * 1. All candles up to CurrentTimestamp are loaded
- * 2. Chart viewport scrolls to show the last candle (checkpoint)
- * 3. Edge cases are handled (empty, single candle, timeframe switch)
+ * Test Suite: Chart Viewport Follow Logic
+ *
+ * The chart is built on lightweight-charts. After each candle update the
+ * data-push effect decides whether to re-fit to the latest candles, snap to the
+ * live edge, or leave the viewport alone. That decision is extracted into the
+ * pure `resolveViewportFollowAction` helper so it can be asserted directly —
+ * the previous suite mocked klinecharts (a library this chart no longer uses)
+ * and never rendered anything, so its assertions could never run.
  */
-describe('Chart Viewport Restoration', () => {
-  let mockKlineChart: any;
-  let mockChartPro: any;
-
-  beforeEach(() => {
-    // Mock klinecharts instance with viewport control methods
-    mockKlineChart = {
-      scrollToTimestamp: vi.fn(),
-      scrollToRealTime: vi.fn(),
-      createOverlay: vi.fn(),
-      removeOverlay: vi.fn(),
-      getVisibleRange: vi.fn(() => ({ from: 0, to: 100 })),
-    };
-
-    // Mock KLineChartPro
-    mockChartPro = {
-      updateSymbol: vi.fn(),
-      setPeriod: vi.fn(),
-    };
-
-    // Mock klinecharts init to return our mock
-    vi.mock('klinecharts', () => ({
-      init: vi.fn(() => mockKlineChart),
-      registerOverlay: vi.fn(),
-      LineType: { Dashed: 1, Solid: 0 },
-    }));
-
-    // Mock @klinecharts/pro
-    vi.mock('@klinecharts/pro', () => ({
-      KLineChartPro: vi.fn(() => mockChartPro),
-    }));
+describe("Chart viewport follow logic", () => {
+  it("fits to the latest candles when a resumed session first loads", () => {
+    // No previously-rendered candles → first ingest of the resumed series.
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 0,
+        candleCount: 100,
+        mode: "reset",
+        isViewingHistory: false,
+      }),
+    ).toBe("fit");
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
+  it("fits to the single candle when only one exists", () => {
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 0,
+        candleCount: 1,
+        mode: "reset",
+        isViewingHistory: false,
+      }),
+    ).toBe("fit");
   });
 
-  /**
-   * Test 1: CRITICAL PATH - Resume session should scroll to last candle
-   * 
-   * Scenario: User reopens a backtest session with 100 candles
-   * Expected: Chart viewport shows the last candle (checkpoint)
-   */
-  it('should scroll chart to last candle when resuming session with multiple candles', async () => {
-    const mockCandles = generateMockCandles(100);
-    const lastCandleTimestamp = new Date(mockCandles[99].timestamp).getTime();
-
-    // Simulate resumeSession loading candles
-    const store = useBacktestStore.getState();
-    store.candles = mockCandles;
-
-    // Verify scrollToTimestamp was called with the last candle's timestamp
-    await waitFor(() => {
-      expect(mockKlineChart.scrollToTimestamp).toHaveBeenCalledWith(
-        lastCandleTimestamp
-      );
-    });
+  it("re-fits after a timeframe switch reloads the whole series", () => {
+    // A timeframe switch replaces the series → a full "reset", even though the
+    // new timeframe has fewer candles covering the same time range.
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 100,
+        candleCount: 20,
+        mode: "reset",
+        isViewingHistory: false,
+      }),
+    ).toBe("fit");
   });
 
-  /**
-   * Test 2: EDGE CASE - Empty session (no candles)
-   * 
-   * Scenario: Session exists but no candles loaded yet
-   * Expected: No scroll action, no errors
-   */
-  it('should handle empty candle array gracefully', () => {
-    const store = useBacktestStore.getState();
-    store.candles = [];
-
-    // Should not attempt to scroll
-    expect(mockKlineChart.scrollToTimestamp).not.toHaveBeenCalled();
+  it("snaps to the live edge when replay appends the next candle", () => {
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 100,
+        candleCount: 101,
+        mode: "update",
+        isViewingHistory: false,
+      }),
+    ).toBe("scroll");
   });
 
-  /**
-   * Test 3: EDGE CASE - Single candle
-   * 
-   * Scenario: Session just started, only one candle exists
-   * Expected: Scroll to that single candle
-   */
-  it('should scroll to the single candle when only one exists', async () => {
-    const singleCandle = generateMockCandles(1);
-    const timestamp = new Date(singleCandle[0].timestamp).getTime();
-
-    const store = useBacktestStore.getState();
-    store.candles = singleCandle;
-
-    await waitFor(() => {
-      expect(mockKlineChart.scrollToTimestamp).toHaveBeenCalledWith(timestamp);
-    });
+  it("does not yank the viewport while the user is reviewing history", () => {
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 100,
+        candleCount: 101,
+        mode: "update",
+        isViewingHistory: true,
+      }),
+    ).toBe("none");
   });
 
-  /**
-   * Test 4: EDGE CASE - Timeframe switch during resumed session
-   * 
-   * Scenario: User switches timeframe while viewing resumed session
-   * Expected: Chart maintains position relative to time, not candle index
-   */
-  it('should maintain timestamp position when switching timeframes', async () => {
-    const store = useBacktestStore.getState();
-    
-    // Initial state: M5 with 100 candles
-    const m5Candles = generateMockCandles(100, 'M5');
-    store.candles = m5Candles;
-    const lastTimestamp = new Date(m5Candles[99].timestamp).getTime();
-
-    // Switch to H1 (fewer candles, same time range)
-    const h1Candles = generateMockCandles(20, 'H1');
-    store.candles = h1Candles;
-    
-    // Should still scroll to the same timestamp
-    await waitFor(() => {
-      expect(mockKlineChart.scrollToTimestamp).toHaveBeenCalledWith(
-        expect.any(Number)
-      );
-    });
+  it("re-fits when many candles arrive at once (large jump)", () => {
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 100,
+        candleCount: 110,
+        mode: "update",
+        isViewingHistory: false,
+      }),
+    ).toBe("fit");
   });
 
-  /**
-   * Test 5: RACE CONDITION - Chart initializes before candles load
-   * 
-   * Scenario: Chart mounts before API returns candles
-   * Expected: Scroll happens after candles arrive, not before
-   */
-  it('should wait for candles to load before attempting scroll', async () => {
-    const store = useBacktestStore.getState();
-    
-    // Chart initialized but no candles yet
-    store.candles = [];
-    expect(mockKlineChart.scrollToTimestamp).not.toHaveBeenCalled();
-
-    // Candles arrive asynchronously
-    store.candles = generateMockCandles(50);
-    
-    await waitFor(() => {
-      expect(mockKlineChart.scrollToTimestamp).toHaveBeenCalled();
-    }, { timeout: 2000 });
-  });
-
-  /**
-   * Test 6: INTEGRATION - getHistoryKLineData returns correct range
-   * 
-   * Scenario: KLineChartPro requests initial data via datafeed
-   * Expected: All loaded candles are returned, not filtered
-   */
-  it('should return all loaded candles when chart requests history', () => {
-    const mockCandles = generateMockCandles(100);
-    const mapped = mockCandles.map(c => ({
-      timestamp: new Date(c.timestamp).getTime(),
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      volume: c.volume || 0
-    }));
-
-    // Simulate datafeed.getHistoryKLineData call
-    const from = Date.now(); // Future timestamp (default chart behavior)
-    const to = from + 86400000;
-    const latestTs = mapped[mapped.length - 1].timestamp;
-
-    // When requested range is in the future, return all candles
-    const result = from > latestTs ? mapped : mapped.filter(c => c.timestamp >= from && c.timestamp <= to);
-    
-    expect(result.length).toBe(100);
-    expect(result[0]).toEqual(mapped[0]);
-    expect(result[99]).toEqual(mapped[99]);
-  });
-
-  /**
-   * Test 7: BEHAVIOR - New session should NOT auto-scroll to end
-   * 
-   * Scenario: User creates a brand new backtest session
-   * Expected: Chart starts at the beginning, not the end
-   */
-  it('should NOT scroll to end for new sessions (only resumed)', async () => {
-    const store = useBacktestStore.getState();
-    store.session = {
-      id: 1,
-      currentTimestamp: new Date('2024-01-01T00:00:00Z').toISOString(),
-      // ... other session fields
-    } as any;
-
-    // For new session, currentTimestamp equals startDate
-    const isNewSession = store.session.currentTimestamp === store.session.startDate;
-    
-    if (isNewSession) {
-      // Should not scroll (default chart behavior is fine)
-      expect(mockKlineChart.scrollToTimestamp).not.toHaveBeenCalled();
-    }
+  it("leaves the viewport untouched when the candle set is unchanged", () => {
+    expect(
+      resolveViewportFollowAction({
+        previousCandleCount: 100,
+        candleCount: 100,
+        mode: "none",
+        isViewingHistory: false,
+      }),
+    ).toBe("none");
   });
 });
 
-// ─── Test Helpers ───────────────────────────────────────────────────────
+/**
+ * Test Suite: Follow-the-live-edge scroll
+ *
+ * Once `resolveViewportFollowAction` says "scroll", `resolveFollowScrollRange`
+ * decides whether the time scale actually moves. Hitting Run should keep the
+ * chart still while new candles fill the empty room on the right, and only
+ * begin following once the newest bar would cross the right edge.
+ */
+describe("Follow-the-live-edge scroll", () => {
+  it("stays put while the newest candle still fits in the right-hand gap", () => {
+    // fitLatestCandles leaves ~6 bars of empty space (to = count + 6). The first
+    // appended candle (last index 100) is well within {from: -20, to: 106}.
+    expect(
+      resolveFollowScrollRange({
+        visibleLogicalRange: { from: -20, to: 106 },
+        candleCount: 101,
+      }),
+    ).toBeNull();
+  });
 
-function generateMockCandles(count: number, timeframe: string = 'M5') {
-  const interval = timeframe === 'M5' ? 5 * 60 * 1000 : 60 * 60 * 1000; // 5 min or 1 hour
-  const baseTime = new Date('2024-01-01T00:00:00Z').getTime();
-  
-  return Array.from({ length: count }, (_, i) => ({
-    timestamp: new Date(baseTime + i * interval).toISOString(),
-    open: 100 + Math.random() * 10,
-    high: 105 + Math.random() * 10,
-    low: 95 + Math.random() * 10,
-    close: 100 + Math.random() * 10,
-    volume: 1000 + Math.random() * 500,
-  }));
-}
+  it("does not move when the newest candle sits exactly on the right edge", () => {
+    expect(
+      resolveFollowScrollRange({
+        visibleLogicalRange: { from: 0, to: 119 },
+        candleCount: 120,
+      }),
+    ).toBeNull();
+  });
+
+  it("shifts by the overflow once the newest candle crosses the right edge", () => {
+    // Last index 120 has moved one bar past the right edge (to: 119) → shift the
+    // whole window right by 1 so the newest bar lands back on the edge.
+    expect(
+      resolveFollowScrollRange({
+        visibleLogicalRange: { from: 0, to: 119 },
+        candleCount: 121,
+      }),
+    ).toEqual({ from: 1, to: 120 });
+  });
+
+  it("shifts by the fractional overflow so the newest bar lands on the edge", () => {
+    expect(
+      resolveFollowScrollRange({
+        visibleLogicalRange: { from: 10.5, to: 130.5 },
+        candleCount: 132, // last index 131 → overflow 0.5
+      }),
+    ).toEqual({ from: 11, to: 131 });
+  });
+
+  it("returns null when there is no range or no candles yet", () => {
+    expect(resolveFollowScrollRange({ visibleLogicalRange: null, candleCount: 100 })).toBeNull();
+    expect(
+      resolveFollowScrollRange({ visibleLogicalRange: { from: 0, to: 10 }, candleCount: 0 }),
+    ).toBeNull();
+  });
+});

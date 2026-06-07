@@ -18,7 +18,7 @@ import {
 
 import { useOrderForm } from "@/hooks/use-order-form";
 import { cn } from "@/lib/utils";
-import { getMarketPriceState } from "@/components/backtest/order-panel.utils";
+import { calculateTicks, getAssetTickSize, getMarketPriceState } from "@/components/backtest/order-panel.utils";
 import {
   Form,
   FormControl,
@@ -40,14 +40,19 @@ interface OrderPanelProps {
   onCollapse?: () => void;
 }
 
-function formatPrice(value: number | null | undefined, digits = 3) {
+function formatPrice(value: number | null | undefined, digits?: number) {
+  // Default to magnitude-based precision so forex pairs keep their pip digit
+  // (1.08750) while higher-priced assets (gold, indices) show 2 — matching the
+  // order-ticket header's formatTicketPrice. Callers can still force a count.
+  const resolvedDigits = digits ?? (value != null && value >= 100 ? 2 : 5);
+
   if (value == null || !Number.isFinite(value) || value <= 0) {
-    return "0.000";
+    return (0).toFixed(resolvedDigits);
   }
 
   return value.toLocaleString("en-US", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
+    minimumFractionDigits: resolvedDigits,
+    maximumFractionDigits: resolvedDigits,
   });
 }
 
@@ -117,8 +122,9 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
   const marketPriceState = getMarketPriceState(currentPrice, previousPrice);
   const tpValue = enableTp ? Number(form.watch("takeProfit") || 0) : 0;
   const slValue = enableSl ? Number(form.watch("stopLoss") || 0) : 0;
-  const tpTicks = tpValue ? Math.abs((tpValue - price) * 10000) : 0;
-  const slTicks = slValue ? Math.abs((slValue - price) * 10000) : 0;
+  const tickSize = getAssetTickSize(sessionAsset, price);
+  const tpTicks = tpValue ? calculateTicks(tpValue, price, tickSize) : 0;
+  const slTicks = slValue ? calculateTicks(slValue, price, tickSize) : 0;
   const riskReward =
     enableTp && enableSl && tpValue > 0 && slValue > 0
       ? Math.abs(tpValue - price) / Math.max(Math.abs(price - slValue), 0.00001)

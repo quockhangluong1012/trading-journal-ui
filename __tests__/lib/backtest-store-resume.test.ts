@@ -178,6 +178,12 @@ describe('BacktestStore - resumeSession', () => {
           data: { value: { id: 1, asset: 'EURUSD', activeTimeframe: 'M5', currentBalance: 10000 } }
         } as any;
       }
+      // resumeSession finishes by calling loadOrders(), which fetches the full
+      // order book. The session-orders endpoint returns the active position too,
+      // so it must be mocked or loadOrders would overwrite the restored state.
+      if (url.includes('/backtest-orders/session/')) {
+        return { data: { value: [mockPosition] } } as any;
+      }
       if (url.includes('/backtest-market-data/')) {
         return { data: { value: [] } } as any;
       }

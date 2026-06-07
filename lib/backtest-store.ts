@@ -710,16 +710,28 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
     // change take effect without tearing down and restarting the loop.
     set({ isPlaying: true, playbackIntervalId: null });
 
+    const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
     const tick = async () => {
       if (!get().isPlaying) return;
 
+      const startedAt = now();
       await get().advanceCandle(sessionId);
 
       // advanceCandle may end or liquidate the session, which pauses playback.
       if (!get().isPlaying) return;
 
+      // Schedule the next candle relative to when this one STARTED, not when it
+      // finished, so the round-trip overlaps the wait. Without this the cadence
+      // is (request latency + interval); with it, it's max(interval, latency),
+      // so playback actually hits the selected speed when the backend is fast
+      // and degrades gracefully — never faster than every `intervalMs` — when
+      // it's slow. (Each advance mutates the session, so requests stay strictly
+      // sequential; true N-candle batching would need a backend batch endpoint.)
       const intervalMs = Math.max(100, 1000 / get().playbackSpeed);
-      const timeoutId = setTimeout(tick, intervalMs);
+      const elapsed = now() - startedAt;
+      const delayMs = Math.max(0, intervalMs - elapsed);
+      const timeoutId = setTimeout(tick, delayMs);
       set({ playbackIntervalId: timeoutId });
     };
 

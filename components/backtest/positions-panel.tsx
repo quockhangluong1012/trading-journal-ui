@@ -32,6 +32,10 @@ import { format } from "date-fns";
 import { useMemo, useState, type ReactNode } from "react";
 import type { BacktestOrder } from "@/lib/backtest-store";
 import { EditPositionModal } from "./edit-position-modal";
+import {
+  calculatePositionUnrealizedPnl,
+  calculateUnrealizedPnl,
+} from "./positions-panel.utils";
 import { toast } from "sonner";
 import {
   Table,
@@ -116,7 +120,11 @@ function formatDuration(start: string | null | undefined, end: string | null | u
   return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
-type PendingConfirmation = { type: "close" | "cancel"; id: number };
+type PendingConfirmation =
+  | { type: "close"; id: number }
+  | { type: "cancel"; id: number }
+  | { type: "close-all" }
+  | { type: "cancel-all" };
 
 export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand }: PositionsPanelProps) {
   const { session, activePositions, pendingOrders, closedPositions, closeOrder, cancelOrder } = useBacktestStore();
@@ -143,26 +151,85 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
     };
   }, [closedPositions]);
 
+  const unrealizedPnl = useMemo(
+    () => calculateUnrealizedPnl(activePositions, currentPrice),
+    [activePositions, currentPrice],
+  );
+
   const handleConfirmAction = async () => {
     if (!pendingConfirmation) return;
 
-    const { type, id } = pendingConfirmation;
+    const { type } = pendingConfirmation;
     setIsConfirming(true);
     try {
       if (type === "close") {
-        await closeOrder(id, currentPrice);
+        await closeOrder(pendingConfirmation.id, currentPrice);
         toast.success("Position closed");
-      } else {
-        await cancelOrder(id);
+      } else if (type === "cancel") {
+        await cancelOrder(pendingConfirmation.id);
         toast.success("Pending order cancelled");
+      } else if (type === "close-all") {
+        // Snapshot ids up front: closeOrder reloads the store between calls.
+        const ids = activePositions.map((position) => position.id);
+        for (const id of ids) {
+          await closeOrder(id, currentPrice);
+        }
+        toast.success(`Closed ${ids.length} position${ids.length === 1 ? "" : "s"}`);
+      } else {
+        const ids = pendingOrders.map((order) => order.id);
+        for (const id of ids) {
+          await cancelOrder(id);
+        }
+        toast.success(`Cancelled ${ids.length} order${ids.length === 1 ? "" : "s"}`);
       }
       setPendingConfirmation(null);
     } catch (err) {
-      toast.error(type === "close" ? "Failed to close position" : "Failed to cancel order");
+      const failureMessage =
+        type === "close"
+          ? "Failed to close position"
+          : type === "cancel"
+            ? "Failed to cancel order"
+            : type === "close-all"
+              ? "Failed to close all positions"
+              : "Failed to cancel all orders";
+      toast.error(failureMessage);
     } finally {
       setIsConfirming(false);
     }
   };
+
+  const confirmationCopy = (() => {
+    switch (pendingConfirmation?.type) {
+      case "close":
+        return {
+          title: "Close this position?",
+          description:
+            "This position will be closed at the current market price and moved to your order history.",
+          action: "Close Position",
+        };
+      case "cancel":
+        return {
+          title: "Cancel this order?",
+          description: "This pending order will be cancelled and removed from the order book.",
+          action: "Cancel Order",
+        };
+      case "close-all":
+        return {
+          title: `Close all ${activePositions.length} open position${activePositions.length === 1 ? "" : "s"}?`,
+          description:
+            "Every open position will be closed at the current market price and moved to your order history.",
+          action: "Close All",
+        };
+      case "cancel-all":
+        return {
+          title: `Cancel all ${pendingOrders.length} pending order${pendingOrders.length === 1 ? "" : "s"}?`,
+          description: "Every pending order will be cancelled and removed from the order book.",
+          action: "Cancel All",
+        };
+      default:
+        return null;
+    }
+  })();
 
   const formatCurrency = (val: number | null | undefined) => {
     if (val == null) return "-";
@@ -177,6 +244,15 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
   };
 
   if (isCollapsed) {
+    const unrealizedTone =
+      unrealizedPnl > 0 ? "text-emerald-500" : unrealizedPnl < 0 ? "text-rose-500" : "text-foreground";
+    const realizedTone =
+      historySummary.totalPnl > 0
+        ? "text-emerald-500"
+        : historySummary.totalPnl < 0
+          ? "text-rose-500"
+          : "text-foreground";
+
     return (
       <div className="flex h-full items-center gap-2 border-t bg-secondary/10 px-3 text-xs">
         <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
@@ -188,6 +264,18 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
         <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
           Closed {closedPositions.length}
         </Badge>
+        {activePositions.length > 0 && (
+          <span className="flex items-center gap-1.5 tabular-nums" title="Total unrealized P&L across open positions">
+            <span className="text-muted-foreground">Open P&L</span>
+            <span className={`font-semibold ${unrealizedTone}`}>{formatPnL(unrealizedPnl)} USD</span>
+          </span>
+        )}
+        {closedPositions.length > 0 && (
+          <span className="flex items-center gap-1.5 tabular-nums" title="Total realized P&L from closed positions">
+            <span className="text-muted-foreground">Realized</span>
+            <span className={`font-semibold ${realizedTone}`}>{formatPnL(historySummary.totalPnl)} USD</span>
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-muted-foreground">Last price {formatCurrency(currentPrice)}</span>
           {onExpand && (
@@ -222,6 +310,28 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
             <Badge variant="outline" className="rounded-full px-2.5 py-1 font-medium">
               Closed {closedPositions.length}
             </Badge>
+            {activePositions.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-full border-rose-500/40 bg-rose-500/5 px-3 text-xs font-medium text-rose-600 hover:bg-rose-500/10 dark:text-rose-300"
+                onClick={() => setPendingConfirmation({ type: "close-all" })}
+              >
+                Close all
+              </Button>
+            )}
+            {pendingOrders.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-full border-amber-500/40 bg-amber-500/5 px-3 text-xs font-medium text-amber-600 hover:bg-amber-500/10 dark:text-amber-300"
+                onClick={() => setPendingConfirmation({ type: "cancel-all" })}
+              >
+                Cancel all
+              </Button>
+            )}
             <div className="ml-auto flex items-center gap-2">
               <span className="text-muted-foreground">Last price {formatCurrency(currentPrice)}</span>
               {onCollapse && (
@@ -292,11 +402,9 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
                   activePositions.map((pos) => {
                     const price = pos.filledPrice || pos.entryPrice;
                     const isBuy = pos.side === "Long";
-                    
-                    const pnlValue = currentPrice > 0 
-                      ? (isBuy ? (currentPrice - price) * pos.positionSize : (price - currentPrice) * pos.positionSize)
-                      : 0;
-                      
+
+                    const pnlValue = calculatePositionUnrealizedPnl(pos, currentPrice);
+
                     const leverage = session?.leverage || 50;
                     const margin = (pos.positionSize * price) / leverage;
                     const pnlPercent = margin > 0 
@@ -569,14 +677,8 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingConfirmation?.type === "close" ? "Close this position?" : "Cancel this order?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingConfirmation?.type === "close"
-                ? "This position will be closed at the current market price and moved to your order history."
-                : "This pending order will be cancelled and removed from the order book."}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{confirmationCopy?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmationCopy?.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isConfirming}>Keep</AlertDialogCancel>
@@ -587,11 +689,7 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
                 void handleConfirmAction();
               }}
             >
-              {isConfirming
-                ? "Working..."
-                : pendingConfirmation?.type === "close"
-                  ? "Close Position"
-                  : "Cancel Order"}
+              {isConfirming ? "Working..." : confirmationCopy?.action}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

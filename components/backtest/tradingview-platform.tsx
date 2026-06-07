@@ -17,11 +17,14 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import {
+  Clock,
   Crosshair,
   Eye,
   EyeOff,
   FilePenLine,
   GripVertical,
+  Keyboard,
+  Loader2,
   Lock,
   Magnet,
   Maximize2,
@@ -55,6 +58,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -77,6 +89,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BacktestOrder, CandleData, PlaybackSpeed, Timeframe } from "@/lib/backtest-store";
+import { BACKTEST_KEYBOARD_SHORTCUTS } from "@/components/backtest/keyboard-shortcuts";
 import { cn } from "@/lib/utils";
 
 const FOREX_CODES = new Set([
@@ -891,6 +904,82 @@ export function buildIncrementalChartData(
   };
 }
 
+export type ViewportFollowAction = "fit" | "scroll" | "none";
+
+/**
+ * Decide how the time scale should follow new candle data, factored out of the
+ * data-push effect so the behaviour is unit-testable:
+ *  - "fit"    → re-fit to the latest candles (first load / resume, a full
+ *               re-ingest such as a timeframe switch, a shrink/reorder, or a
+ *               large jump of many candles at once).
+ *  - "scroll" → snap to the live edge for a normal single-bar replay append,
+ *               unless the user has panned back to review history.
+ *  - "none"   → leave the viewport untouched.
+ */
+export function resolveViewportFollowAction({
+  previousCandleCount,
+  candleCount,
+  mode,
+  isViewingHistory,
+}: {
+  previousCandleCount: number;
+  candleCount: number;
+  mode: IncrementalChartDataUpdate["mode"];
+  isViewingHistory: boolean;
+}): ViewportFollowAction {
+  if (
+    previousCandleCount === 0 ||
+    mode === "reset" ||
+    candleCount < previousCandleCount ||
+    candleCount - previousCandleCount > 5
+  ) {
+    return "fit";
+  }
+
+  if (candleCount > previousCandleCount && !isViewingHistory) {
+    return "scroll";
+  }
+
+  return "none";
+}
+
+/**
+ * For a normal single-bar replay append ("scroll"), decide whether the time
+ * scale actually needs to move. The viewport stays PUT while the newest candle
+ * still fits inside the current logical range (there is empty room on the
+ * right) and only shifts — by exactly the overflow — once the newest bar would
+ * cross the right edge. So hitting Run no longer yanks the chart to the live
+ * edge: candles fill the existing right-hand gap in place, and the chart begins
+ * to follow only when it runs out of room.
+ *
+ * Returns the next logical range to apply, or null to leave the viewport as-is.
+ * Relies on `shiftVisibleRangeOnNewBar` being disabled so lightweight-charts
+ * doesn't auto-shift the range out from under this logic.
+ */
+export function resolveFollowScrollRange({
+  visibleLogicalRange,
+  candleCount,
+}: {
+  visibleLogicalRange: { from: number; to: number } | null;
+  candleCount: number;
+}): { from: number; to: number } | null {
+  if (!visibleLogicalRange || candleCount <= 0) {
+    return null;
+  }
+
+  const lastIndex = candleCount - 1;
+  if (lastIndex <= visibleLogicalRange.to) {
+    // Newest bar is still within view — empty space remains on the right.
+    return null;
+  }
+
+  const delta = lastIndex - visibleLogicalRange.to;
+  return {
+    from: visibleLogicalRange.from + delta,
+    to: visibleLogicalRange.to + delta,
+  };
+}
+
 export function calculateReplayProgress({
   startDate,
   endDate,
@@ -1080,57 +1169,64 @@ export function buildTradingSessionOverlays(
     return [];
   }
 
-  const sortedCandles = [...chartCandles].sort((left, right) => Number(left.time) - Number(right.time));
-  const firstTime = Number(sortedCandles[0].time);
-  const lastTime = Number(sortedCandles[sortedCandles.length - 1].time);
+  // Single pass over the candles. For each candle we test the session windows of
+  // its own UTC day and of the previous day (the latter catches sessions that
+  // wrap past midnight), accumulating the high/low per window. This replaces the
+  // previous O(days × sessions × candles) implementation — which re-sorted the
+  // whole series and re-filtered it for every (day, session) pair — with a
+  // single O(candles × sessions) pass, so it stays cheap when replay appends a
+  // new candle on every tick.
+  const accumulators = new Map<string, TradingSessionOverlay>();
+  const dayOffsets = [0, -SECONDS_PER_DAY];
 
-  if (!Number.isFinite(firstTime) || !Number.isFinite(lastTime)) {
-    return [];
-  }
+  for (const candle of chartCandles) {
+    const time = Number(candle.time);
+    if (!Number.isFinite(time)) {
+      continue;
+    }
 
-  const firstDayStart = getUtcDayStartSeconds(firstTime) - SECONDS_PER_DAY;
-  const lastDayStart = getUtcDayStartSeconds(lastTime) + SECONDS_PER_DAY;
-  const overlays: TradingSessionOverlay[] = [];
+    const dayStart = getUtcDayStartSeconds(time);
 
-  for (let dayStart = firstDayStart; dayStart <= lastDayStart; dayStart += SECONDS_PER_DAY) {
-    for (const session of sessions) {
-      const bounds = createTradingSessionBounds(dayStart, session);
-      const sessionCandles = sortedCandles.filter((candle) => {
-        const time = Number(candle.time);
-        return time >= Number(bounds.startTime) && time < Number(bounds.endTime);
-      });
+    for (const dayOffset of dayOffsets) {
+      const day = dayStart + dayOffset;
 
-      if (sessionCandles.length === 0) {
-        continue;
-      }
+      for (const session of sessions) {
+        const bounds = createTradingSessionBounds(day, session);
+        if (time < Number(bounds.startTime) || time >= Number(bounds.endTime)) {
+          continue;
+        }
 
-      let high = Number.NEGATIVE_INFINITY;
-      let low = Number.POSITIVE_INFINITY;
+        const id = `${session.id}-${bounds.startTime}`;
+        let overlay = accumulators.get(id);
+        if (!overlay) {
+          overlay = {
+            id,
+            sessionId: session.id,
+            label: session.label,
+            color: session.color,
+            fillColor: session.fillColor,
+            startTime: bounds.startTime,
+            endTime: bounds.endTime,
+            high: Number.NEGATIVE_INFINITY,
+            low: Number.POSITIVE_INFINITY,
+          };
+          accumulators.set(id, overlay);
+        }
 
-      for (const candle of sessionCandles) {
         if (Number.isFinite(candle.high)) {
-          high = Math.max(high, candle.high);
+          overlay.high = Math.max(overlay.high, candle.high);
         }
         if (Number.isFinite(candle.low)) {
-          low = Math.min(low, candle.low);
+          overlay.low = Math.min(overlay.low, candle.low);
         }
       }
+    }
+  }
 
-      if (!Number.isFinite(high) || !Number.isFinite(low)) {
-        continue;
-      }
-
-      overlays.push({
-        id: `${session.id}-${bounds.startTime}`,
-        sessionId: session.id,
-        label: session.label,
-        color: session.color,
-        fillColor: session.fillColor,
-        startTime: bounds.startTime,
-        endTime: bounds.endTime,
-        high,
-        low,
-      });
+  const overlays: TradingSessionOverlay[] = [];
+  for (const overlay of accumulators.values()) {
+    if (Number.isFinite(overlay.high) && Number.isFinite(overlay.low)) {
+      overlays.push(overlay);
     }
   }
 
@@ -1307,28 +1403,53 @@ export function buildOrderPriceLines({
   return lines;
 }
 
-function findNearestChartTime(timestamp: string | null | undefined, chartTimes: UTCTimestamp[] = []): UTCTimestamp | null {
+// Binary-search the index of the bar whose bucket CONTAINS `target` in an
+// ascending-by-time array — i.e. the last bar whose start time is <= target.
+// Each bar's time is its bucket start and the bar spans [time, nextTime), so a
+// timestamp anywhere inside that window belongs to this bar. Returns -1 when
+// `target` precedes the first bar.
+//
+// This replaces a nearest-by-time lookup that snapped an order to the *next*
+// bar whenever its timestamp fell in the back half of a bar. That mis-placed
+// markers after a timeframe switch (an order stamped on a fine timeframe lands
+// between two coarse bars) and at the unaligned session-start edge — the
+// backend stamps an order with the session's simulated clock, which can sit a
+// few minutes past the last revealed bar's start, so it would either snap
+// forward or fall out of range entirely. Flooring maps the order back onto the
+// bar the user was actually looking at.
+function floorSortedIndexByTime(
+  target: number,
+  length: number,
+  timeAt: (index: number) => number,
+): number {
+  let lo = 0;
+  let hi = length - 1;
+  let result = -1;
+
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (timeAt(mid) <= target) {
+      result = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  return result;
+}
+
+function findContainingChartTime(timestamp: string | null | undefined, chartTimes: UTCTimestamp[] = []): UTCTimestamp | null {
   const time = timestamp ? toChartTimestamp(timestamp) : null;
   if (!time || chartTimes.length === 0) {
     return null;
   }
 
-  const firstTime = Number(chartTimes[0]);
-  const lastTime = Number(chartTimes[chartTimes.length - 1]);
-  const requestedTime = Number(time);
-
-  if (requestedTime < firstTime || requestedTime > lastTime) {
-    return null;
-  }
-
-  return chartTimes.reduce((nearest, candidate) => {
-    const nearestDistance = Math.abs(Number(nearest) - Number(time));
-    const candidateDistance = Math.abs(Number(candidate) - Number(time));
-    return candidateDistance < nearestDistance ? candidate : nearest;
-  }, chartTimes[0]);
+  const index = floorSortedIndexByTime(Number(time), chartTimes.length, (i) => Number(chartTimes[i]));
+  return index >= 0 ? chartTimes[index] : null;
 }
 
-function findNearestChartCandle(
+function findContainingChartCandle(
   timestamp: string | null | undefined,
   chartCandles: Array<CandlestickData<UTCTimestamp>> = [],
 ): CandlestickData<UTCTimestamp> | null {
@@ -1337,19 +1458,8 @@ function findNearestChartCandle(
     return null;
   }
 
-  const firstTime = Number(chartCandles[0].time);
-  const lastTime = Number(chartCandles[chartCandles.length - 1].time);
-  const requestedTime = Number(time);
-
-  if (requestedTime < firstTime || requestedTime > lastTime) {
-    return null;
-  }
-
-  return chartCandles.reduce((nearest, candidate) => {
-    const nearestDistance = Math.abs(Number(nearest.time) - Number(time));
-    const candidateDistance = Math.abs(Number(candidate.time) - Number(time));
-    return candidateDistance < nearestDistance ? candidate : nearest;
-  }, chartCandles[0]);
+  const index = floorSortedIndexByTime(Number(time), chartCandles.length, (i) => Number(chartCandles[i].time));
+  return index >= 0 ? chartCandles[index] : null;
 }
 
 function createOrderMarkerOverlay({
@@ -1371,12 +1481,12 @@ function createOrderMarkerOverlay({
   chartTimes?: UTCTimestamp[];
   isExit?: boolean;
 }): OrderMarkerOverlay | null {
-  const candle = findNearestChartCandle(timestamp, chartCandles)
-    ?? findNearestChartCandle(fallbackTimestamp, chartCandles)
+  const candle = findContainingChartCandle(timestamp, chartCandles)
+    ?? findContainingChartCandle(fallbackTimestamp, chartCandles)
     ?? (chartCandles.length > 0 ? chartCandles[chartCandles.length - 1] : null);
   const time = candle?.time
-    ?? findNearestChartTime(timestamp, chartTimes)
-    ?? findNearestChartTime(fallbackTimestamp, chartTimes)
+    ?? findContainingChartTime(timestamp, chartTimes)
+    ?? findContainingChartTime(fallbackTimestamp, chartTimes)
     ?? chartTimes?.at(-1);
   if (!time || !isValidPrice(price)) {
     return null;
@@ -2603,6 +2713,13 @@ export function TradingViewPlatform({
   const [isMagnetEnabled, setIsMagnetEnabled] = useState(false);
   const [areDrawingsLocked, setAreDrawingsLocked] = useState(false);
   const [areDrawingsVisible, setAreDrawingsVisible] = useState(true);
+  const [areSessionsEnabled, setAreSessionsEnabled] = useState(true);
+  const [sessionVisibility, setSessionVisibility] = useState<Record<TradingSessionId, boolean>>(() =>
+    ICT_TRADING_SESSIONS.reduce(
+      (acc, session) => ({ ...acc, [session.id]: true }),
+      {} as Record<TradingSessionId, boolean>,
+    ),
+  );
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
   const [replayControlsSize, setReplayControlsSize] = useState({ width: 0, height: 0 });
   const [replayControlsPosition, setReplayControlsPosition] = useState<ReplayControlsPosition | null>(null);
@@ -3342,6 +3459,14 @@ export function TradingViewPlatform({
     });
   }, [chartSize.height, chartSize.width, overlayRevision, tradingSessionOverlays]);
 
+  const visiblePositionedTradingSessions = useMemo(
+    () =>
+      areSessionsEnabled
+        ? positionedTradingSessions.filter((session) => sessionVisibility[session.sessionId])
+        : [],
+    [areSessionsEnabled, positionedTradingSessions, sessionVisibility],
+  );
+
   const positionedDraftDrawing = useMemo(() => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
@@ -4077,6 +4202,11 @@ export function TradingViewPlatform({
         rightOffset: 6,
         secondsVisible: false,
         timeVisible: true,
+        // Don't auto-scroll the viewport when a new bar is appended. The
+        // data-push effect follows the live edge manually (see
+        // resolveFollowScrollRange) so the chart only moves once the right
+        // runs out of space, instead of snapping forward on every replay tick.
+        shiftVisibleRangeOnNewBar: false,
       },
     });
 
@@ -4206,18 +4336,29 @@ export function TradingViewPlatform({
       volumeSeries.setData(chartData.volumes);
     }
 
-    if (
-      previousCandleCount === 0 ||
-      chartDataUpdate.mode === "reset" ||
-      chartData.candles.length < previousCandleCount ||
-      chartData.candles.length - previousCandleCount > 5
-    ) {
+    const followAction = resolveViewportFollowAction({
+      previousCandleCount,
+      candleCount: chartData.candles.length,
+      mode: chartDataUpdate.mode,
+      isViewingHistory: isViewingHistoryRef.current,
+    });
+
+    if (followAction === "fit") {
       fitLatestCandles(chart, chartData.candles.length);
       isViewingHistoryRef.current = false;
-    } else if (chartData.candles.length > previousCandleCount && !isViewingHistoryRef.current) {
-      // Skip the snap-to-live-edge while the user is panning through past
-      // candles, so reviewing history isn't interrupted by new data.
-      chart.timeScale().scrollToRealTime();
+    } else if (followAction === "scroll") {
+      // Follow the live edge, but only once the newest candle would cross the
+      // right edge — until then it fills the existing right-hand gap and the
+      // viewport stays put. (And never while the user is panning history; that
+      // path resolves to "none" above.)
+      const timeScale = chart.timeScale();
+      const nextRange = resolveFollowScrollRange({
+        visibleLogicalRange: timeScale.getVisibleLogicalRange(),
+        candleCount: chartData.candles.length,
+      });
+      if (nextRange) {
+        timeScale.setVisibleLogicalRange(nextRange);
+      }
     }
 
     previousCandleCountRef.current = chartData.candles.length;
@@ -4404,13 +4545,13 @@ export function TradingViewPlatform({
     <div className={cn("relative h-full w-full overflow-hidden bg-background", className)} data-testid="tradingview-platform">
       <div ref={containerRef} aria-label={`${asset} replay chart`} className="h-full w-full" />
 
-      {chartSize.width > 0 && chartSize.height > 0 && positionedTradingSessions.length > 0 ? (
+      {chartSize.width > 0 && chartSize.height > 0 && visiblePositionedTradingSessions.length > 0 ? (
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-[1] h-full w-full overflow-hidden"
           viewBox={`0 0 ${chartSize.width} ${chartSize.height}`}
         >
-          {positionedTradingSessions.map((session) => (
+          {visiblePositionedTradingSessions.map((session) => (
             <g key={session.id}>
               <rect
                 x={session.x}
@@ -4717,7 +4858,12 @@ export function TradingViewPlatform({
         <div className="rounded-md border border-border/70 bg-background/90 px-2.5 py-1.5 shadow-sm backdrop-blur">
           <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
             <span className="max-w-48 truncate" title={asset}>{asset}</span>
-            <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{timeframe}</span>
+            {/* The active timeframe is already shown (and highlighted) by the
+                bottom replay bar's TF buttons, so only surface it here as a
+                static pill when there is no interactive selector. */}
+            {onTimeframeChange ? null : (
+              <span className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">{timeframe}</span>
+            )}
             <span className="tabular-nums text-primary">{latestPrice}</span>
           </div>
         </div>
@@ -4725,7 +4871,7 @@ export function TradingViewPlatform({
 
       <div
         ref={replayControlsRef}
-        className="pointer-events-auto absolute z-30 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-md border border-border/70 bg-background/95 px-2 py-1.5 shadow-sm backdrop-blur"
+        className="pointer-events-auto absolute z-30 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1.5 rounded-md border border-border/70 bg-background/95 px-2 py-1.5 shadow-sm backdrop-blur"
         style={replayControlsPosition
           ? { left: replayControlsPosition.x, top: replayControlsPosition.y }
           : { left: "50%", bottom: REPLAY_CONTROLS_TIME_AXIS_CLEARANCE, transform: "translateX(-50%)" }}
@@ -4804,6 +4950,84 @@ export function TradingViewPlatform({
             </div>
           </>
         ) : null}
+        <div aria-hidden="true" className="h-4 w-px bg-border/60" />
+        {tradingSessionOverlays.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 rounded-md",
+                  areSessionsEnabled && "text-primary",
+                )}
+                aria-label="ICT trading sessions"
+                title="ICT trading sessions"
+              >
+                <Clock className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-52">
+              <DropdownMenuLabel>ICT sessions</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={areSessionsEnabled}
+                onCheckedChange={(checked) => setAreSessionsEnabled(checked === true)}
+                onSelect={(event) => event.preventDefault()}
+              >
+                Show sessions
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              {ICT_TRADING_SESSIONS.map((session) => (
+                <DropdownMenuCheckboxItem
+                  key={session.id}
+                  checked={sessionVisibility[session.id]}
+                  disabled={!areSessionsEnabled}
+                  onCheckedChange={(checked) =>
+                    setSessionVisibility((current) => ({ ...current, [session.id]: checked === true }))
+                  }
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: session.color }}
+                    />
+                    {session.label}
+                  </span>
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-md"
+              aria-label="Keyboard shortcuts"
+              title="Keyboard shortcuts"
+            >
+              <Keyboard className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="center" className="w-64 p-3">
+            <div className="text-sm font-semibold">Keyboard shortcuts</div>
+            <div className="mt-2 space-y-1.5">
+              {BACKTEST_KEYBOARD_SHORTCUTS.map((shortcut) => (
+                <div key={shortcut.keys} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-muted-foreground">{shortcut.description}</span>
+                  <kbd className="shrink-0 rounded border border-border/70 bg-muted px-1.5 py-0.5 font-mono text-[10px] font-semibold">
+                    {shortcut.keys}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
         {finishAction ? (
           <>
             <div aria-hidden="true" className="h-4 w-px bg-border/60" />
@@ -4816,6 +5040,15 @@ export function TradingViewPlatform({
         <div className="absolute inset-0 flex items-center justify-center px-6 text-center">
           <div className="rounded-md border border-border/70 bg-background/95 px-4 py-3 text-sm font-medium text-muted-foreground shadow-sm backdrop-blur">
             Waiting for historical candles
+          </div>
+        </div>
+      ) : null}
+
+      {isSwitchingTimeframe && chartData.candles.length > 0 ? (
+        <div className="pointer-events-none absolute inset-x-0 top-14 z-30 flex justify-center">
+          <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background/95 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Loading {timeframe} candles…
           </div>
         </div>
       ) : null}

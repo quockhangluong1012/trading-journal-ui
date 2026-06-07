@@ -9,12 +9,14 @@ export function PriceLevelBar({
   currentPrice,
 }: {
   trade: Trade;
-  currentPrice: number;
+  /** Real market/exit price. Omit (or pass null) when no live price exists. */
+  currentPrice?: number | null;
 }) {
   const isLong = trade.position === PositionType.Long;
   const hasTargetTier1 = trade.targetTier1 > 0;
   const hasTargetTier2 = (trade.targetTier2 ?? 0) > 0;
   const hasTargetTier3 = (trade.targetTier3 ?? 0) > 0;
+  const hasLivePrice = typeof currentPrice === "number" && currentPrice > 0;
 
   // Calculate positions relative to a range
   const prices = [
@@ -23,8 +25,8 @@ export function PriceLevelBar({
     trade.targetTier1,
     trade.targetTier2,
     trade.targetTier3,
-    currentPrice,
-  ].filter((p) => p > 0);
+    hasLivePrice ? currentPrice : undefined,
+  ].filter((p): p is number => typeof p === "number" && p > 0);
 
   const minPrice = Math.min(...prices) * 0.98;
   const maxPrice = Math.max(...prices) * 1.02;
@@ -33,45 +35,46 @@ export function PriceLevelBar({
   const getPosition = (price: number) => ((price - minPrice) / range) * 100;
 
   const entryPos = getPosition(trade.entryPrice);
-  const currentPos = getPosition(currentPrice);
+  const currentPos = hasLivePrice ? getPosition(currentPrice) : null;
   const stopPos = getPosition(trade.stopLoss);
   const t1Pos = hasTargetTier1 ? getPosition(trade.targetTier1) : null;
   const t2Pos = hasTargetTier2 ? getPosition(trade.targetTier2!) : null;
   const t3Pos = hasTargetTier3 ? getPosition(trade.targetTier3!) : null;
 
-  // Determine if targets are hit
-  const t1Hit = hasTargetTier1 &&
+  // Determine if targets are hit (only meaningful with a real current price)
+  const t1Hit = hasLivePrice && hasTargetTier1 &&
     (isLong
       ? currentPrice >= trade.targetTier1
       : currentPrice <= trade.targetTier1);
-  const t2Hit = hasTargetTier2 &&
+  const t2Hit = hasLivePrice && hasTargetTier2 &&
     (isLong
       ? currentPrice >= trade.targetTier2!
       : currentPrice <= trade.targetTier2!);
-  const t3Hit = hasTargetTier3 &&
+  const t3Hit = hasLivePrice && hasTargetTier3 &&
     (isLong
       ? currentPrice >= trade.targetTier3!
       : currentPrice <= trade.targetTier3!);
-  const stopHit = isLong
-    ? currentPrice <= trade.stopLoss
-    : currentPrice >= trade.stopLoss;
+  const stopHit = hasLivePrice &&
+    (isLong ? currentPrice <= trade.stopLoss : currentPrice >= trade.stopLoss);
 
   return (
     <div className="space-y-4">
       <div className="relative h-12 rounded-lg bg-secondary/50">
-        {/* Progress fill from entry to current */}
-        <div
-          className={`absolute top-0 h-full rounded-lg transition-all ${
-            (isLong && currentPrice >= trade.entryPrice) ||
-            (!isLong && currentPrice <= trade.entryPrice)
-              ? "bg-success/20"
-              : "bg-destructive/20"
-          }`}
-          style={{
-            left: `${Math.min(entryPos, currentPos)}%`,
-            width: `${Math.abs(currentPos - entryPos)}%`,
-          }}
-        />
+        {/* Progress fill from entry to current (only when a live price exists) */}
+        {hasLivePrice && currentPos !== null && (
+          <div
+            className={`absolute top-0 h-full rounded-lg transition-all ${
+              (isLong && currentPrice >= trade.entryPrice) ||
+              (!isLong && currentPrice <= trade.entryPrice)
+                ? "bg-success/20"
+                : "bg-destructive/20"
+            }`}
+            style={{
+              left: `${Math.min(entryPos, currentPos)}%`,
+              width: `${Math.abs(currentPos - entryPos)}%`,
+            }}
+          />
+        )}
 
         {/* Stop Loss marker */}
         <TooltipProvider>
@@ -180,26 +183,35 @@ export function PriceLevelBar({
           </TooltipProvider>
         )}
 
-        {/* Current price indicator */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div
-                className="absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-accent border-2 border-background flex items-center justify-center cursor-pointer transition-transform hover:scale-110"
-                style={{
-                  left: `${currentPos}%`,
-                  transform: `translateX(-50%) translateY(-50%)`,
-                }}
-              >
-                <DollarSign className="h-3 w-3 text-accent-foreground" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Current: {formatTradePrice(currentPrice)}</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {/* Current price indicator (only when a live price exists) */}
+        {hasLivePrice && currentPos !== null && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-accent border-2 border-background flex items-center justify-center cursor-pointer transition-transform hover:scale-110"
+                  style={{
+                    left: `${currentPos}%`,
+                    transform: `translateX(-50%) translateY(-50%)`,
+                  }}
+                >
+                  <DollarSign className="h-3 w-3 text-accent-foreground" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Current: {formatTradePrice(currentPrice)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
+
+      {!hasLivePrice && (
+        <p className="text-center text-xs text-muted-foreground">
+          Showing planned stop, entry, and target levels. Live price tracking
+          isn&apos;t connected yet.
+        </p>
+      )}
 
       {/* Legend */}
       <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
@@ -215,10 +227,12 @@ export function PriceLevelBar({
           <Target className="h-3 w-3 text-success" />
           <span>Targets</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded-full bg-accent" />
-          <span>Current</span>
-        </div>
+        {hasLivePrice && (
+          <div className="flex items-center gap-1.5">
+            <div className="h-3 w-3 rounded-full bg-accent" />
+            <span>Current</span>
+          </div>
+        )}
       </div>
     </div>
   );
