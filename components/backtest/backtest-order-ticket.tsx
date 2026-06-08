@@ -12,6 +12,7 @@ import { BarChart3, GripVertical, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { OrderPanel } from "@/components/backtest/order-panel";
+import type { OrderFormInitialOrder } from "@/hooks/use-order-form";
 import { cn } from "@/lib/utils";
 
 interface BacktestOrderTicketProps {
@@ -29,7 +30,10 @@ export interface BacktestOrderTicketPosition {
 export interface BacktestOrderTicketOpenRequest {
   id: number;
   price?: number | null;
+  initialOrder?: OrderFormInitialOrder | null;
 }
+
+export type BacktestOrderTicketOpenInput = number | OrderFormInitialOrder | null;
 
 interface BacktestOrderTicketDragState {
   pointerId: number;
@@ -71,6 +75,20 @@ function formatTicketPrice(price: number | null) {
   });
 }
 
+function getTicketRequestPrice(
+  request: BacktestOrderTicketOpenInput | undefined,
+): number | null | undefined {
+  if (typeof request === "number") {
+    return request;
+  }
+
+  if (request && typeof request === "object") {
+    return request.entryPrice ?? null;
+  }
+
+  return request;
+}
+
 export function BacktestOrderTicket({
   sessionId,
   currentPrice,
@@ -81,13 +99,17 @@ export function BacktestOrderTicket({
   const [ticketPosition, setTicketPosition] = useState<BacktestOrderTicketPosition | null>(null);
   const [ticketVersion, setTicketVersion] = useState(0);
   const [openedAtPrice, setOpenedAtPrice] = useState<number | null>(null);
+  const [initialOrder, setInitialOrder] = useState<OrderFormInitialOrder | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const ticketRef = useRef<HTMLElement>(null);
   const dragStateRef = useRef<BacktestOrderTicketDragState | null>(null);
   const lastOpenRequestIdRef = useRef<number | null>(openRequest?.id ?? null);
 
-  const openTicket = useCallback((price: number | null | undefined = currentPrice) => {
-    setOpenedAtPrice(normalizeTicketPrice(price) ?? normalizeTicketPrice(currentPrice));
+  const openTicket = useCallback((request: BacktestOrderTicketOpenInput | undefined = currentPrice) => {
+    const nextInitialOrder = request && typeof request === "object" ? request : null;
+    const requestedPrice = getTicketRequestPrice(request);
+    setInitialOrder(nextInitialOrder);
+    setOpenedAtPrice(normalizeTicketPrice(requestedPrice) ?? normalizeTicketPrice(currentPrice));
     setTicketVersion((version) => version + 1);
     setIsOpen(true);
   }, [currentPrice]);
@@ -228,7 +250,7 @@ export function BacktestOrderTicket({
     }
 
     lastOpenRequestIdRef.current = openRequest.id;
-    openTicket(openRequest.price);
+    openTicket(openRequest.initialOrder ?? openRequest.price);
   }, [openRequest, openTicket]);
 
   const openedAtPriceLabel = formatTicketPrice(openedAtPrice);
@@ -287,7 +309,10 @@ export function BacktestOrderTicket({
           variant="ghost"
           size="icon"
           className="h-8 w-8 shrink-0 rounded-md"
-          onClick={() => setIsOpen(false)}
+          onClick={() => {
+            setIsOpen(false);
+            setInitialOrder(null);
+          }}
           aria-label="Close order ticket"
           title="Close order ticket"
         >
@@ -300,6 +325,7 @@ export function BacktestOrderTicket({
           sessionId={sessionId}
           currentPrice={currentPrice}
           previousPrice={previousPrice}
+          initialOrder={initialOrder}
         />
       </div>
     </section>

@@ -120,4 +120,62 @@ describe("useOrderForm", () => {
       "Market price is unavailable. Wait for a live price before placing a market order.",
     );
   });
+
+  it("prefills limit order fields from a chart quick order request", async () => {
+    const placeOrder = vi.fn().mockResolvedValue(createOrder({
+      side: "Short",
+      orderType: "Limit",
+      status: "Pending",
+      entryPrice: 1.14,
+      stopLoss: 1.17,
+      takeProfit: 1.105,
+    }));
+    useBacktestStore.setState({
+      balance: 10000,
+      currentTimestamp: "2024-01-01T00:15:00Z",
+      session: createSession(),
+      candles: [
+        { timestamp: "2024-01-01T00:00:00Z", open: 1.1, high: 1.13, low: 1.09, close: 1.12, volume: 100 },
+      ],
+      placeOrder,
+    });
+
+    const { result } = renderHook(() => useOrderForm({
+      sessionId: 42,
+      currentPrice: 1.12,
+      initialOrder: {
+        side: "Short",
+        orderType: "Limit",
+        entryPrice: 1.14,
+        stopLoss: 1.17,
+        takeProfit: 1.105,
+      },
+    }));
+
+    expect(result.current.side).toBe("Short");
+    expect(result.current.orderType).toBe("Limit");
+    expect(result.current.enableTp).toBe(true);
+    expect(result.current.enableSl).toBe(true);
+    expect(result.current.form.getValues()).toMatchObject({
+      positionSize: 1,
+      entryPrice: 1.14,
+      stopLoss: 1.17,
+      takeProfit: 1.105,
+    });
+
+    await act(async () => {
+      await result.current.form.handleSubmit(result.current.onSubmit)();
+    });
+
+    expect(placeOrder).toHaveBeenCalledWith({
+      sessionId: 42,
+      orderType: 1,
+      side: 1,
+      entryPrice: 1.14,
+      positionSize: 1,
+      stopLoss: 1.17,
+      takeProfit: 1.105,
+      orderedAt: "2024-01-01T00:00:00Z",
+    });
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   ColorType,
   CrosshairMode,
@@ -17,6 +17,8 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import {
+  ArrowDownRight,
+  ArrowUpRight,
   Clock,
   Crosshair,
   Eye,
@@ -42,9 +44,11 @@ import {
   Ruler,
   Save,
   Settings2,
+  ShieldCheck,
   SkipForward,
   Slash,
   Square,
+  Target,
   Trash2,
   TrendingUp,
   Type,
@@ -89,6 +93,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BacktestOrder, CandleData, PlaybackSpeed, Timeframe } from "@/lib/backtest-store";
+import type { OrderFormInitialOrder } from "@/hooks/use-order-form";
 import { BACKTEST_KEYBOARD_SHORTCUTS } from "@/components/backtest/keyboard-shortcuts";
 import { cn } from "@/lib/utils";
 
@@ -168,6 +173,10 @@ const FLOATING_DRAWING_TOOLBAR_OFFSET = 14;
 const FLOATING_DRAWING_TOOLBAR_DEFAULT_WIDTH = 740;
 const FLOATING_DRAWING_TOOLBAR_DEFAULT_HEIGHT = 48;
 const CURRENT_PRICE_ACTION_EDGE_MARGIN = 18;
+const QUICK_ORDER_EDGE_LEFT = 58;
+const QUICK_ORDER_EDGE_RIGHT = 84;
+const QUICK_ORDER_MIN_DISTANCE_MULTIPLIER = 20;
+const QUICK_ORDER_FALLBACK_DISTANCE_RATIO = 0.002;
 const DRAWING_COLORS = ["#2563eb", "#059669", "#f97316", "#e11d48", "#7c3aed", "#0f172a"];
 const MIN_DRAWING_DISTANCE = 4;
 const DRAWING_STROKE_WIDTHS = [1, 2, 3, 4, 5];
@@ -333,7 +342,7 @@ interface TradingViewPlatformProps {
   isSwitchingTimeframe?: boolean;
   onTimeframeChange?: (timeframe: Timeframe) => void;
   finishAction?: ReactNode;
-  onOpenOrderTicket?: (price: number) => void;
+  onOpenOrderTicket?: (request: number | OrderFormInitialOrder) => void;
   onTogglePlayback: () => void;
   onSkip: () => void;
   onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
@@ -397,6 +406,22 @@ export interface CurrentPriceOrderAction {
   y: number;
 }
 
+export interface ClientBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
+export interface HoveredCandlePriceReadout {
+  time: UTCTimestamp;
+  direction: "up" | "down" | "flat";
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+}
+
 export type OrderPriceLineOptions = CreatePriceLineOptions & { id: string };
 
 export interface OrderMarkerOverlay {
@@ -413,6 +438,41 @@ export interface OrderMarkerOverlay {
 interface PositionedOrderMarkerOverlay extends OrderMarkerOverlay {
   x: number;
   y: number;
+}
+
+export type QuickOrderSide = "Long" | "Short";
+export type QuickOrderLevelKey = "entry" | "takeProfit" | "stopLoss";
+
+export interface QuickOrderDraft {
+  side: QuickOrderSide;
+  entryPrice: number;
+  takeProfit: number;
+  stopLoss: number;
+}
+
+export interface PositionedQuickOrderLevel {
+  key: QuickOrderLevelKey;
+  label: string;
+  price: number;
+  y: number;
+  color: string;
+}
+
+export interface PositionedQuickOrderZone {
+  top: number;
+  height: number;
+  color: string;
+}
+
+export interface PositionedQuickOrderDraft extends QuickOrderDraft {
+  entryY: number;
+  takeProfitY: number;
+  stopLossY: number;
+  levels: PositionedQuickOrderLevel[];
+  profitZone: PositionedQuickOrderZone;
+  riskZone: PositionedQuickOrderZone;
+  rewardRiskRatio: number | null;
+  validationError: string | null;
 }
 
 export interface TradingSessionOverlay {
@@ -547,6 +607,11 @@ interface FloatingToolbarDragState {
   startPosition: FloatingToolbarPosition;
   containerSize: { width: number; height: number };
   toolbarSize: { width: number; height: number };
+}
+
+interface QuickOrderDragState {
+  level: QuickOrderLevelKey;
+  pointerId: number;
 }
 
 // Seed the auto-increment id counter past any persisted drawings so newly
@@ -980,6 +1045,48 @@ export function resolveFollowScrollRange({
   };
 }
 
+type ViewportOverlayTransition = (callback: () => void) => void;
+
+export type ViewportOverlayScheduler = {
+  schedule: () => void;
+  cancel: () => void;
+};
+
+export function createViewportOverlayScheduler({
+  requestFrame,
+  cancelFrame,
+  sync,
+  transition = (callback) => callback(),
+}: {
+  requestFrame: (callback: FrameRequestCallback) => number;
+  cancelFrame: (frameId: number) => void;
+  sync: () => void;
+  transition?: ViewportOverlayTransition;
+}): ViewportOverlayScheduler {
+  let pendingFrameId: number | null = null;
+
+  return {
+    schedule: () => {
+      if (pendingFrameId !== null) {
+        return;
+      }
+
+      pendingFrameId = requestFrame(() => {
+        pendingFrameId = null;
+        transition(sync);
+      });
+    },
+    cancel: () => {
+      if (pendingFrameId === null) {
+        return;
+      }
+
+      cancelFrame(pendingFrameId);
+      pendingFrameId = null;
+    },
+  };
+}
+
 export function calculateReplayProgress({
   startDate,
   endDate,
@@ -1041,6 +1148,319 @@ export function buildCurrentPriceOrderAction({
       Math.max(CURRENT_PRICE_ACTION_EDGE_MARGIN, containerHeight - CURRENT_PRICE_ACTION_EDGE_MARGIN),
       Math.max(CURRENT_PRICE_ACTION_EDGE_MARGIN, y),
     ),
+  };
+}
+
+export function buildHoveredPriceOrderAction({
+  anchor,
+  priceToCoordinate,
+  containerHeight,
+}: {
+  anchor: PointerChartAnchor | null;
+  priceToCoordinate: (price: number) => number | null;
+  containerHeight: number;
+}): CurrentPriceOrderAction | null {
+  if (!anchor || !Number.isFinite(anchor.price)) {
+    return null;
+  }
+
+  const y = priceToCoordinate(anchor.price);
+  if (y === null || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return buildCurrentPriceOrderAction({
+    price: anchor.price,
+    y: Number(y),
+    containerHeight,
+  });
+}
+
+export function isPointerWithinClientBounds({
+  clientX,
+  clientY,
+  bounds,
+  padding = 0,
+}: {
+  clientX: number;
+  clientY: number;
+  bounds: ClientBounds | null;
+  padding?: number;
+}): boolean {
+  if (
+    !bounds ||
+    !Number.isFinite(clientX) ||
+    !Number.isFinite(clientY) ||
+    !Number.isFinite(bounds.left) ||
+    !Number.isFinite(bounds.right) ||
+    !Number.isFinite(bounds.top) ||
+    !Number.isFinite(bounds.bottom)
+  ) {
+    return false;
+  }
+
+  const safePadding = Number.isFinite(padding) ? Math.max(0, padding) : 0;
+
+  return (
+    clientX >= bounds.left - safePadding &&
+    clientX <= bounds.right + safePadding &&
+    clientY >= bounds.top - safePadding &&
+    clientY <= bounds.bottom + safePadding
+  );
+}
+
+export function buildHoveredCandlePriceReadout({
+  anchor,
+  chartCandles,
+}: {
+  anchor: PointerChartAnchor | null;
+  chartCandles: Array<CandlestickData<UTCTimestamp>>;
+}): HoveredCandlePriceReadout | null {
+  if (!anchor || !Number.isFinite(Number(anchor.logical))) {
+    return null;
+  }
+
+  const candleIndex = Math.round(Number(anchor.logical));
+  if (candleIndex < 0 || candleIndex >= chartCandles.length) {
+    return null;
+  }
+
+  const candle = chartCandles[candleIndex];
+  if (
+    !isValidPrice(candle.open) ||
+    !isValidPrice(candle.high) ||
+    !isValidPrice(candle.low) ||
+    !isValidPrice(candle.close)
+  ) {
+    return null;
+  }
+
+  return {
+    time: candle.time,
+    direction: candle.close > candle.open ? "up" : candle.close < candle.open ? "down" : "flat",
+    open: formatPrice(candle.open),
+    high: formatPrice(candle.high),
+    low: formatPrice(candle.low),
+    close: formatPrice(candle.close),
+  };
+}
+
+function normalizeQuickOrderPrice(price: number): number {
+  return Number(price.toFixed(CHART_PRICE_DECIMALS));
+}
+
+function getQuickOrderDefaultDistance({
+  entryPrice,
+  chartCandles,
+}: {
+  entryPrice: number;
+  chartCandles: Array<CandlestickData<UTCTimestamp>>;
+}): number {
+  const latestCandle = chartCandles.at(-1);
+  const latestRange = latestCandle ? latestCandle.high - latestCandle.low : Number.NaN;
+
+  if (Number.isFinite(latestRange) && latestRange > CHART_PRICE_MIN_MOVE) {
+    return latestRange;
+  }
+
+  return Math.max(
+    Math.abs(entryPrice) * QUICK_ORDER_FALLBACK_DISTANCE_RATIO,
+    CHART_PRICE_MIN_MOVE * QUICK_ORDER_MIN_DISTANCE_MULTIPLIER,
+  );
+}
+
+function getQuickOrderDefaultSide(entryPrice: number, currentPrice?: number | null): QuickOrderSide {
+  if (typeof currentPrice === "number" && Number.isFinite(currentPrice) && currentPrice > 0 && entryPrice > currentPrice) {
+    return "Short";
+  }
+
+  return "Long";
+}
+
+export function buildQuickOrderDraft({
+  entryPrice,
+  currentPrice,
+  chartCandles,
+  side,
+}: {
+  entryPrice: number;
+  currentPrice?: number | null;
+  chartCandles: Array<CandlestickData<UTCTimestamp>>;
+  side?: QuickOrderSide;
+}): QuickOrderDraft | null {
+  if (!isValidPrice(entryPrice)) {
+    return null;
+  }
+
+  const resolvedSide = side ?? getQuickOrderDefaultSide(entryPrice, currentPrice);
+  const distance = getQuickOrderDefaultDistance({ entryPrice, chartCandles });
+
+  if (resolvedSide === "Short") {
+    return {
+      side: resolvedSide,
+      entryPrice: normalizeQuickOrderPrice(entryPrice),
+      takeProfit: normalizeQuickOrderPrice(entryPrice - distance),
+      stopLoss: normalizeQuickOrderPrice(entryPrice + distance),
+    };
+  }
+
+  return {
+    side: resolvedSide,
+    entryPrice: normalizeQuickOrderPrice(entryPrice),
+    takeProfit: normalizeQuickOrderPrice(entryPrice + distance),
+    stopLoss: normalizeQuickOrderPrice(entryPrice - distance),
+  };
+}
+
+export function updateQuickOrderDraftLevel(
+  draft: QuickOrderDraft,
+  level: QuickOrderLevelKey,
+  price: number,
+): QuickOrderDraft {
+  const nextPrice = normalizeQuickOrderPrice(price);
+
+  switch (level) {
+    case "entry":
+      return { ...draft, entryPrice: nextPrice };
+    case "takeProfit":
+      return { ...draft, takeProfit: nextPrice };
+    case "stopLoss":
+      return { ...draft, stopLoss: nextPrice };
+  }
+}
+
+function changeQuickOrderSide(draft: QuickOrderDraft, side: QuickOrderSide): QuickOrderDraft {
+  if (draft.side === side) {
+    return draft;
+  }
+
+  const rewardDistance = Math.max(
+    Math.abs(draft.takeProfit - draft.entryPrice),
+    CHART_PRICE_MIN_MOVE * QUICK_ORDER_MIN_DISTANCE_MULTIPLIER,
+  );
+  const riskDistance = Math.max(
+    Math.abs(draft.entryPrice - draft.stopLoss),
+    CHART_PRICE_MIN_MOVE * QUICK_ORDER_MIN_DISTANCE_MULTIPLIER,
+  );
+
+  return {
+    ...draft,
+    side,
+    takeProfit: normalizeQuickOrderPrice(side === "Long"
+      ? draft.entryPrice + rewardDistance
+      : draft.entryPrice - rewardDistance),
+    stopLoss: normalizeQuickOrderPrice(side === "Long"
+      ? draft.entryPrice - riskDistance
+      : draft.entryPrice + riskDistance),
+  };
+}
+
+function getQuickOrderValidationError(draft: QuickOrderDraft): string | null {
+  if (!isValidPrice(draft.entryPrice)) {
+    return "Entry price must be positive.";
+  }
+
+  if (!isValidPrice(draft.takeProfit)) {
+    return "Take profit must be positive.";
+  }
+
+  if (!isValidPrice(draft.stopLoss)) {
+    return "Stop loss must be positive.";
+  }
+
+  if (draft.side === "Long") {
+    if (draft.takeProfit <= draft.entryPrice) {
+      return "Long take profit must be above entry.";
+    }
+
+    if (draft.stopLoss >= draft.entryPrice) {
+      return "Long stop loss must be below entry.";
+    }
+  } else {
+    if (draft.takeProfit >= draft.entryPrice) {
+      return "Short take profit must be below entry.";
+    }
+
+    if (draft.stopLoss <= draft.entryPrice) {
+      return "Short stop loss must be above entry.";
+    }
+  }
+
+  return null;
+}
+
+function buildQuickOrderRewardRiskRatio(draft: QuickOrderDraft, validationError: string | null): number | null {
+  if (validationError) {
+    return null;
+  }
+
+  const risk = Math.abs(draft.entryPrice - draft.stopLoss);
+  const reward = Math.abs(draft.takeProfit - draft.entryPrice);
+
+  if (risk <= 0 || reward <= 0) {
+    return null;
+  }
+
+  return Number((reward / risk).toFixed(2));
+}
+
+function getQuickOrderZone(topPriceY: number, bottomPriceY: number, color: string): PositionedQuickOrderZone {
+  const top = Math.min(topPriceY, bottomPriceY);
+  const height = Math.max(0, Math.abs(bottomPriceY - topPriceY));
+
+  return { top, height, color };
+}
+
+export function buildPositionedQuickOrderDraft({
+  draft,
+  priceToCoordinate,
+}: {
+  draft: QuickOrderDraft;
+  containerHeight: number;
+  priceToCoordinate: (price: number) => number | null;
+}): PositionedQuickOrderDraft | null {
+  const entryY = priceToCoordinate(draft.entryPrice);
+  const takeProfitY = priceToCoordinate(draft.takeProfit);
+  const stopLossY = priceToCoordinate(draft.stopLoss);
+
+  if (
+    entryY === null ||
+    takeProfitY === null ||
+    stopLossY === null ||
+    !Number.isFinite(entryY) ||
+    !Number.isFinite(takeProfitY) ||
+    !Number.isFinite(stopLossY)
+  ) {
+    return null;
+  }
+
+  const validationError = getQuickOrderValidationError(draft);
+  const levels: PositionedQuickOrderLevel[] = [
+    { key: "takeProfit" as const, label: "TP", price: draft.takeProfit, y: Number(takeProfitY), color: TARGET_COLOR },
+    { key: "entry" as const, label: "Order", price: draft.entryPrice, y: Number(entryY), color: getOrderSideColor(draft.side) },
+    { key: "stopLoss" as const, label: "SL", price: draft.stopLoss, y: Number(stopLossY), color: STOP_COLOR },
+  ].sort((left, right) => left.y - right.y);
+
+  return {
+    ...draft,
+    entryY: Number(entryY),
+    takeProfitY: Number(takeProfitY),
+    stopLossY: Number(stopLossY),
+    levels,
+    profitZone: getQuickOrderZone(Number(entryY), Number(takeProfitY), TARGET_COLOR),
+    riskZone: getQuickOrderZone(Number(entryY), Number(stopLossY), STOP_COLOR),
+    rewardRiskRatio: buildQuickOrderRewardRiskRatio(draft, validationError),
+    validationError,
+  };
+}
+
+export function buildQuickOrderTicketRequest(draft: QuickOrderDraft): OrderFormInitialOrder {
+  return {
+    side: draft.side,
+    orderType: "Limit",
+    entryPrice: draft.entryPrice,
+    takeProfit: draft.takeProfit,
+    stopLoss: draft.stopLoss,
   };
 }
 
@@ -2670,11 +3090,12 @@ export function TradingViewPlatform({
   const drawingSurfaceRef = useRef<HTMLDivElement>(null);
   const replayControlsRef = useRef<HTMLDivElement>(null);
   const selectedDrawingToolbarRef = useRef<HTMLDivElement>(null);
+  const currentPriceOrderActionRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   const orderPriceLinesRef = useRef<IPriceLine[]>([]);
-  const orderMarkerSyncFrameRef = useRef<number | null>(null);
+  const viewportOverlaySchedulerRef = useRef<ViewportOverlayScheduler | null>(null);
   // Caches the last-rendered chart data so each replay tick can diff against it
   // and push a single bar instead of re-ingesting the whole series.
   const chartDataCacheRef = useRef<(
@@ -2689,10 +3110,13 @@ export function TradingViewPlatform({
   // changes don't bump overlayRevision (forcing a full re-render) when idle.
   const shouldProjectDrawingsRef = useRef(false);
   const shouldProjectTradingSessionsRef = useRef(false);
+  const shouldProjectQuickOrderRef = useRef(false);
   const dragStateRef = useRef<DrawingDragState | null>(null);
   const replayControlsDragRef = useRef<ReplayControlsDragState | null>(null);
   const selectedDrawingToolbarDragRef = useRef<FloatingToolbarDragState | null>(null);
   const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
+  const hoveredPriceAnchorRef = useRef<PointerChartAnchor | null>(null);
+  const quickOrderDragRef = useRef<QuickOrderDragState | null>(null);
   // True while the user has panned back to review past candles. While set, the
   // data-update effect stops snapping the view to the live edge so newly
   // arriving candles don't yank the user out of the history they're inspecting.
@@ -2701,6 +3125,8 @@ export function TradingViewPlatform({
   const verticalZoomRef = useRef(1);
   const [orderMarkerPositions, setOrderMarkerPositions] = useState<PositionedOrderMarkerOverlay[]>([]);
   const [currentPriceOrderAction, setCurrentPriceOrderAction] = useState<CurrentPriceOrderAction | null>(null);
+  const [hoveredCandlePriceReadout, setHoveredCandlePriceReadout] = useState<HoveredCandlePriceReadout | null>(null);
+  const [quickOrderDraft, setQuickOrderDraft] = useState<QuickOrderDraft | null>(null);
   // Hydrate once from persisted drawings; later prop changes are ignored so a
   // re-fetch can't clobber the user's in-progress edits. The parent remounts
   // this component per session (key={sessionId}), which re-runs this initializer.
@@ -2814,24 +3240,48 @@ export function TradingViewPlatform({
   const selectedDrawingStyle = selectedDrawing ? getChartDrawingStyle(selectedDrawing) : null;
   const isDrawingMode = isDrawableChartTool(activeTool) && !areDrawingsLocked;
 
-  const syncCurrentPriceOrderAction = useCallback(() => {
+  const syncHoveredCandlePriceReadout = useCallback((anchor: PointerChartAnchor | null) => {
+    const nextReadout = buildHoveredCandlePriceReadout({
+      anchor,
+      chartCandles: chartData.candles,
+    });
+
+    setHoveredCandlePriceReadout((current) => {
+      if (
+        current?.time === nextReadout?.time &&
+        current?.direction === nextReadout?.direction &&
+        current?.open === nextReadout?.open &&
+        current?.high === nextReadout?.high &&
+        current?.low === nextReadout?.low &&
+        current?.close === nextReadout?.close
+      ) {
+        return current;
+      }
+
+      return nextReadout;
+    });
+  }, [chartData.candles]);
+
+  const syncCurrentPriceOrderAction = useCallback((anchorOverride?: PointerChartAnchor | null) => {
     const candleSeries = candleSeriesRef.current;
     const container = containerRef.current;
-    const price = latestCandle?.close;
+    const anchor = anchorOverride === undefined ? hoveredPriceAnchorRef.current : anchorOverride;
 
-    if (!candleSeries || !container || typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
+    hoveredPriceAnchorRef.current = anchor;
+
+    if (!candleSeries || !container || !anchor) {
       setCurrentPriceOrderAction((current) => (current === null ? current : null));
       return;
     }
 
-    const y = candleSeries.priceToCoordinate(price);
-    const nextAction = y == null
-      ? null
-      : buildCurrentPriceOrderAction({
-          price,
-          y: Number(y),
-          containerHeight: container.clientHeight,
-        });
+    const nextAction = buildHoveredPriceOrderAction({
+      anchor,
+      priceToCoordinate: (price) => {
+        const y = candleSeries.priceToCoordinate(price);
+        return y == null ? null : Number(y);
+      },
+      containerHeight: container.clientHeight,
+    });
 
     setCurrentPriceOrderAction((current) => {
       if (
@@ -2844,7 +3294,7 @@ export function TradingViewPlatform({
 
       return nextAction;
     });
-  }, [latestCandle?.close]);
+  }, []);
 
   const syncOrderMarkerPositions = useCallback(() => {
     const chart = chartRef.current;
@@ -2971,7 +3421,11 @@ export function TradingViewPlatform({
     // Only bump the overlay revision (which re-renders the SVG layer) when there
     // is actually something to project. Otherwise every viewport change / replay
     // tick would force a full re-render for nothing.
-    if (!shouldProjectDrawingsRef.current && !shouldProjectTradingSessionsRef.current) {
+    if (
+      !shouldProjectDrawingsRef.current &&
+      !shouldProjectTradingSessionsRef.current &&
+      !shouldProjectQuickOrderRef.current
+    ) {
       return;
     }
     setOverlayRevision((revision) => revision + 1);
@@ -2998,14 +3452,16 @@ export function TradingViewPlatform({
       return;
     }
 
-    if (orderMarkerSyncFrameRef.current !== null) {
-      window.cancelAnimationFrame(orderMarkerSyncFrameRef.current);
+    if (!viewportOverlaySchedulerRef.current) {
+      viewportOverlaySchedulerRef.current = createViewportOverlayScheduler({
+        requestFrame: window.requestAnimationFrame.bind(window),
+        cancelFrame: window.cancelAnimationFrame.bind(window),
+        sync: () => syncViewportOverlaysRef.current(),
+        transition: startTransition,
+      });
     }
 
-    orderMarkerSyncFrameRef.current = window.requestAnimationFrame(() => {
-      orderMarkerSyncFrameRef.current = null;
-      syncViewportOverlaysRef.current();
-    });
+    viewportOverlaySchedulerRef.current.schedule();
   }, []);
 
   // Maintain the projection guard whenever visibility/drawing-presence changes.
@@ -3017,6 +3473,10 @@ export function TradingViewPlatform({
   useEffect(() => {
     shouldProjectTradingSessionsRef.current = tradingSessionOverlays.length > 0;
   }, [tradingSessionOverlays.length]);
+
+  useEffect(() => {
+    shouldProjectQuickOrderRef.current = quickOrderDraft !== null;
+  }, [quickOrderDraft]);
 
   useEffect(() => {
     if (selectedDrawingId && !chartDrawings.some((drawing) => drawing.id === selectedDrawingId)) {
@@ -3289,7 +3749,7 @@ export function TradingViewPlatform({
     return () => surface.removeEventListener("wheel", handleWheel);
   }, [applyVerticalZoom, scheduleOrderMarkerSync]);
 
-  const getChartAnchorFromPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>): PointerChartAnchor | null => {
+  const getChartAnchorFromClientPoint = useCallback((clientX: number, clientY: number): PointerChartAnchor | null => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
     const surface = drawingSurfaceRef.current;
@@ -3299,8 +3759,8 @@ export function TradingViewPlatform({
     }
 
     const rect = surface.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
     const anchor = resolveDrawingAnchorFromCoordinate({
       x,
       y,
@@ -3340,6 +3800,10 @@ export function TradingViewPlatform({
     };
   }, [chartData.candles, isMagnetEnabled]);
 
+  const getChartAnchorFromPointer = useCallback((event: ReactPointerEvent<HTMLElement>): PointerChartAnchor | null => (
+    getChartAnchorFromClientPoint(event.clientX, event.clientY)
+  ), [getChartAnchorFromClientPoint]);
+
   const updateChartCrosshairFromPointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
@@ -3360,7 +3824,23 @@ export function TradingViewPlatform({
 
   const clearChartCrosshair = useCallback(() => {
     chartRef.current?.clearCrosshairPosition();
+    hoveredPriceAnchorRef.current = null;
+    setHoveredCandlePriceReadout((current) => (current === null ? current : null));
+    setCurrentPriceOrderAction((current) => (current === null ? current : null));
   }, []);
+
+  const handleDrawingPointerLeave = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isPointerWithinClientBounds({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      bounds: currentPriceOrderActionRef.current?.getBoundingClientRect() ?? null,
+      padding: 2,
+    })) {
+      return;
+    }
+
+    clearChartCrosshair();
+  }, [clearChartCrosshair]);
 
   const positionedChartDrawings = useMemo(() => {
     const chart = chartRef.current;
@@ -3466,6 +3946,33 @@ export function TradingViewPlatform({
         : [],
     [areSessionsEnabled, positionedTradingSessions, sessionVisibility],
   );
+
+  const positionedQuickOrderDraft = useMemo(() => {
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+
+    if (!chart || !candleSeries || !quickOrderDraft || chartSize.width <= 0 || chartSize.height <= 0) {
+      return null;
+    }
+
+    const { priceParams } = buildExtrapolationParams(
+      chart, candleSeries, chartSize.width, chartSize.height,
+    );
+
+    return buildPositionedQuickOrderDraft({
+      draft: quickOrderDraft,
+      containerHeight: chartSize.height,
+      priceToCoordinate: (price) => {
+        const y = candleSeries.priceToCoordinate(price);
+        if (y !== null) return Number(y);
+        if (priceParams) {
+          const extrapolated = priceParams.baseY + (price - priceParams.basePrice) / priceParams.pricePerPixel;
+          if (Number.isFinite(extrapolated)) return extrapolated;
+        }
+        return null;
+      },
+    });
+  }, [chartSize.height, chartSize.width, overlayRevision, quickOrderDraft]);
 
   const positionedDraftDrawing = useMemo(() => {
     const chart = chartRef.current;
@@ -3732,7 +4239,9 @@ export function TradingViewPlatform({
   ]);
 
   const handleDrawingPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    updateChartCrosshairFromPointer(event);
+    const hoverAnchor = updateChartCrosshairFromPointer(event);
+    syncHoveredCandlePriceReadout(hoverAnchor);
+    syncCurrentPriceOrderAction(hoverAnchor);
 
     // Drag update (check FIRST — stale drawingDraft from a prior incomplete
     // drawing operation must not block live drag of an existing object).
@@ -3818,7 +4327,128 @@ export function TradingViewPlatform({
         : currentDraft);
       return;
     }
-  }, [drawingDraft, getChartAnchorFromPointer, scheduleOrderMarkerSync, updateChartCrosshairFromPointer]);
+  }, [
+    drawingDraft,
+    getChartAnchorFromPointer,
+    scheduleOrderMarkerSync,
+    syncCurrentPriceOrderAction,
+    syncHoveredCandlePriceReadout,
+    updateChartCrosshairFromPointer,
+  ]);
+
+  const handleCurrentPriceOrderActionPointerLeave = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isPointerWithinClientBounds({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      bounds: drawingSurfaceRef.current?.getBoundingClientRect() ?? null,
+    })) {
+      const hoverAnchor = updateChartCrosshairFromPointer(event);
+      syncHoveredCandlePriceReadout(hoverAnchor);
+      syncCurrentPriceOrderAction(hoverAnchor);
+      return;
+    }
+
+    clearChartCrosshair();
+  }, [
+    clearChartCrosshair,
+    syncCurrentPriceOrderAction,
+    syncHoveredCandlePriceReadout,
+    updateChartCrosshairFromPointer,
+  ]);
+
+  const openQuickOrderDraft = useCallback(() => {
+    if (!currentPriceOrderAction) {
+      return;
+    }
+
+    const draft = buildQuickOrderDraft({
+      entryPrice: currentPriceOrderAction.price,
+      currentPrice: latestCandle?.close ?? null,
+      chartCandles: chartData.candles,
+    });
+
+    if (!draft) {
+      return;
+    }
+
+    setQuickOrderDraft(draft);
+    setDrawingDraft(null);
+    setSelectedDrawingId(null);
+    setActiveTool("cursor");
+  }, [chartData.candles, currentPriceOrderAction, latestCandle?.close]);
+
+  const setQuickOrderSide = useCallback((side: QuickOrderSide) => {
+    setQuickOrderDraft((draft) => (draft ? changeQuickOrderSide(draft, side) : draft));
+  }, []);
+
+  const placeQuickOrderDraft = useCallback(() => {
+    if (!quickOrderDraft || !onOpenOrderTicket || getQuickOrderValidationError(quickOrderDraft)) {
+      return;
+    }
+
+    onOpenOrderTicket(buildQuickOrderTicketRequest(quickOrderDraft));
+    setQuickOrderDraft(null);
+    clearChartCrosshair();
+  }, [clearChartCrosshair, onOpenOrderTicket, quickOrderDraft]);
+
+  const updateQuickOrderLevelFromPointer = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const dragState = quickOrderDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const anchor = getChartAnchorFromClientPoint(event.clientX, event.clientY);
+    if (!anchor) {
+      return;
+    }
+
+    const candleSeries = candleSeriesRef.current;
+    if (candleSeries) {
+      chartRef.current?.setCrosshairPosition(anchor.price, anchor.time, candleSeries);
+    }
+    setQuickOrderDraft((draft) => (
+      draft ? updateQuickOrderDraftLevel(draft, dragState.level, anchor.price) : draft
+    ));
+  }, [getChartAnchorFromClientPoint]);
+
+  const handleQuickOrderLevelPointerDown = useCallback((
+    event: ReactPointerEvent<HTMLButtonElement>,
+    level: QuickOrderLevelKey,
+  ) => {
+    if (event.button !== 0 && event.pointerType !== "touch" && event.pointerType !== "pen") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    quickOrderDragRef.current = {
+      level,
+      pointerId: event.pointerId,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    updateQuickOrderLevelFromPointer(event);
+  }, [updateQuickOrderLevelFromPointer]);
+
+  const handleQuickOrderLevelPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (quickOrderDragRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateQuickOrderLevelFromPointer(event);
+  }, [updateQuickOrderLevelFromPointer]);
+
+  const handleQuickOrderLevelPointerEnd = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (quickOrderDragRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    quickOrderDragRef.current = null;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }, []);
 
   const handleDrawingPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     (event.target as Element).releasePointerCapture?.(event.pointerId);
@@ -3839,6 +4469,7 @@ export function TradingViewPlatform({
     setDrawingDraft(null);
     dragStateRef.current = null;
     chartPanRef.current = null;
+    quickOrderDragRef.current = null;
   }, [clearChartCrosshair]);
 
   const openFibonacciDialog = useCallback((drawingId: string) => {
@@ -4236,10 +4867,8 @@ export function TradingViewPlatform({
     volumeSeriesRef.current = volumeSeries;
 
     return () => {
-      if (orderMarkerSyncFrameRef.current !== null) {
-        window.cancelAnimationFrame(orderMarkerSyncFrameRef.current);
-        orderMarkerSyncFrameRef.current = null;
-      }
+      viewportOverlaySchedulerRef.current?.cancel();
+      viewportOverlaySchedulerRef.current = null;
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -4247,6 +4876,7 @@ export function TradingViewPlatform({
       orderPriceLinesRef.current = [];
       setOrderMarkerPositions([]);
       setCurrentPriceOrderAction(null);
+      setHoveredCandlePriceReadout(null);
       previousCandleCountRef.current = 0;
     };
   }, []);
@@ -4593,7 +5223,7 @@ export function TradingViewPlatform({
         onPointerMove={handleDrawingPointerMove}
         onPointerUp={handleDrawingPointerUp}
         onPointerCancel={handleDrawingPointerCancel}
-        onPointerLeave={clearChartCrosshair}
+        onPointerLeave={handleDrawingPointerLeave}
         onDoubleClick={handleDrawingDoubleClick}
       >
         {chartSize.width > 0 && chartSize.height > 0 ? (
@@ -4794,10 +5424,159 @@ export function TradingViewPlatform({
         </div>
       ) : null}
 
-      {currentPriceOrderAction && onOpenOrderTicket ? (
+      {positionedQuickOrderDraft ? (
         <div
+          className="pointer-events-none absolute inset-0 z-40"
+          data-testid="quick-place-order"
+        >
+          <div
+            aria-hidden="true"
+            className="absolute rounded-sm border border-emerald-500/20 bg-emerald-500/15"
+            style={{
+              left: QUICK_ORDER_EDGE_LEFT,
+              right: QUICK_ORDER_EDGE_RIGHT,
+              top: positionedQuickOrderDraft.profitZone.top,
+              height: positionedQuickOrderDraft.profitZone.height,
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="absolute rounded-sm border border-rose-500/20 bg-rose-500/15"
+            style={{
+              left: QUICK_ORDER_EDGE_LEFT,
+              right: QUICK_ORDER_EDGE_RIGHT,
+              top: positionedQuickOrderDraft.riskZone.top,
+              height: positionedQuickOrderDraft.riskZone.height,
+            }}
+          />
+
+          {positionedQuickOrderDraft.levels.map((level) => {
+            const LevelIcon = level.key === "takeProfit"
+              ? Target
+              : level.key === "stopLoss"
+                ? ShieldCheck
+                : MoveVertical;
+
+            return (
+              <div
+                key={level.key}
+                className="absolute"
+                style={{
+                  left: QUICK_ORDER_EDGE_LEFT,
+                  right: QUICK_ORDER_EDGE_RIGHT,
+                  top: level.y,
+                }}
+              >
+                <div
+                  aria-hidden="true"
+                  className="absolute left-0 right-0 top-1/2 border-t border-dashed"
+                  style={{ borderColor: level.color, opacity: 0.72 }}
+                />
+                <button
+                  type="button"
+                  data-testid={`quick-order-level-${level.key}`}
+                  aria-label={`Move ${level.label} quick order level at ${formatPrice(level.price)}`}
+                  title={`${level.label} ${formatPrice(level.price)}`}
+                  className="pointer-events-auto relative z-10 flex h-7 touch-none -translate-y-1/2 cursor-grab items-center gap-1.5 rounded-sm border bg-background/95 px-2 text-xs font-semibold tabular-nums shadow-sm backdrop-blur transition hover:bg-muted active:cursor-grabbing"
+                  style={{
+                    borderColor: `${level.color}66`,
+                    color: level.color,
+                  }}
+                  onPointerDown={(event) => handleQuickOrderLevelPointerDown(event, level.key)}
+                  onPointerMove={handleQuickOrderLevelPointerMove}
+                  onPointerUp={handleQuickOrderLevelPointerEnd}
+                  onPointerCancel={handleQuickOrderLevelPointerEnd}
+                >
+                  <LevelIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span>{level.label}</span>
+                  <span>{formatPrice(level.price)}</span>
+                </button>
+              </div>
+            );
+          })}
+
+          <div
+            className="pointer-events-auto absolute flex -translate-y-1/2 items-center gap-1 rounded-md border border-border/70 bg-background/95 p-1 shadow-lg backdrop-blur"
+            style={{ right: QUICK_ORDER_EDGE_RIGHT, top: positionedQuickOrderDraft.entryY }}
+          >
+            <button
+              type="button"
+              aria-label="Set quick order side to long"
+              aria-pressed={positionedQuickOrderDraft.side === "Long"}
+              className={cn(
+                "inline-flex h-7 items-center gap-1 rounded-sm border px-2 text-xs font-semibold transition",
+                positionedQuickOrderDraft.side === "Long"
+                  ? "border-blue-500/50 bg-blue-500/15 text-blue-600 dark:text-blue-300"
+                  : "border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+              onClick={() => setQuickOrderSide("Long")}
+            >
+              <ArrowUpRight className="h-3.5 w-3.5" />
+              Long
+            </button>
+            <button
+              type="button"
+              aria-label="Set quick order side to short"
+              aria-pressed={positionedQuickOrderDraft.side === "Short"}
+              className={cn(
+                "inline-flex h-7 items-center gap-1 rounded-sm border px-2 text-xs font-semibold transition",
+                positionedQuickOrderDraft.side === "Short"
+                  ? "border-rose-500/50 bg-rose-500/15 text-rose-600 dark:text-rose-300"
+                  : "border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+              onClick={() => setQuickOrderSide("Short")}
+            >
+              <ArrowDownRight className="h-3.5 w-3.5" />
+              Short
+            </button>
+
+            <span
+              className={cn(
+                "inline-flex h-7 min-w-12 items-center justify-center rounded-sm border px-2 text-xs font-semibold tabular-nums",
+                positionedQuickOrderDraft.validationError
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-300"
+                  : "border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
+              )}
+              title={positionedQuickOrderDraft.validationError ?? "Reward to risk"}
+            >
+              {positionedQuickOrderDraft.rewardRiskRatio === null
+                ? "Invalid"
+                : `${positionedQuickOrderDraft.rewardRiskRatio.toFixed(2)}R`}
+            </span>
+
+            <button
+              type="button"
+              aria-label="Place quick order"
+              disabled={Boolean(positionedQuickOrderDraft.validationError) || !onOpenOrderTicket}
+              className="inline-flex h-7 items-center gap-1 rounded-sm bg-slate-950 px-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-45 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
+              onClick={placeQuickOrderDraft}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Place
+            </button>
+
+            <button
+              type="button"
+              aria-label="Close quick order"
+              title="Close"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              onClick={() => {
+                quickOrderDragRef.current = null;
+                setQuickOrderDraft(null);
+              }}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {currentPriceOrderAction && onOpenOrderTicket && !quickOrderDraft ? (
+        <div
+          ref={currentPriceOrderActionRef}
           className="pointer-events-auto absolute right-2 z-40 flex -translate-y-1/2 items-center gap-1"
           style={{ top: currentPriceOrderAction.y }}
+          onPointerLeave={handleCurrentPriceOrderActionPointerLeave}
         >
           <Tooltip>
             <TooltipTrigger asChild>
@@ -4805,7 +5584,7 @@ export function TradingViewPlatform({
                 type="button"
                 aria-label={`Place order at ${currentPriceOrderAction.label}`}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-white/45 bg-slate-950 text-white shadow-sm transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-slate-900/30 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
-                onClick={() => onOpenOrderTicket(currentPriceOrderAction.price)}
+                onClick={openQuickOrderDraft}
                 title={`Place order at ${currentPriceOrderAction.label}`}
               >
                 <Plus className="h-4 w-4" />
@@ -4867,6 +5646,36 @@ export function TradingViewPlatform({
             <span className="tabular-nums text-primary">{latestPrice}</span>
           </div>
         </div>
+
+        {hoveredCandlePriceReadout ? (
+          <div
+            className="rounded-md border border-border/70 bg-background/90 px-2.5 py-1.5 text-xs font-semibold shadow-sm backdrop-blur"
+            data-testid="hovered-candle-price-readout"
+          >
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-muted-foreground">
+              <span className="whitespace-nowrap">
+                Open <span className="tabular-nums text-foreground">{hoveredCandlePriceReadout.open}</span>
+              </span>
+              <span className="whitespace-nowrap">
+                High <span className="tabular-nums text-foreground">{hoveredCandlePriceReadout.high}</span>
+              </span>
+              <span className="whitespace-nowrap">
+                Low <span className="tabular-nums text-foreground">{hoveredCandlePriceReadout.low}</span>
+              </span>
+              <span className="whitespace-nowrap">
+                Close{" "}
+                <span
+                  className="tabular-nums text-foreground"
+                  style={hoveredCandlePriceReadout.direction === "flat"
+                    ? undefined
+                    : { color: hoveredCandlePriceReadout.direction === "up" ? palette.up : palette.down }}
+                >
+                  {hoveredCandlePriceReadout.close}
+                </span>
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div

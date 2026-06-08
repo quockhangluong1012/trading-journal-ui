@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   BacktestOrderTicket,
   isBacktestOrderTicketShortcut,
+  type BacktestOrderTicketOpenInput,
   type BacktestOrderTicketOpenRequest,
 } from "@/components/backtest/backtest-order-ticket";
 import { isInteractiveEventTarget } from "@/components/backtest/keyboard-shortcuts";
@@ -145,10 +146,14 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     advanceCandle(sessionId);
   }, [advanceCandle, sessionId]);
 
-  const openOrderTicket = useCallback((price: number | null = null) => {
+  const openOrderTicket = useCallback((request: BacktestOrderTicketOpenInput = null) => {
+    const initialOrder = request && typeof request === "object" ? request : null;
+    const price = typeof request === "number" ? request : initialOrder?.entryPrice ?? null;
+
     setOrderTicketOpenRequest((current) => ({
       id: current.id + 1,
       price,
+      initialOrder,
     }));
   }, []);
 
