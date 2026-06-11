@@ -5,10 +5,7 @@ import type { ElementType, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { AppPageShell } from "@/components/app-page-shell";
 import {
-  EmotionTagApi,
   getTagCategory,
-  PreTradeChecklistApi,
-  ChecklistModelApi,
   ChecklistModelDetailApi,
 } from "@/lib/trade-store";
 import {
@@ -32,6 +29,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { SpeechToTextButton } from "@/components/ui/speech-to-text-button";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -83,8 +82,15 @@ import type { Trade } from "@/lib/trade-store";
 import { TradeStatus } from "@/lib/enum/TradeStatus";
 import { PositionType } from "@/lib/enum/PositionType";
 import { api, ApiResponse } from "@/lib/api";
-import { getPlainTextFromRichText } from "@/lib/rich-text";
+import { getPlainTextFromRichText, plainTextToRichText } from "@/lib/rich-text";
 import type { TradingSetupSummaryDto } from "@/lib/setup-api";
+import { useReferenceDataStore } from "@/lib/stores/reference-data-store";
+import { uploadTradeScreenshots } from "@/lib/trade-screenshot-upload";
+import {
+  CREATE_TRADE_SCREENSHOT_MAX_COUNT,
+  validateCreateTradeScreenshot,
+} from "@/lib/create-trade-form";
+import { PostTradeAiReview } from "@/components/trade/post-trade-ai-review";
 import { formatTradePrice, TRADE_PRICE_INPUT_STEP } from "@/lib/trade-price-format"
 import { AxiosResponse } from "axios";
 import { cn, getPositionTypeLabel, getTradeStatusLabel } from "@/lib/utils";
@@ -123,6 +129,31 @@ const formatDisplayDate = (dateString?: string | null) => {
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+};
+
+// Formats a held duration with sub-day granularity. Intraday trades show hours
+// and minutes rather than rounding up to "1 day".
+const formatHoldingDuration = (ms: number): string => {
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes < 1) return "< 1 min";
+
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${minutes}m`;
+};
+
+// Produces a value suitable for an <input type="datetime-local"> in local time.
+const toDateTimeLocalValue = (date: Date): string => {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
 const getConfidenceLabel = (confidenceLevel?: number): string => {
@@ -174,7 +205,9 @@ const numberToInput = (value?: number | null) =>
   value !== undefined && value !== null ? value.toString() : ""
 
 const buildFormDataFromTrade = (trade: Trade) => ({
-  notes: trade.notes,
+  // Notes are stored as rich text but edited as plain text; flatten on load so
+  // the textarea shows readable text rather than raw HTML markup.
+  notes: getPlainTextFromRichText(trade.notes),
   targetTier1: trade.targetTier1.toString(),
   targetTier2: trade.targetTier2.toString(),
   targetTier3: trade.targetTier3.toString(),
@@ -253,15 +286,32 @@ function TradeDetailContent({ id }: { id: string }) {
     positionSize: "",
     takeProfit: "",
   });
-  const [apiTags, setApiTags] = useState<EmotionTagApi[]>([]);
-  const [apiChecklists, setApiChecklists] = useState<PreTradeChecklistApi[]>(
-    [],
-  );
-  const [apiTechTags, setApiTechTags] = useState<TechnicalAnalysisTagApi[]>([]);
-  const [apiTradingZones, setApiTradingZones] = useState<TradingZoneApi[]>([]);
-  const [setupOptions, setSetupOptions] = useState<TradingSetupSummaryDto[]>([]);
-  const [checklistModels, setChecklistModels] = useState<ChecklistModelApi[]>([]);
-  const [selectedModelDetail, setSelectedModelDetail] = useState<ChecklistModelDetailApi | null>(null);
+  // Reference lists now come from a shared, cached store instead of being
+  // re-fetched on every mount of this page.
+  const apiTags = useReferenceDataStore((state) => state.emotions);
+  const apiTechTags = useReferenceDataStore((state) => state.technicalTags);
+  const apiTradingZones = useReferenceDataStore((state) => state.tradingZones);
+  const setupOptions = useReferenceDataStore((state) => state.setups);
+  const checklistModels = useReferenceDataStore((state) => state.checklistModels);
+  const allChecklists = useReferenceDataStore((state) => state.allChecklists);
+  const loadReferenceData = useReferenceDataStore((state) => state.loadAll);
+  const loadModelDetail = useReferenceDataStore((state) => state.loadModelDetail);
+
+  // Which checklist model this trade is being viewed/edited against.
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  // The model we infer the trade was originally logged against (used to reset
+  // the selector when edits are cancelled).
+  const [inferredModelId, setInferredModelId] = useState<string>("");
+  const [selectedModelDetail, setSelectedModelDetail] =
+    useState<ChecklistModelDetailApi | null>(null);
+  const apiChecklists = selectedModelDetail?.criteria ?? [];
+  const [isUploadingScreenshots, setIsUploadingScreenshots] = useState(false);
+
+  // Load the shared reference lists once (the store no-ops if already loaded).
+  useEffect(() => {
+    if (isAuthLoading || !user) return;
+    void loadReferenceData();
+  }, [isAuthLoading, user, loadReferenceData]);
 
   useEffect(() => {
     if (isAuthLoading || !user) return;
@@ -269,66 +319,9 @@ function TradeDetailContent({ id }: { id: string }) {
     setTrade(null);
     setIsTradeLoading(true);
     setTradeLoadError(null);
-
-    // Fetch generic resource lists
-    api
-      .get<ApiResponse<EmotionTagApi[]>>("/v1/emotions")
-      .then((response: AxiosResponse<ApiResponse<EmotionTagApi[]>>) => {
-        let data = response.data;
-        if (data.isSuccess) setApiTags(data.value);
-      })
-      .catch((err) => console.error("Failed to fetch API tags:", err));
-
-    api
-      .get<ApiResponse<ChecklistModelApi[]>>("/v1/checklist-models")
-      .then((response: AxiosResponse<ApiResponse<ChecklistModelApi[]>>) => {
-        let data = response.data;
-        if (data.isSuccess) {
-          setChecklistModels(data.value);
-          // Auto-load first model's criteria
-          if (data.value.length > 0) {
-            api
-              .get<ApiResponse<ChecklistModelDetailApi>>(`/v1/checklist-models/${data.value[0].id}`)
-              .then((detailRes: AxiosResponse<ApiResponse<ChecklistModelDetailApi>>) => {
-                let detailData = detailRes.data;
-                if (detailData.isSuccess) {
-                  setSelectedModelDetail(detailData.value);
-                  setApiChecklists(detailData.value.criteria);
-                }
-              })
-              .catch((err) => console.error("Failed to fetch model detail:", err));
-          }
-        }
-      })
-      .catch((err) => console.error("Failed to fetch checklist models:", err));
-
-    api
-      .get<ApiResponse<TechnicalAnalysisTagApi[]>>("/v1/technical-analysis")
-      .then(
-        (response: AxiosResponse<ApiResponse<TechnicalAnalysisTagApi[]>>) => {
-          let data = response.data;
-          if (data.isSuccess) setApiTechTags(data.value);
-        },
-      )
-      .catch((err) =>
-        console.error("Failed to fetch API technical analysis tags:", err),
-      );
-
-    api
-      .get<ApiResponse<TradingZoneApi[]>>("/v1/trading-zones")
-      .then((response: AxiosResponse<ApiResponse<TradingZoneApi[]>>) => {
-        let data = response.data;
-        if (data.isSuccess) setApiTradingZones(data.value);
-      })
-      .catch((err) => console.error("Failed to fetch API trading zones:", err));
-
-    api
-      .get<ApiResponse<TradingSetupSummaryDto[]>>("/v1/trading-setups")
-      .then((response: AxiosResponse<ApiResponse<TradingSetupSummaryDto[]>>) => {
-        let data = response.data;
-        if (data.isSuccess) setSetupOptions(data.value);
-      })
-      .catch((err) => console.error("Failed to fetch trading setups:", err));
+    // Reset model selection so a previously-viewed trade's model doesn't leak in.
+    setSelectedModelId("");
+    setInferredModelId("");
 
     // Fetch specific trade detail by id
     api
@@ -402,6 +395,17 @@ function TradeDetailContent({ id }: { id: string }) {
           setTrade(mappedTrade);
           // Setup form default data for editing
           setFormData(buildFormDataFromTrade(mappedTrade));
+
+          // If the backend tells us which checklist model this trade used, trust
+          // it. Otherwise we infer it from the checked items in the effect below.
+          const explicitModelId =
+            returnedValue.checklistModelId != null
+              ? returnedValue.checklistModelId.toString()
+              : "";
+          if (explicitModelId) {
+            setInferredModelId(explicitModelId);
+            setSelectedModelId(explicitModelId);
+          }
         } else {
           setTrade(null);
         }
@@ -412,6 +416,71 @@ function TradeDetailContent({ id }: { id: string }) {
       })
       .finally(() => setIsTradeLoading(false));
   }, [id, isAuthLoading, user]);
+
+  // Infer which checklist model the trade was logged against from its checked
+  // items (each criterion knows its owning model), falling back to the first
+  // available model. Only fills in a selection we don't already have.
+  useEffect(() => {
+    if (!trade) return;
+
+    const checked = trade.pretradeChecklist ?? [];
+    let modelId = "";
+
+    if (checked.length > 0 && allChecklists.length > 0) {
+      const match = allChecklists.find((item) =>
+        checked.includes(item.id.toString()),
+      );
+      if (match) modelId = match.checklistModelId.toString();
+    }
+
+    if (!modelId && checklistModels.length > 0) {
+      modelId = checklistModels[0].id.toString();
+    }
+
+    if (!modelId) return;
+
+    setInferredModelId((prev) => prev || modelId);
+    setSelectedModelId((prev) => prev || modelId);
+  }, [trade, allChecklists, checklistModels]);
+
+  // Load the criteria for whichever model is currently selected (cached).
+  useEffect(() => {
+    if (!selectedModelId) {
+      setSelectedModelDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    void loadModelDetail(Number(selectedModelId)).then((detail) => {
+      if (!cancelled) setSelectedModelDetail(detail);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedModelId, loadModelDetail]);
+
+  // Track unsaved edits. Compared against a fresh baseline built from the trade;
+  // both sides use buildFormDataFromTrade so their key order (and therefore the
+  // JSON signature) matches.
+  const isDirty =
+    isEditing &&
+    trade != null &&
+    (JSON.stringify(formData) !== JSON.stringify(buildFormDataFromTrade(trade)) ||
+      selectedModelId !== inferredModelId);
+
+  // Warn before a hard navigation / reload would silently discard edits.
+  useEffect(() => {
+    if (!isDirty) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
 
   // This client has no live market-data feed, so the only real price we can
   // show is a closed trade's recorded exit price. Open trades intentionally
@@ -455,13 +524,10 @@ function TradeDetailContent({ id }: { id: string }) {
       trade.status === TradeStatus.Closed && trade.closedDate
         ? new Date(trade.closedDate).getTime()
         : new Date().getTime();
-    const daysInTrade = Math.max(
-      1,
-      Math.ceil(
-        (lifecycleEndTime - new Date(trade.date).getTime()) /
-          (1000 * 60 * 60 * 24),
-      ),
-    );
+    // Keep the raw held duration in ms. This is a day-trading/killzone journal,
+    // so most holds are intraday — formatting decides the granularity instead of
+    // flooring everything to a whole day.
+    const holdingMs = Math.max(0, lifecycleEndTime - new Date(trade.date).getTime());
 
     const riskPercent =
       trade.entryPrice > 0 ? (riskPerUnit / trade.entryPrice) * 100 : 0;
@@ -474,7 +540,7 @@ function TradeDetailContent({ id }: { id: string }) {
       rrT2,
       rrT3,
       averageRiskReward,
-      daysInTrade,
+      holdingMs,
     };
   }, [trade]);
 
@@ -588,9 +654,7 @@ function TradeDetailContent({ id }: { id: string }) {
   const realizedPnL = !isOpenTrade ? trade.pnl ?? null : null;
   const exitPriceValue = !isOpenTrade ? trade.exitPrice ?? null : null;
   const timeInTradeLabel = isOpenTrade ? "Time Open" : "Time Held";
-  const timeInTradeValue = metrics
-    ? `${metrics.daysInTrade} day${metrics.daysInTrade === 1 ? "" : "s"}`
-    : "-";
+  const timeInTradeValue = metrics ? formatHoldingDuration(metrics.holdingMs) : "-";
   const headlineMetrics = [
     {
       label: "Entry Price",
@@ -674,7 +738,54 @@ function TradeDetailContent({ id }: { id: string }) {
     return Number.isFinite(parsed) ? parsed : null;
   };
 
+  // Validates editable inputs before saving. Catches non-numeric input that
+  // would otherwise be silently coerced to 0, and an obviously wrong stop
+  // placement (e.g. a stop above entry on a long).
+  const validateEditForm = (): string | null => {
+    const numericFields: { value: string; label: string }[] = [
+      { value: formData.targetTier1, label: "Tier 1 target" },
+      { value: formData.targetTier2, label: "Tier 2 target" },
+      { value: formData.targetTier3, label: "Tier 3 target" },
+      { value: formData.stopLoss, label: "Stop loss" },
+      { value: formData.exitPrice, label: "Exit price" },
+      { value: formData.pnl, label: "P&L" },
+      { value: formData.accountEquity, label: "Account equity" },
+      { value: formData.riskPercentage, label: "Risk per trade" },
+      { value: formData.maxDailyLoss, label: "Max daily loss" },
+      { value: formData.positionSize, label: "Position size" },
+      { value: formData.takeProfit, label: "Take profit" },
+    ];
+
+    for (const field of numericFields) {
+      if (field.value.trim() !== "" && !Number.isFinite(Number(field.value))) {
+        return `${field.label} must be a valid number.`;
+      }
+    }
+
+    const stop = Number.parseFloat(formData.stopLoss);
+    if (Number.isFinite(stop) && stop > 0 && trade.entryPrice > 0) {
+      if (trade.position === PositionType.Long && stop >= trade.entryPrice) {
+        return "On a long, the stop loss must sit below the entry price.";
+      }
+      if (trade.position === PositionType.Short && stop <= trade.entryPrice) {
+        return "On a short, the stop loss must sit above the entry price.";
+      }
+    }
+
+    return null;
+  };
+
   const handleSave = async () => {
+    const validationError = validateEditForm();
+    if (validationError) {
+      toast({
+        variant: "destructive",
+        title: "Check your inputs",
+        description: validationError,
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const riskGuardrailPayload = {
@@ -701,7 +812,9 @@ function TradeDetailContent({ id }: { id: string }) {
           ? Number.parseFloat(formData.targetTier3)
           : null,
         stopLoss: Number.parseFloat(formData.stopLoss) || 0,
-        notes: formData.notes,
+        // Notes are edited as plain text; store them back as rich text so the
+        // saved formatting model stays consistent with how they're read.
+        notes: plainTextToRichText(formData.notes),
         date: trade.date,
         status: trade.status,
         exitPrice: parseOptionalFloat(formData.exitPrice),
@@ -723,6 +836,7 @@ function TradeDetailContent({ id }: { id: string }) {
           formData.confidenceLevel > 0 ? formData.confidenceLevel : 0,
         tradeHistoryChecklists:
           formData.pretradeChecklist.map((id) => parseInt(id, 10)),
+        checklistModelId: selectedModelId ? parseInt(selectedModelId, 10) : null,
         tradingSetupId: formData.tradingSetupId
           ? parseInt(formData.tradingSetupId, 10)
           : null,
@@ -761,7 +875,7 @@ function TradeDetailContent({ id }: { id: string }) {
         prev
           ? {
               ...prev,
-              notes: formData.notes,
+              notes: plainTextToRichText(formData.notes),
               targetTier1: Number.parseFloat(formData.targetTier1) || 0,
               targetTier2: Number.parseFloat(formData.targetTier2) || 0,
               targetTier3: Number.parseFloat(formData.targetTier3) || 0,
@@ -793,6 +907,9 @@ function TradeDetailContent({ id }: { id: string }) {
           : prev,
       );
 
+      // The selected model is now the trade's model of record; sync the
+      // baseline so dirty-tracking doesn't flag it after a successful save.
+      setInferredModelId(selectedModelId);
       setIsEditing(false);
     } catch (error: any) {
       console.error("Error updating trade:", error);
@@ -807,41 +924,89 @@ function TradeDetailContent({ id }: { id: string }) {
     }
   };
 
-  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleScreenshotUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach((file) => {
-      if (!file.type.startsWith("image/")) return;
-      if (file.size > 5 * 1024 * 1024) return;
+    // Validate against the same count/type/size rules the create flow enforces.
+    let nextCount = formData.screenshots.length;
+    const validFiles: File[] = [];
+    const validationMessages: string[] = [];
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const result = event.target?.result as string;
-        if (result) {
-          setFormData((prev) => ({
-            ...prev,
-            screenshots: [...prev.screenshots, { url: result }],
-          }));
-        }
-      };
-      reader.readAsDataURL(file);
+    Array.from(files).forEach((file) => {
+      const validationMessage = validateCreateTradeScreenshot(
+        { name: file.name, type: file.type, size: file.size },
+        nextCount,
+        0,
+      );
+
+      if (validationMessage) {
+        validationMessages.push(validationMessage);
+        return;
+      }
+
+      validFiles.push(file);
+      nextCount += 1;
     });
 
     e.target.value = "";
+
+    if (validationMessages.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Some screenshots were skipped",
+        description: validationMessages[0],
+      });
+    }
+
+    if (validFiles.length === 0) return;
+
+    // Upload to the backend and store the returned hosted URLs, instead of
+    // inlining base64 data URLs into the trade PUT payload.
+    setIsUploadingScreenshots(true);
+    try {
+      const urls = await uploadTradeScreenshots(validFiles);
+      if (urls.length > 0) {
+        setFormData((prev) => ({
+          ...prev,
+          screenshots: [...prev.screenshots, ...urls.map((url) => ({ url }))],
+        }));
+      }
+    } catch (error: any) {
+      console.error("Error uploading screenshots:", error);
+      toast({
+        variant: "destructive",
+        title: "Screenshot upload failed",
+        description:
+          error?.message || "Could not upload your screenshots. Please try again.",
+      });
+    } finally {
+      setIsUploadingScreenshots(false);
+    }
   };
 
   const handleCancelEdit = () => {
+    if (
+      isDirty &&
+      !window.confirm("Discard your unsaved changes to this trade?")
+    ) {
+      return;
+    }
     setFormData(buildFormDataFromTrade(trade));
+    setSelectedModelId(inferredModelId);
     setIsEditing(false);
   };
 
   const handleClose = async () => {
-    if (exitPrice && manualPnl) {
+    // Only the exit price is required to close; P&L is optional (when omitted we
+    // send null and let the backend leave it unrecorded).
+    if (exitPrice) {
       setIsClosing(true);
       const exitPriceNum = Number.parseFloat(exitPrice);
-      const pnlNum = Number.parseFloat(manualPnl);
-      
+      const pnlNum = manualPnl !== "" ? Number.parseFloat(manualPnl) : null;
+
       try {
         const payload = {
           tradeId: Number(trade.id),
@@ -1082,7 +1247,12 @@ function TradeDetailContent({ id }: { id: string }) {
                 {trade.status === TradeStatus.Open ? (
                   <Button
                     variant="outline"
-                    onClick={() => setCloseDialogOpen(true)}
+                    onClick={() => {
+                      // Prefill the exit date to "now" so closing is one less
+                      // field for the common same-moment close.
+                      if (!exitDate) setExitDate(toDateTimeLocalValue(new Date()));
+                      setCloseDialogOpen(true);
+                    }}
                     className="gap-1.5 bg-background/70"
                   >
                     <X className="h-4 w-4" />
@@ -1230,17 +1400,32 @@ function TradeDetailContent({ id }: { id: string }) {
                   </CardHeader>
                   <CardContent className="pt-4">
                     {isEditing ? (
-                      <Textarea
-                        value={formData.notes}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            notes: e.target.value,
-                          }))
-                        }
-                        placeholder="Add your trade rationale, market conditions, or any other notes..."
-                        className="min-h-40 w-full resize-y border border-border/50 bg-background/50 p-3 text-sm focus-visible:ring-1 focus-visible:ring-primary/50"
-                      />
+                      <div className="space-y-3">
+                        <div className="flex justify-end">
+                          <SpeechToTextButton
+                            label="Voice note"
+                            onTranscript={(transcript) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                notes: prev.notes.trim()
+                                  ? `${prev.notes.trimEnd()}\n${transcript}`
+                                  : transcript,
+                              }))
+                            }
+                          />
+                        </div>
+                        <Textarea
+                          value={formData.notes}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              notes: e.target.value,
+                            }))
+                          }
+                          placeholder="Add your trade rationale, market conditions, or any other notes..."
+                          className="min-h-40 w-full resize-y border border-border/50 bg-background/50 p-3 text-sm focus-visible:ring-1 focus-visible:ring-primary/50"
+                        />
+                      </div>
                     ) : getPlainTextFromRichText(trade.notes || "") ? (
                       <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
                         {getPlainTextFromRichText(trade.notes)}
@@ -1708,8 +1893,30 @@ function TradeDetailContent({ id }: { id: string }) {
                     </Badge>
                   </CardTitle>
                   <CardDescription>
-                    Review setup discipline against the currently selected checklist model.
+                    Review setup discipline against the selected checklist model.
                   </CardDescription>
+                  {isEditing && checklistModels.length > 0 && (
+                    <div className="mt-3 max-w-xs space-y-1.5">
+                      <Label htmlFor="checklistModel" className="text-xs">
+                        Checklist model
+                      </Label>
+                      <Select
+                        value={selectedModelId}
+                        onValueChange={setSelectedModelId}
+                      >
+                        <SelectTrigger id="checklistModel" className="bg-background/80">
+                          <SelectValue placeholder="Select a checklist model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {checklistModels.map((model) => (
+                            <SelectItem key={model.id} value={model.id.toString()}>
+                              {model.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1761,10 +1968,9 @@ function TradeDetailContent({ id }: { id: string }) {
                                     }`}
                                   >
                                     <div className="flex items-center h-5">
-                                      <input
-                                        type="checkbox"
+                                      <Checkbox
                                         checked={isChecked}
-                                        onChange={() => {
+                                        onCheckedChange={() => {
                                           setFormData((prev) => ({
                                             ...prev,
                                             pretradeChecklist: isChecked
@@ -1778,7 +1984,6 @@ function TradeDetailContent({ id }: { id: string }) {
                                                 ],
                                           }));
                                         }}
-                                        className="h-4 w-4 rounded border-gray-300 bg-secondary text-primary focus:ring-primary/30"
                                       />
                                     </div>
                                     <span
@@ -1804,12 +2009,7 @@ function TradeDetailContent({ id }: { id: string }) {
                                   }`}
                                 >
                                   <div className="flex items-center h-5">
-                                    <input
-                                      type="checkbox"
-                                      readOnly
-                                      checked={isChecked}
-                                      className={`h-4 w-4 rounded border-gray-300 bg-secondary ${isChecked ? "text-emerald-500" : "text-muted-foreground"} focus:ring-0 cursor-default`}
-                                    />
+                                    <Checkbox checked={isChecked} disabled className="cursor-default opacity-100 disabled:opacity-100" />
                                   </div>
                                   <span
                                     className={`text-sm leading-tight transition-colors ${
@@ -1854,28 +2054,50 @@ function TradeDetailContent({ id }: { id: string }) {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col gap-4">
-                    {isEditing && (
-                      <label
-                        htmlFor="screenshot-upload"
-                        className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 transition-colors hover:border-primary/50 hover:bg-secondary/30"
-                      >
-                        <ImagePlus className="mb-2 h-8 w-8 text-muted-foreground" />
-                        <span className="text-sm font-medium text-foreground">
-                          Click to upload screenshots
-                        </span>
-                        <span className="mt-1 text-xs text-muted-foreground">
-                          PNG, JPG, or WebP
-                        </span>
-                        <input
-                          id="screenshot-upload"
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          className="sr-only"
-                          onChange={handleScreenshotUpload}
-                        />
-                      </label>
-                    )}
+                    {isEditing && (() => {
+                      const atCapacity =
+                        formData.screenshots.length >= CREATE_TRADE_SCREENSHOT_MAX_COUNT;
+                      const inputDisabled = atCapacity || isUploadingScreenshots;
+
+                      return (
+                        <label
+                          htmlFor="screenshot-upload"
+                          className={cn(
+                            "flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 transition-colors",
+                            inputDisabled
+                              ? "cursor-not-allowed opacity-60"
+                              : "cursor-pointer hover:border-primary/50 hover:bg-secondary/30",
+                          )}
+                        >
+                          {isUploadingScreenshots ? (
+                            <Loader2 className="mb-2 h-8 w-8 animate-spin text-primary" />
+                          ) : (
+                            <ImagePlus className="mb-2 h-8 w-8 text-muted-foreground" />
+                          )}
+                          <span className="text-sm font-medium text-foreground">
+                            {isUploadingScreenshots
+                              ? "Uploading..."
+                              : atCapacity
+                                ? "Screenshot limit reached"
+                                : "Click to upload screenshots"}
+                          </span>
+                          <span className="mt-1 text-xs text-muted-foreground">
+                            {atCapacity
+                              ? `You can attach up to ${CREATE_TRADE_SCREENSHOT_MAX_COUNT} screenshots.`
+                              : `PNG, JPG, or WebP · up to ${CREATE_TRADE_SCREENSHOT_MAX_COUNT}, 5MB each`}
+                          </span>
+                          <input
+                            id="screenshot-upload"
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            multiple
+                            disabled={inputDisabled}
+                            className="sr-only"
+                            onChange={handleScreenshotUpload}
+                          />
+                        </label>
+                      );
+                    })()}
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       {(isEditing
                         ? formData.screenshots
@@ -1945,37 +2167,41 @@ function TradeDetailContent({ id }: { id: string }) {
                   AI Trade Analysis
                 </CardTitle>
                 <CardDescription>
-                  Advanced insights generated by your AI trading assistant.
+                  A real post-trade review graded by your AI assistant from this trade&apos;s
+                  screenshots, notes, R:R, checklist, and logged emotions.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="pt-4">
-                {isEditing ? (
-                  <Textarea
-                    value={formData.aiSummary}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        aiSummary: e.target.value,
-                      }))
-                    }
-                    placeholder="Input AI summary here..."
-                    className="min-h-48 w-full resize-y border border-border/50 bg-background/50 p-3 text-sm leading-relaxed focus-visible:ring-1 focus-visible:ring-fuchsia-500/50"
-                  />
-                ) : trade.aiSummary ? (
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                    {getPlainTextFromRichText(trade.aiSummary)}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary/50 ring-1 ring-border/50">
-                      <Brain className="h-5 w-5 text-muted-foreground/60" />
+              <CardContent className="pt-4 space-y-4">
+                <PostTradeAiReview
+                  tradeId={trade.id}
+                  savedSummary={formData.aiSummary || trade.aiSummary}
+                  isEditing={isEditing}
+                  onSummaryGenerated={(summary) =>
+                    setFormData((prev) => ({ ...prev, aiSummary: summary }))
+                  }
+                />
+
+                {!isEditing &&
+                  formData.aiSummary !== (trade.aiSummary ?? "") && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-4 py-3">
+                      <p className="text-sm text-muted-foreground">
+                        You have a freshly generated review that isn&apos;t saved yet.
+                      </p>
+                      <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        size="sm"
+                        className="gap-2"
+                      >
+                        {isSaving ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Save review to trade
+                      </Button>
                     </div>
-                    <p className="text-sm font-semibold text-foreground/80">Analysis Pending</p>
-                    <p className="max-w-[280px] text-xs leading-relaxed text-muted-foreground">
-                      No AI summary has been generated for this trade yet.
-                    </p>
-                  </div>
-                )}
+                  )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2016,7 +2242,7 @@ function TradeDetailContent({ id }: { id: string }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manualPnl">P&L</Label>
+                <Label htmlFor="manualPnl">P&L <span className="font-normal text-muted-foreground">(optional)</span></Label>
                 <Input
                   id="manualPnl"
                   type="number"
@@ -2047,12 +2273,10 @@ function TradeDetailContent({ id }: { id: string }) {
                 />
               </div>
               <div className="flex items-center space-x-2 pt-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="hitStopLoss"
                   checked={hitStopLoss}
-                  onChange={(e) => setHitStopLoss(e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                  onCheckedChange={(checked) => setHitStopLoss(checked === true)}
                 />
                 <Label htmlFor="hitStopLoss">Hit stop loss</Label>
               </div>
@@ -2068,7 +2292,7 @@ function TradeDetailContent({ id }: { id: string }) {
               </Button>
               <Button
                 onClick={handleClose}
-                disabled={!exitPrice || !manualPnl || isClosing}
+                disabled={!exitPrice || isClosing}
               >
                 {isClosing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isClosing ? "Closing..." : "Close Trade"}
