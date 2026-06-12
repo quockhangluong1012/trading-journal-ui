@@ -66,7 +66,7 @@ export function MarketContextSection({
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-border/60 bg-background/60 p-3">
+        <div className="space-y-3 rounded-lg bg-muted/30 p-3">
           <div>
             <p className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Clock className="h-4 w-4 text-amber-400" />

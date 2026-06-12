@@ -60,7 +60,7 @@ export function NotesEvidenceSection({
           />
         </div>
 
-        <div className="space-y-3 rounded-xl border border-border/60 bg-background/60 p-3">
+        <div className="space-y-3 rounded-lg bg-muted/30 p-3">
           <div>
             <p className="text-sm font-medium text-foreground">Screenshots</p>
             <p className="mt-1 text-xs text-muted-foreground">

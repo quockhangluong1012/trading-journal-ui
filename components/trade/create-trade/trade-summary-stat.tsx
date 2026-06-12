@@ -14,15 +14,15 @@ export function TradeSummaryStat({
   valueClassName,
 }: TradeSummaryStatProps) {
   return (
-    <div className="rounded-lg border border-slate-200/80 bg-background/85 p-3 dark:border-slate-700/70 dark:bg-slate-950/70">
-      <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+    <div className="rounded-lg bg-muted/40 p-2.5">
+      <p className="text-[11px] font-medium text-muted-foreground">
         {label}
       </p>
-      <div className="mt-1 text-lg font-bold tracking-tight text-foreground tabular-nums">
+      <div className="mt-0.5 text-base font-semibold tracking-tight text-foreground tabular-nums">
         <span className={cn(valueClassName)}>{value}</span>
       </div>
       {helper ? (
-        <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
+        <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground/80">
           {helper}
         </p>
       ) : null}
