@@ -17,6 +17,8 @@ import {
   buildQuickOrderTicketRequest,
   buildPositionedQuickOrderDraft,
   buildOrderMarkerOverlays,
+  buildOrderLevelOverlays,
+  buildOrderLevelUpdateRequest,
   buildOrderPriceLines,
   buildTradingSessionOverlays,
   buildTradingViewWidgetOptions,
@@ -34,6 +36,7 @@ import {
   mapBacktestCandlesToChartData,
   moveChartDrawing,
   positionChartDrawing,
+  positionOrderLevelOverlays,
   positionTradingSessionOverlays,
   replaceChartDrawingPoint,
   resolveDrawingAnchorFromCoordinate,
@@ -42,6 +45,7 @@ import {
   toChartTimestamp,
   toTradingViewInterval,
   updateQuickOrderDraftLevel,
+  validateOrderLevelPrice,
 } from "@/components/backtest/tradingview-platform";
 import { LineStyle, type UTCTimestamp } from "lightweight-charts";
 import type { BacktestOrder } from "@/lib/backtest-store";
@@ -730,6 +734,121 @@ describe("TradingView platform helpers", () => {
         title: "",
       }),
     ]);
+  });
+
+  it("builds TradingView-style active order levels with live and projected P&L", () => {
+    const activePosition = createOrder({
+      id: 12,
+      status: "Active",
+      side: "Long",
+      filledPrice: 100,
+      positionSize: 2,
+      stopLoss: 95,
+      takeProfit: 110,
+    });
+
+    expect(buildOrderLevelOverlays({
+      activePositions: [activePosition],
+      pendingOrders: [],
+      currentPrice: 104,
+    })).toEqual([
+      expect.objectContaining({
+        id: "active-entry-12",
+        level: "entry",
+        price: 100,
+        pnl: 8,
+        isDraggable: false,
+      }),
+      expect.objectContaining({
+        id: "active-target-12",
+        level: "takeProfit",
+        price: 110,
+        pnl: 20,
+        isDraggable: true,
+      }),
+      expect.objectContaining({
+        id: "active-stop-12",
+        level: "stopLoss",
+        price: 95,
+        pnl: -10,
+        isDraggable: true,
+      }),
+    ]);
+  });
+
+  it("calculates short P&L and positions only visible order levels", () => {
+    const activePosition = createOrder({
+      id: 13,
+      status: "Active",
+      side: "Short",
+      filledPrice: 200,
+      positionSize: 3,
+      stopLoss: 210,
+      takeProfit: 180,
+    });
+    const levels = buildOrderLevelOverlays({
+      activePositions: [activePosition],
+      pendingOrders: [],
+      currentPrice: 190,
+    });
+
+    expect(levels.find((level) => level.level === "entry")?.pnl).toBe(30);
+    expect(positionOrderLevelOverlays({
+      levels,
+      containerHeight: 400,
+      priceToCoordinate: (price) => {
+        if (price === 200) return 120;
+        if (price === 180) return 240;
+        return 460;
+      },
+    })).toEqual([
+      expect.objectContaining({ id: "active-entry-13", y: 120 }),
+      expect.objectContaining({ id: "active-target-13", y: 240 }),
+    ]);
+  });
+
+  it("rejects TP and SL moves that cross the order entry", () => {
+    const longOrder = createOrder({
+      status: "Active",
+      side: "Long",
+      filledPrice: 100,
+      stopLoss: 95,
+      takeProfit: 110,
+    });
+    const shortOrder = createOrder({
+      status: "Active",
+      side: "Short",
+      filledPrice: 100,
+      stopLoss: 105,
+      takeProfit: 90,
+    });
+
+    expect(validateOrderLevelPrice(longOrder, "takeProfit", 99)).toBeTruthy();
+    expect(validateOrderLevelPrice(longOrder, "stopLoss", 101)).toBeTruthy();
+    expect(validateOrderLevelPrice(shortOrder, "takeProfit", 101)).toBeTruthy();
+    expect(validateOrderLevelPrice(shortOrder, "stopLoss", 99)).toBeTruthy();
+    expect(validateOrderLevelPrice(longOrder, "takeProfit", 115)).toBeNull();
+    expect(validateOrderLevelPrice(shortOrder, "stopLoss", 108)).toBeNull();
+  });
+
+  it("preserves the untouched protection level when building a drag update", () => {
+    const order = createOrder({
+      id: 14,
+      status: "Active",
+      stopLoss: 95,
+      takeProfit: 110,
+    });
+
+    expect(buildOrderLevelUpdateRequest(order, "takeProfit", 115)).toEqual({
+      orderId: 14,
+      stopLoss: 95,
+      takeProfit: 115,
+    });
+    expect(buildOrderLevelUpdateRequest(order, "stopLoss", 97)).toEqual({
+      orderId: 14,
+      stopLoss: 97,
+      takeProfit: 110,
+    });
   });
 
   it("positions entry markers at the bottom of the placed order candle", () => {

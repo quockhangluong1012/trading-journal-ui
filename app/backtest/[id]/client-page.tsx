@@ -104,6 +104,9 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const pendingOrders = useBacktestStore((state) => state.pendingOrders);
   const activePositions = useBacktestStore((state) => state.activePositions);
   const closedPositions = useBacktestStore((state) => state.closedPositions);
+  const updateOrder = useBacktestStore((state) => state.updateOrder);
+  const cancelOrder = useBacktestStore((state) => state.cancelOrder);
+  const closeOrder = useBacktestStore((state) => state.closeOrder);
   const loadTradingZones = useBacktestStore((state) => state.loadTradingZones);
   const finishSession = useBacktestStore((state) => state.finishSession);
   const drawings = useBacktestStore((state) => state.drawings);
@@ -327,6 +330,9 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
                     </AlertDialog>
                   ) : null}
                   onOpenOrderTicket={openOrderTicket}
+                  onUpdateOrder={updateOrder}
+                  onCancelOrder={cancelOrder}
+                  onCloseOrder={closeOrder}
                   onTogglePlayback={togglePlayback}
                   onSkip={handleSkip}
                   onPlaybackSpeedChange={setPlaybackSpeed}

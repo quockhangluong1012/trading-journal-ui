@@ -96,6 +96,7 @@ import type { BacktestOrder, CandleData, PlaybackSpeed, Timeframe } from "@/lib/
 import type { OrderFormInitialOrder } from "@/hooks/use-order-form";
 import { BACKTEST_KEYBOARD_SHORTCUTS } from "@/components/backtest/keyboard-shortcuts";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const FOREX_CODES = new Set([
   "AUD",
@@ -343,6 +344,9 @@ interface TradingViewPlatformProps {
   onTimeframeChange?: (timeframe: Timeframe) => void;
   finishAction?: ReactNode;
   onOpenOrderTicket?: (request: number | OrderFormInitialOrder) => void;
+  onUpdateOrder?: (request: OrderLevelUpdateRequest) => Promise<void> | void;
+  onCancelOrder?: (orderId: number) => Promise<void> | void;
+  onCloseOrder?: (orderId: number, exitPrice: number) => Promise<void> | void;
   onTogglePlayback: () => void;
   onSkip: () => void;
   onPlaybackSpeedChange: (speed: PlaybackSpeed) => void;
@@ -438,6 +442,39 @@ export interface OrderMarkerOverlay {
 interface PositionedOrderMarkerOverlay extends OrderMarkerOverlay {
   x: number;
   y: number;
+}
+
+export type OrderLevelKey = "entry" | "takeProfit" | "stopLoss";
+
+export interface OrderLevelUpdateRequest {
+  orderId: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+}
+
+export interface OrderLevelOverlay {
+  id: string;
+  orderId: number;
+  status: "Pending" | "Active";
+  side: BacktestOrder["side"];
+  level: OrderLevelKey;
+  price: number;
+  pnl: number | null;
+  positionSize: number;
+  color: string;
+  lineStyle: "solid" | "dashed";
+  isDraggable: boolean;
+}
+
+export interface PositionedOrderLevelOverlay extends OrderLevelOverlay {
+  y: number;
+}
+
+interface OrderLevelDragState {
+  pointerId: number;
+  orderId: number;
+  level: "takeProfit" | "stopLoss";
+  price: number;
 }
 
 export type QuickOrderSide = "Long" | "Short";
@@ -1823,6 +1860,171 @@ export function buildOrderPriceLines({
   return lines;
 }
 
+function calculateOrderPnl(order: BacktestOrder, exitPrice: number): number | null {
+  const entryPrice = getOrderEntryPrice(order);
+  if (!entryPrice || !isValidPrice(exitPrice) || !Number.isFinite(order.positionSize)) {
+    return null;
+  }
+
+  const priceDelta = order.side === "Long"
+    ? exitPrice - entryPrice
+    : entryPrice - exitPrice;
+
+  return priceDelta * order.positionSize;
+}
+
+export function validateOrderLevelPrice(
+  order: BacktestOrder,
+  level: "takeProfit" | "stopLoss",
+  price: number,
+): string | null {
+  const entryPrice = getOrderEntryPrice(order);
+  if (!entryPrice || !isValidPrice(price)) {
+    return "Order level must be a valid positive price.";
+  }
+
+  if (order.side === "Long") {
+    if (level === "takeProfit" && price <= entryPrice) {
+      return "Long take profit must stay above entry.";
+    }
+    if (level === "stopLoss" && price >= entryPrice) {
+      return "Long stop loss must stay below entry.";
+    }
+  } else {
+    if (level === "takeProfit" && price >= entryPrice) {
+      return "Short take profit must stay below entry.";
+    }
+    if (level === "stopLoss" && price <= entryPrice) {
+      return "Short stop loss must stay above entry.";
+    }
+  }
+
+  return null;
+}
+
+export function buildOrderLevelUpdateRequest(
+  order: BacktestOrder,
+  level: "takeProfit" | "stopLoss",
+  price: number,
+): OrderLevelUpdateRequest {
+  return {
+    orderId: order.id,
+    stopLoss: level === "stopLoss" ? price : order.stopLoss,
+    takeProfit: level === "takeProfit" ? price : order.takeProfit,
+  };
+}
+
+export function buildOrderLevelOverlays({
+  pendingOrders,
+  activePositions,
+  currentPrice,
+  draggedLevel,
+}: {
+  pendingOrders: BacktestOrder[];
+  activePositions: BacktestOrder[];
+  currentPrice: number | null;
+  draggedLevel?: Pick<OrderLevelDragState, "orderId" | "level" | "price"> | null;
+}): OrderLevelOverlay[] {
+  const levels: OrderLevelOverlay[] = [];
+
+  const addOrderLevels = (order: BacktestOrder, status: "Pending" | "Active") => {
+    const entryPrice = getOrderEntryPrice(order);
+    if (!entryPrice) {
+      return;
+    }
+
+    const getLevelPrice = (level: "takeProfit" | "stopLoss", fallback: number | null) => (
+      draggedLevel?.orderId === order.id && draggedLevel.level === level
+        ? draggedLevel.price
+        : fallback
+    );
+    const takeProfit = getLevelPrice("takeProfit", order.takeProfit);
+    const stopLoss = getLevelPrice("stopLoss", order.stopLoss);
+    const prefix = status === "Active" ? "active" : "pending";
+
+    levels.push({
+      id: `${prefix}-entry-${order.id}`,
+      orderId: order.id,
+      status,
+      side: order.side,
+      level: "entry",
+      price: entryPrice,
+      pnl: status === "Active" && currentPrice !== null
+        ? calculateOrderPnl(order, currentPrice)
+        : null,
+      positionSize: order.positionSize,
+      color: getOrderSideColor(order.side),
+      lineStyle: status === "Active" ? "solid" : "dashed",
+      isDraggable: false,
+    });
+
+    if (isValidPrice(takeProfit)) {
+      levels.push({
+        id: `${prefix}-target-${order.id}`,
+        orderId: order.id,
+        status,
+        side: order.side,
+        level: "takeProfit",
+        price: takeProfit,
+        pnl: calculateOrderPnl(order, takeProfit),
+        positionSize: order.positionSize,
+        color: TARGET_COLOR,
+        lineStyle: "dashed",
+        isDraggable: true,
+      });
+    }
+
+    if (isValidPrice(stopLoss)) {
+      levels.push({
+        id: `${prefix}-stop-${order.id}`,
+        orderId: order.id,
+        status,
+        side: order.side,
+        level: "stopLoss",
+        price: stopLoss,
+        pnl: calculateOrderPnl(order, stopLoss),
+        positionSize: order.positionSize,
+        color: status === "Pending" ? PENDING_STOP_COLOR : STOP_COLOR,
+        lineStyle: "dashed",
+        isDraggable: true,
+      });
+    }
+  };
+
+  for (const order of activePositions) {
+    addOrderLevels(order, "Active");
+  }
+  for (const order of pendingOrders) {
+    addOrderLevels(order, "Pending");
+  }
+
+  return levels;
+}
+
+export function positionOrderLevelOverlays({
+  levels,
+  priceToCoordinate,
+  containerHeight,
+}: {
+  levels: OrderLevelOverlay[];
+  priceToCoordinate: (price: number) => number | null;
+  containerHeight: number;
+}): PositionedOrderLevelOverlay[] {
+  if (!Number.isFinite(containerHeight) || containerHeight <= 0) {
+    return [];
+  }
+
+  return levels.reduce<PositionedOrderLevelOverlay[]>((result, level) => {
+    const y = priceToCoordinate(level.price);
+    if (y === null || !Number.isFinite(y) || y < 0 || y > containerHeight) {
+      return result;
+    }
+
+    result.push({ ...level, y: Number(y) });
+    return result;
+  }, []);
+}
+
 // Binary-search the index of the bar whose bucket CONTAINS `target` in an
 // ascending-by-time array — i.e. the last bar whose start time is <= target.
 // Each bar's time is its bucket start and the bar spans [time, nextTime), so a
@@ -3082,6 +3284,9 @@ export function TradingViewPlatform({
   onTimeframeChange,
   finishAction,
   onOpenOrderTicket,
+  onUpdateOrder,
+  onCancelOrder,
+  onCloseOrder,
   onTogglePlayback,
   onSkip,
   onPlaybackSpeedChange,
@@ -3111,12 +3316,14 @@ export function TradingViewPlatform({
   const shouldProjectDrawingsRef = useRef(false);
   const shouldProjectTradingSessionsRef = useRef(false);
   const shouldProjectQuickOrderRef = useRef(false);
+  const shouldProjectOrderLevelsRef = useRef(false);
   const dragStateRef = useRef<DrawingDragState | null>(null);
   const replayControlsDragRef = useRef<ReplayControlsDragState | null>(null);
   const selectedDrawingToolbarDragRef = useRef<FloatingToolbarDragState | null>(null);
   const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
   const hoveredPriceAnchorRef = useRef<PointerChartAnchor | null>(null);
   const quickOrderDragRef = useRef<QuickOrderDragState | null>(null);
+  const orderLevelDragRef = useRef<OrderLevelDragState | null>(null);
   // True while the user has panned back to review past candles. While set, the
   // data-update effect stops snapping the view to the live edge so newly
   // arriving candles don't yank the user out of the history they're inspecting.
@@ -3127,6 +3334,8 @@ export function TradingViewPlatform({
   const [currentPriceOrderAction, setCurrentPriceOrderAction] = useState<CurrentPriceOrderAction | null>(null);
   const [hoveredCandlePriceReadout, setHoveredCandlePriceReadout] = useState<HoveredCandlePriceReadout | null>(null);
   const [quickOrderDraft, setQuickOrderDraft] = useState<QuickOrderDraft | null>(null);
+  const [draggedOrderLevel, setDraggedOrderLevel] = useState<OrderLevelDragState | null>(null);
+  const [pendingOrderActionIds, setPendingOrderActionIds] = useState<Set<number>>(() => new Set());
   // Hydrate once from persisted drawings; later prop changes are ignored so a
   // re-fetch can't clobber the user's in-progress edits. The parent remounts
   // this component per session (key={sessionId}), which re-runs this initializer.
@@ -3231,6 +3440,16 @@ export function TradingViewPlatform({
   const palette = useMemo(() => getPalette(theme), [theme]);
   const progress = calculateReplayProgress({ startDate, endDate, currentTimestamp });
   const latestCandle = chartData.candles.at(-1);
+  const currentPrice = latestCandle?.close ?? null;
+  const orderLevelOverlays = useMemo(
+    () => buildOrderLevelOverlays({
+      activePositions,
+      pendingOrders,
+      currentPrice,
+      draggedLevel: draggedOrderLevel,
+    }),
+    [activePositions, currentPrice, draggedOrderLevel, pendingOrders],
+  );
   const latestPrice = formatPrice(latestCandle?.close);
   const playLabel = isPlaying ? "Pause replay" : "Start replay";
   const selectedDrawing = useMemo(
@@ -3424,7 +3643,8 @@ export function TradingViewPlatform({
     if (
       !shouldProjectDrawingsRef.current &&
       !shouldProjectTradingSessionsRef.current &&
-      !shouldProjectQuickOrderRef.current
+      !shouldProjectQuickOrderRef.current &&
+      !shouldProjectOrderLevelsRef.current
     ) {
       return;
     }
@@ -3473,6 +3693,10 @@ export function TradingViewPlatform({
   useEffect(() => {
     shouldProjectTradingSessionsRef.current = tradingSessionOverlays.length > 0;
   }, [tradingSessionOverlays.length]);
+
+  useEffect(() => {
+    shouldProjectOrderLevelsRef.current = orderLevelOverlays.length > 0;
+  }, [orderLevelOverlays.length]);
 
   useEffect(() => {
     shouldProjectQuickOrderRef.current = quickOrderDraft !== null;
@@ -3946,6 +4170,22 @@ export function TradingViewPlatform({
         : [],
     [areSessionsEnabled, positionedTradingSessions, sessionVisibility],
   );
+
+  const positionedOrderLevels = useMemo(() => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries || orderLevelOverlays.length === 0) {
+      return [];
+    }
+
+    return positionOrderLevelOverlays({
+      levels: orderLevelOverlays,
+      containerHeight: chartSize.height,
+      priceToCoordinate: (price) => {
+        const y = candleSeries.priceToCoordinate(price);
+        return y == null ? null : Number(y);
+      },
+    });
+  }, [chartSize.height, orderLevelOverlays, overlayRevision]);
 
   const positionedQuickOrderDraft = useMemo(() => {
     const chart = chartRef.current;
@@ -4449,6 +4689,146 @@ export function TradingViewPlatform({
     quickOrderDragRef.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
   }, []);
+
+  const findOpenOrder = useCallback((orderId: number) => (
+    activePositions.find((order) => order.id === orderId)
+    ?? pendingOrders.find((order) => order.id === orderId)
+    ?? null
+  ), [activePositions, pendingOrders]);
+
+  const updateDraggedOrderLevelFromPointer = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const dragState = orderLevelDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const anchor = getChartAnchorFromClientPoint(event.clientX, event.clientY);
+    if (!anchor) {
+      return;
+    }
+
+    const nextDragState = {
+      ...dragState,
+      price: normalizeQuickOrderPrice(anchor.price),
+    };
+    orderLevelDragRef.current = nextDragState;
+    setDraggedOrderLevel(nextDragState);
+  }, [getChartAnchorFromClientPoint]);
+
+  const handleOrderLevelPointerDown = useCallback((
+    event: ReactPointerEvent<HTMLButtonElement>,
+    level: PositionedOrderLevelOverlay,
+  ) => {
+    if (
+      !onUpdateOrder ||
+      !level.isDraggable ||
+      (event.button !== 0 && event.pointerType !== "touch" && event.pointerType !== "pen")
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const dragState: OrderLevelDragState = {
+      pointerId: event.pointerId,
+      orderId: level.orderId,
+      level: level.level as "takeProfit" | "stopLoss",
+      price: level.price,
+    };
+    orderLevelDragRef.current = dragState;
+    setDraggedOrderLevel(dragState);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    updateDraggedOrderLevelFromPointer(event);
+  }, [onUpdateOrder, updateDraggedOrderLevelFromPointer]);
+
+  const handleOrderLevelPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (orderLevelDragRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateDraggedOrderLevelFromPointer(event);
+  }, [updateDraggedOrderLevelFromPointer]);
+
+  const clearOrderLevelDrag = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (orderLevelDragRef.current?.pointerId !== event.pointerId) {
+      return;
+    }
+
+    orderLevelDragRef.current = null;
+    setDraggedOrderLevel(null);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }, []);
+
+  const handleOrderLevelPointerEnd = useCallback(async (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const dragState = orderLevelDragRef.current;
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    updateDraggedOrderLevelFromPointer(event);
+
+    const finalDragState = orderLevelDragRef.current ?? dragState;
+    const order = findOpenOrder(finalDragState.orderId);
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    orderLevelDragRef.current = null;
+
+    if (!order || !onUpdateOrder) {
+      setDraggedOrderLevel(null);
+      return;
+    }
+
+    const validationError = validateOrderLevelPrice(order, finalDragState.level, finalDragState.price);
+    if (validationError) {
+      setDraggedOrderLevel(null);
+      toast.error(validationError);
+      return;
+    }
+
+    setPendingOrderActionIds((current) => new Set(current).add(order.id));
+    try {
+      await onUpdateOrder(buildOrderLevelUpdateRequest(
+        order,
+        finalDragState.level,
+        finalDragState.price,
+      ));
+    } finally {
+      setDraggedOrderLevel(null);
+      setPendingOrderActionIds((current) => {
+        const next = new Set(current);
+        next.delete(order.id);
+        return next;
+      });
+    }
+  }, [findOpenOrder, onUpdateOrder, updateDraggedOrderLevelFromPointer]);
+
+  const handleOrderCancelOrClose = useCallback(async (level: PositionedOrderLevelOverlay) => {
+    if (pendingOrderActionIds.has(level.orderId)) {
+      return;
+    }
+
+    setPendingOrderActionIds((current) => new Set(current).add(level.orderId));
+    try {
+      if (level.status === "Pending") {
+        await onCancelOrder?.(level.orderId);
+        toast.success("Pending order cancelled.");
+      } else if (currentPrice !== null && isValidPrice(currentPrice)) {
+        await onCloseOrder?.(level.orderId, currentPrice);
+        toast.success("Position closed at the current replay price.");
+      }
+    } catch {
+      toast.error(level.status === "Pending" ? "Failed to cancel order." : "Failed to close position.");
+    } finally {
+      setPendingOrderActionIds((current) => {
+        const next = new Set(current);
+        next.delete(level.orderId);
+        return next;
+      });
+    }
+  }, [currentPrice, onCancelOrder, onCloseOrder, pendingOrderActionIds]);
 
   const handleDrawingPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     (event.target as Element).releasePointerCapture?.(event.pointerId);
@@ -5421,6 +5801,98 @@ export function TradingViewPlatform({
           >
             <Trash2 className="h-4 w-4" />
           </button>
+        </div>
+      ) : null}
+
+      {positionedOrderLevels.length > 0 ? (
+        <div className="pointer-events-none absolute inset-0 z-30" data-testid="chart-order-levels">
+          {positionedOrderLevels.map((level) => {
+            const isEntry = level.level === "entry";
+            const isBusy = pendingOrderActionIds.has(level.orderId);
+            const pnlTone = level.pnl === null
+              ? "text-muted-foreground"
+              : level.pnl > 0
+                ? "text-emerald-600 dark:text-emerald-300"
+                : level.pnl < 0
+                  ? "text-rose-600 dark:text-rose-300"
+                  : "text-muted-foreground";
+            const levelLabel = level.level === "takeProfit" ? "TP" : level.level === "stopLoss" ? "SL" : "Order";
+            const canCancelOrClose = level.status === "Pending"
+              ? Boolean(onCancelOrder)
+              : Boolean(onCloseOrder && currentPrice !== null && isValidPrice(currentPrice));
+
+            return (
+              <div
+                key={level.id}
+                className="absolute"
+                data-testid={`chart-order-level-${level.id}`}
+                style={{
+                  left: QUICK_ORDER_EDGE_LEFT,
+                  right: QUICK_ORDER_EDGE_RIGHT,
+                  top: level.y,
+                }}
+              >
+                <div
+                  aria-hidden="true"
+                  className="absolute left-0 right-0 top-1/2 border-t"
+                  style={{
+                    borderColor: level.color,
+                    borderTopStyle: level.lineStyle,
+                    opacity: isEntry ? 0.88 : 0.66,
+                  }}
+                />
+
+                {isEntry ? (
+                  <div
+                    className="pointer-events-auto absolute left-0 top-1/2 flex h-8 -translate-y-1/2 items-center overflow-hidden rounded-md border bg-background/95 text-xs font-semibold shadow-md backdrop-blur"
+                    style={{ borderColor: `${level.color}99` }}
+                  >
+                    <span
+                      className="flex h-full min-w-9 items-center justify-center px-2 text-white"
+                      style={{ backgroundColor: level.color }}
+                    >
+                      {level.positionSize}
+                    </span>
+                    <span className={cn("min-w-24 px-2.5 tabular-nums", pnlTone)}>
+                      {level.pnl === null
+                        ? level.status
+                        : `${formatSignedNumber(level.pnl, 2)} USD`}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={level.status === "Pending" ? "Cancel pending order" : "Close active position"}
+                      title={level.status === "Pending" ? "Cancel pending order" : "Close at current replay price"}
+                      className="flex h-full w-8 items-center justify-center border-l border-border/70 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={isBusy || !canCancelOrClose}
+                      onClick={() => void handleOrderCancelOrClose(level)}
+                    >
+                      {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`Move ${levelLabel} for order ${level.orderId} at ${formatPrice(level.price)}`}
+                    title={`Drag ${levelLabel} - ${formatPrice(level.price)}`}
+                    className={cn(
+                      "pointer-events-auto absolute left-0 top-1/2 flex h-7 touch-none -translate-y-1/2 cursor-grab items-center gap-1.5 rounded-md border bg-background/95 px-2 text-xs font-semibold tabular-nums shadow-sm backdrop-blur transition hover:bg-muted active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-60",
+                      pnlTone,
+                    )}
+                    style={{ borderColor: `${level.color}99` }}
+                    disabled={isBusy || !onUpdateOrder}
+                    onPointerDown={(event) => handleOrderLevelPointerDown(event, level)}
+                    onPointerMove={handleOrderLevelPointerMove}
+                    onPointerUp={(event) => void handleOrderLevelPointerEnd(event)}
+                    onPointerCancel={clearOrderLevelDrag}
+                  >
+                    {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <GripVertical className="h-3.5 w-3.5" />}
+                    <span style={{ color: level.color }}>{levelLabel}</span>
+                    <span>{level.pnl === null ? formatPrice(level.price) : `${formatSignedNumber(level.pnl, 2)} USD`}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : null}
 
