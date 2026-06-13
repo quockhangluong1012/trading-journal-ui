@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   BacktestOrderTicket,
   isBacktestOrderTicketShortcut,
+  type BacktestOrderTicketOpenInput,
   type BacktestOrderTicketOpenRequest,
 } from "@/components/backtest/backtest-order-ticket";
 import { isInteractiveEventTarget } from "@/components/backtest/keyboard-shortcuts";
@@ -103,6 +104,9 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const pendingOrders = useBacktestStore((state) => state.pendingOrders);
   const activePositions = useBacktestStore((state) => state.activePositions);
   const closedPositions = useBacktestStore((state) => state.closedPositions);
+  const updateOrder = useBacktestStore((state) => state.updateOrder);
+  const cancelOrder = useBacktestStore((state) => state.cancelOrder);
+  const closeOrder = useBacktestStore((state) => state.closeOrder);
   const loadTradingZones = useBacktestStore((state) => state.loadTradingZones);
   const finishSession = useBacktestStore((state) => state.finishSession);
   const drawings = useBacktestStore((state) => state.drawings);
@@ -145,10 +149,14 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
     advanceCandle(sessionId);
   }, [advanceCandle, sessionId]);
 
-  const openOrderTicket = useCallback((price: number | null = null) => {
+  const openOrderTicket = useCallback((request: BacktestOrderTicketOpenInput = null) => {
+    const initialOrder = request && typeof request === "object" ? request : null;
+    const price = typeof request === "number" ? request : initialOrder?.entryPrice ?? null;
+
     setOrderTicketOpenRequest((current) => ({
       id: current.id + 1,
       price,
+      initialOrder,
     }));
   }, []);
 
@@ -322,6 +330,9 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
                     </AlertDialog>
                   ) : null}
                   onOpenOrderTicket={openOrderTicket}
+                  onUpdateOrder={updateOrder}
+                  onCancelOrder={cancelOrder}
+                  onCloseOrder={closeOrder}
                   onTogglePlayback={togglePlayback}
                   onSkip={handleSkip}
                   onPlaybackSpeedChange={setPlaybackSpeed}

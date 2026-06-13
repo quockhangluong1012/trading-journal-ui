@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CHART_PRICE_FORMAT,
@@ -11,11 +11,19 @@ import {
   applyChartDrawingTemplate,
   buildIncrementalChartData,
   buildCurrentPriceOrderAction,
+  buildHoveredCandlePriceReadout,
+  buildHoveredPriceOrderAction,
+  buildQuickOrderDraft,
+  buildQuickOrderTicketRequest,
+  buildPositionedQuickOrderDraft,
   buildOrderMarkerOverlays,
+  buildOrderLevelOverlays,
+  buildOrderLevelUpdateRequest,
   buildOrderPriceLines,
   buildTradingSessionOverlays,
   buildTradingViewWidgetOptions,
   calculateReplayProgress,
+  createViewportOverlayScheduler,
   formatDrawingMetricLabel,
   getChartDrawingStyle,
   getDefaultFloatingDrawingToolbarPosition,
@@ -23,10 +31,12 @@ import {
   completeChartDrawingDraft,
   estimateDrawingTimeFromLogical,
   formatChartAxisPrice,
+  isPointerWithinClientBounds,
   isTwoPointDrawingTool,
   mapBacktestCandlesToChartData,
   moveChartDrawing,
   positionChartDrawing,
+  positionOrderLevelOverlays,
   positionTradingSessionOverlays,
   replaceChartDrawingPoint,
   resolveDrawingAnchorFromCoordinate,
@@ -34,6 +44,8 @@ import {
   snapDrawingAnchorToCandles,
   toChartTimestamp,
   toTradingViewInterval,
+  updateQuickOrderDraftLevel,
+  validateOrderLevelPrice,
 } from "@/components/backtest/tradingview-platform";
 import { LineStyle, type UTCTimestamp } from "lightweight-charts";
 import type { BacktestOrder } from "@/lib/backtest-store";
@@ -93,6 +105,41 @@ describe("TradingView platform helpers", () => {
     expect(options.hide_side_toolbar).toBe(false);
     expect(options.allow_symbol_change).toBe(true);
     expect(options.save_image).toBe(true);
+  });
+
+  it("coalesces viewport overlay sync into the next animation frame", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const cancelledFrames: number[] = [];
+    const sync = vi.fn();
+    const transition = vi.fn((callback: () => void) => callback());
+    const scheduler = createViewportOverlayScheduler({
+      requestFrame: (callback) => {
+        callbacks.push(callback);
+        return callbacks.length;
+      },
+      cancelFrame: (frameId) => {
+        cancelledFrames.push(frameId);
+      },
+      sync,
+      transition,
+    });
+
+    scheduler.schedule();
+    scheduler.schedule();
+    scheduler.schedule();
+
+    expect(callbacks).toHaveLength(1);
+    expect(cancelledFrames).toEqual([]);
+    expect(sync).not.toHaveBeenCalled();
+
+    callbacks[0](16);
+
+    expect(transition).toHaveBeenCalledTimes(1);
+    expect(sync).toHaveBeenCalledTimes(1);
+
+    scheduler.schedule();
+
+    expect(callbacks).toHaveLength(2);
   });
 
   it("formats chart axis prices with up to five decimal places", () => {
@@ -240,6 +287,199 @@ describe("TradingView platform helpers", () => {
       price: 24394.1,
       label: "24,394.1",
       y: 18,
+    });
+  });
+
+  it("positions the order action on the hovered chart price", () => {
+    const hoveredAnchor = {
+      time: 1704067200 as UTCTimestamp,
+      logical: 4,
+      price: 1.04449,
+      x: 720,
+      y: 188,
+    };
+
+    expect(buildHoveredPriceOrderAction({
+      anchor: hoveredAnchor,
+      containerHeight: 520,
+      priceToCoordinate: (price) => (price === hoveredAnchor.price ? 132.6 : null),
+    })).toEqual({
+      price: hoveredAnchor.price,
+      label: "1.04449",
+      y: 132.6,
+    });
+
+    expect(buildHoveredPriceOrderAction({
+      anchor: null,
+      containerHeight: 520,
+      priceToCoordinate: () => 132.6,
+    })).toBeNull();
+  });
+
+  it("keeps the hovered order action active when the pointer enters its button area", () => {
+    const actionBounds = {
+      left: 944,
+      right: 1028,
+      top: 118,
+      bottom: 146,
+    };
+
+    expect(isPointerWithinClientBounds({
+      clientX: 956,
+      clientY: 130,
+      bounds: actionBounds,
+    })).toBe(true);
+
+    expect(isPointerWithinClientBounds({
+      clientX: 940,
+      clientY: 130,
+      bounds: actionBounds,
+      padding: 4,
+    })).toBe(true);
+
+    expect(isPointerWithinClientBounds({
+      clientX: 936,
+      clientY: 130,
+      bounds: actionBounds,
+      padding: 2,
+    })).toBe(false);
+  });
+
+  it("builds the hovered candle OHLC readout from the chart logical index", () => {
+    const chartCandles = [
+      {
+        time: 1704067200 as UTCTimestamp,
+        open: 1.08123,
+        high: 1.08456,
+        low: 1.08012,
+        close: 1.08345,
+      },
+      {
+        time: 1704067500 as UTCTimestamp,
+        open: 1.08345,
+        high: 1.08567,
+        low: 1.08111,
+        close: 1.08222,
+      },
+    ];
+
+    expect(buildHoveredCandlePriceReadout({
+      anchor: {
+        time: 1704067480 as UTCTimestamp,
+        logical: 1.2,
+        price: 1.0825,
+        x: 640,
+        y: 220,
+      },
+      chartCandles,
+    })).toEqual({
+      time: 1704067500,
+      direction: "down",
+      open: "1.08345",
+      high: "1.08567",
+      low: "1.08111",
+      close: "1.08222",
+    });
+
+    expect(buildHoveredCandlePriceReadout({
+      anchor: {
+        time: 1704068100 as UTCTimestamp,
+        logical: 2.4,
+        price: 1.09,
+        x: 760,
+        y: 120,
+      },
+      chartCandles,
+    })).toBeNull();
+  });
+
+  it("creates a TradingView-style quick order draft with side-aware TP and SL levels", () => {
+    expect(buildQuickOrderDraft({
+      entryPrice: 1.1,
+      currentPrice: 1.12,
+      chartCandles: [
+        { time: 1704067200 as UTCTimestamp, open: 1.09, high: 1.105, low: 1.085, close: 1.1 },
+        { time: 1704067500 as UTCTimestamp, open: 1.1, high: 1.113, low: 1.096, close: 1.112 },
+      ],
+    })).toMatchObject({
+      side: "Long",
+      entryPrice: 1.1,
+      takeProfit: 1.117,
+      stopLoss: 1.083,
+    });
+
+    expect(buildQuickOrderDraft({
+      entryPrice: 1.14,
+      currentPrice: 1.12,
+      chartCandles: [
+        { time: 1704067200 as UTCTimestamp, open: 1.12, high: 1.145, low: 1.115, close: 1.13 },
+      ],
+    })).toMatchObject({
+      side: "Short",
+      entryPrice: 1.14,
+      takeProfit: 1.11,
+      stopLoss: 1.17,
+    });
+  });
+
+  it("positions and validates quick order levels for chart rendering", () => {
+    const draft = {
+      side: "Long" as const,
+      entryPrice: 1.1,
+      takeProfit: 1.13,
+      stopLoss: 1.08,
+    };
+
+    expect(buildPositionedQuickOrderDraft({
+      draft,
+      containerHeight: 520,
+      priceToCoordinate: (price) => ({
+        1.13: 110,
+        1.1: 240,
+        1.08: 360,
+      }[price] ?? null),
+    })).toMatchObject({
+      side: "Long",
+      entryY: 240,
+      takeProfitY: 110,
+      stopLossY: 360,
+      rewardRiskRatio: 1.5,
+      validationError: null,
+    });
+
+    expect(buildPositionedQuickOrderDraft({
+      draft: { ...draft, takeProfit: 1.09 },
+      containerHeight: 520,
+      priceToCoordinate: (price) => ({
+        1.09: 280,
+        1.1: 240,
+        1.08: 360,
+      }[price] ?? null),
+    })?.validationError).toBe("Long take profit must be above entry.");
+  });
+
+  it("updates only the dragged quick order level and maps it into an order ticket request", () => {
+    const draft = {
+      side: "Short" as const,
+      entryPrice: 1.14,
+      takeProfit: 1.11,
+      stopLoss: 1.17,
+    };
+
+    expect(updateQuickOrderDraftLevel(draft, "takeProfit", 1.105)).toEqual({
+      ...draft,
+      takeProfit: 1.105,
+    });
+
+    expect(buildQuickOrderTicketRequest({
+      ...draft,
+      takeProfit: 1.105,
+    })).toEqual({
+      side: "Short",
+      orderType: "Limit",
+      entryPrice: 1.14,
+      takeProfit: 1.105,
+      stopLoss: 1.17,
     });
   });
 
@@ -494,6 +734,121 @@ describe("TradingView platform helpers", () => {
         title: "",
       }),
     ]);
+  });
+
+  it("builds TradingView-style active order levels with live and projected P&L", () => {
+    const activePosition = createOrder({
+      id: 12,
+      status: "Active",
+      side: "Long",
+      filledPrice: 100,
+      positionSize: 2,
+      stopLoss: 95,
+      takeProfit: 110,
+    });
+
+    expect(buildOrderLevelOverlays({
+      activePositions: [activePosition],
+      pendingOrders: [],
+      currentPrice: 104,
+    })).toEqual([
+      expect.objectContaining({
+        id: "active-entry-12",
+        level: "entry",
+        price: 100,
+        pnl: 8,
+        isDraggable: false,
+      }),
+      expect.objectContaining({
+        id: "active-target-12",
+        level: "takeProfit",
+        price: 110,
+        pnl: 20,
+        isDraggable: true,
+      }),
+      expect.objectContaining({
+        id: "active-stop-12",
+        level: "stopLoss",
+        price: 95,
+        pnl: -10,
+        isDraggable: true,
+      }),
+    ]);
+  });
+
+  it("calculates short P&L and positions only visible order levels", () => {
+    const activePosition = createOrder({
+      id: 13,
+      status: "Active",
+      side: "Short",
+      filledPrice: 200,
+      positionSize: 3,
+      stopLoss: 210,
+      takeProfit: 180,
+    });
+    const levels = buildOrderLevelOverlays({
+      activePositions: [activePosition],
+      pendingOrders: [],
+      currentPrice: 190,
+    });
+
+    expect(levels.find((level) => level.level === "entry")?.pnl).toBe(30);
+    expect(positionOrderLevelOverlays({
+      levels,
+      containerHeight: 400,
+      priceToCoordinate: (price) => {
+        if (price === 200) return 120;
+        if (price === 180) return 240;
+        return 460;
+      },
+    })).toEqual([
+      expect.objectContaining({ id: "active-entry-13", y: 120 }),
+      expect.objectContaining({ id: "active-target-13", y: 240 }),
+    ]);
+  });
+
+  it("rejects TP and SL moves that cross the order entry", () => {
+    const longOrder = createOrder({
+      status: "Active",
+      side: "Long",
+      filledPrice: 100,
+      stopLoss: 95,
+      takeProfit: 110,
+    });
+    const shortOrder = createOrder({
+      status: "Active",
+      side: "Short",
+      filledPrice: 100,
+      stopLoss: 105,
+      takeProfit: 90,
+    });
+
+    expect(validateOrderLevelPrice(longOrder, "takeProfit", 99)).toBeTruthy();
+    expect(validateOrderLevelPrice(longOrder, "stopLoss", 101)).toBeTruthy();
+    expect(validateOrderLevelPrice(shortOrder, "takeProfit", 101)).toBeTruthy();
+    expect(validateOrderLevelPrice(shortOrder, "stopLoss", 99)).toBeTruthy();
+    expect(validateOrderLevelPrice(longOrder, "takeProfit", 115)).toBeNull();
+    expect(validateOrderLevelPrice(shortOrder, "stopLoss", 108)).toBeNull();
+  });
+
+  it("preserves the untouched protection level when building a drag update", () => {
+    const order = createOrder({
+      id: 14,
+      status: "Active",
+      stopLoss: 95,
+      takeProfit: 110,
+    });
+
+    expect(buildOrderLevelUpdateRequest(order, "takeProfit", 115)).toEqual({
+      orderId: 14,
+      stopLoss: 95,
+      takeProfit: 115,
+    });
+    expect(buildOrderLevelUpdateRequest(order, "stopLoss", 97)).toEqual({
+      orderId: 14,
+      stopLoss: 97,
+      takeProfit: 110,
+    });
   });
 
   it("positions entry markers at the bottom of the placed order candle", () => {

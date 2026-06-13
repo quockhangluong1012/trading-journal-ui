@@ -161,6 +161,11 @@ describe("trade detail page", () => {
     Element.prototype.releasePointerCapture = vi.fn()
     Element.prototype.scrollIntoView = vi.fn()
 
+    // Cancelling edits with unsaved changes prompts for confirmation; assume the
+    // user confirms the discard. A spy (not a direct assignment) is restored by
+    // the global restoreMocks setting so it doesn't leak into other test files.
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+
     apiGetMock.mockImplementation((url: string) => {
       switch (url) {
         case "/v1/emotions":
@@ -168,6 +173,8 @@ describe("trade detail page", () => {
         case "/v1/checklist-models":
           return buildResponse([])
         case "/v1/technical-analysis":
+          return buildResponse([])
+        case "/v1/pretrade-checklists":
           return buildResponse([])
         case "/v1/trading-zones":
           return buildResponse([])

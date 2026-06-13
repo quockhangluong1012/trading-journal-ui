@@ -234,7 +234,7 @@ export function TradeSetupSection({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+          <div className="space-y-3 rounded-lg bg-muted/30 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="space-y-1">
                 <Label htmlFor="tradingSetupId">Linked setup</Label>
@@ -270,7 +270,7 @@ export function TradeSetupSection({
             </Select>
 
             {selectedTradingSetup ? (
-              <div className="rounded-xl border border-primary/15 bg-primary/5 p-3">
+              <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-foreground">{selectedTradingSetup.name}</p>
                   <Badge variant="outline" className="border-primary/20 bg-background/70 text-[10px] text-muted-foreground">
@@ -297,8 +297,8 @@ export function TradeSetupSection({
           </div>
         </div>
 
-        <div className="rounded-xl border border-border/60 bg-background/60 p-3">
-          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="rounded-lg bg-muted/30 p-3">
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <Target className="h-3.5 w-3.5 text-emerald-400" />
             Profit ladder
           </div>

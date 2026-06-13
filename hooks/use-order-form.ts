@@ -17,22 +17,49 @@ export const orderSchema = z.object({
   takeProfit: z.coerce.number().positive().optional().or(z.literal("")),
 });
 
-export function useOrderForm({ sessionId, currentPrice }: { sessionId: number, currentPrice: number }) {
-  const [side, setSide] = useState<"Long" | "Short">("Long");
-  const [orderType, setOrderType] = useState<"Market" | "Limit">("Limit");
+export interface OrderFormInitialOrder {
+  side?: "Long" | "Short";
+  orderType?: "Market" | "Limit";
+  entryPrice?: number | null;
+  positionSize?: number | null;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+}
+
+function normalizeInitialOrderNumber(value: number | null | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+export function useOrderForm({
+  sessionId,
+  currentPrice,
+  initialOrder = null,
+}: {
+  sessionId: number;
+  currentPrice: number;
+  initialOrder?: OrderFormInitialOrder | null;
+}) {
+  const initialEntryPrice = normalizeInitialOrderNumber(initialOrder?.entryPrice)
+    ?? normalizeInitialOrderNumber(currentPrice);
+  const initialStopLoss = normalizeInitialOrderNumber(initialOrder?.stopLoss);
+  const initialTakeProfit = normalizeInitialOrderNumber(initialOrder?.takeProfit);
+  const [side, setSide] = useState<"Long" | "Short">(initialOrder?.side ?? "Long");
+  const [orderType, setOrderType] = useState<"Market" | "Limit">(initialOrder?.orderType ?? "Limit");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [exitsOpen, setExitsOpen] = useState(true);
-  const [enableTp, setEnableTp] = useState(false);
-  const [enableSl, setEnableSl] = useState(false);
+  const [enableTp, setEnableTp] = useState(Boolean(initialTakeProfit));
+  const [enableSl, setEnableSl] = useState(Boolean(initialStopLoss));
 
   const { placeOrder, balance, session, currentTimestamp, candles } = useBacktestStore();
 
   const form = useForm<z.infer<typeof orderSchema>>({
     resolver: zodResolver(orderSchema),
     defaultValues: {
-      positionSize: 1,
-      entryPrice: currentPrice,
+      positionSize: normalizeInitialOrderNumber(initialOrder?.positionSize) ?? 1,
+      entryPrice: initialEntryPrice,
+      stopLoss: initialStopLoss ?? "",
+      takeProfit: initialTakeProfit ?? "",
     },
   });
   const { clearErrors, setValue } = form;

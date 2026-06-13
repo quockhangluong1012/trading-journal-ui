@@ -258,6 +258,34 @@ export async function analyzeChartScreenshot(request: ChartScreenshotAnalysisReq
   return response.data.value
 }
 
+export interface PostTradeReviewResult {
+  summary: string
+  // Letter/word grade for the trade execution, e.g. "A", "B+", "Needs work".
+  grade: string
+  // Normalized 0-1 scores the UI renders as percentages.
+  executionScore: number
+  disciplineScore: number
+  whatWentWell: string[]
+  whatWentWrong: string[]
+  lessons: string[]
+  suggestedActions: string[]
+  emotionalInsight: string
+  riskAssessment: string
+}
+
+// Generates a real post-trade review for a closed/open trade. The backend pulls
+// the trade's full context (screenshots, notes, R:R, checklist, emotions) by id,
+// so the client only needs to send the trade id.
+export async function generatePostTradeReview(tradeId: number): Promise<PostTradeReviewResult> {
+  const response = await api.post<ApiResponse<PostTradeReviewResult>>("/v1/ai-validation/review-trade", { tradeId })
+
+  if (!response.data.isSuccess) {
+    throw new Error("Unable to generate a post-trade review right now.")
+  }
+
+  return response.data.value
+}
+
 export async function generateTradingSetupPreview(
   request: TradingSetupGenerationRequest,
 ): Promise<TradingSetupGenerationResult> {

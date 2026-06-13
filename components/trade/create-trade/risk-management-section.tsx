@@ -49,7 +49,7 @@ export function RiskManagementSection({
       }
     >
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <div className="space-y-3 rounded-xl border border-border/60 bg-background/60 p-3">
+        <div className="space-y-3 rounded-lg bg-muted/30 p-3">
           <div className="space-y-2">
             <Label htmlFor="stopLoss">Stop Loss Price</Label>
             <Input
@@ -95,7 +95,7 @@ export function RiskManagementSection({
 
         <div className="space-y-3">
           {formData.entryPrice || formData.stopLoss ? (
-            <div className="rounded-xl border border-border/60 bg-secondary/15 p-3">
+            <div className="rounded-lg bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Gauge className="h-3.5 w-3.5" />
@@ -127,13 +127,13 @@ export function RiskManagementSection({
               </p>
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-border/60 bg-background/60 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
               Add the entry and stop loss to preview the trade&apos;s risk score.
             </div>
           )}
 
           {riskMetrics.rrRatio > 0 ? (
-            <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+            <div className="rounded-lg bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">
                   Risk : Reward Ratio
@@ -175,7 +175,7 @@ export function RiskManagementSection({
               ) : null}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-border/60 bg-background/60 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
               Add at least one target to preview the reward profile.
             </div>
           )}

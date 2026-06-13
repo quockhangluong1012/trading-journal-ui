@@ -20,7 +20,8 @@ import {
   GitBranch,
   FileText,
   CalendarDays,
-  TrendingUp
+  TrendingUp,
+  Target
 } from "lucide-react"
 
 import {
@@ -62,6 +63,7 @@ const data = {
         { title: "Backtest", url: "/backtest", icon: Activity },
         { title: "Review", url: "/review", icon: ClipboardList },
         { title: "Review Wizard", url: "/review/wizard", icon: Wand2 },
+        { title: "Goals", url: "/goals", icon: Target },
       ],
     },
     {

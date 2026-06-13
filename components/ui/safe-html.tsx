@@ -47,6 +47,28 @@ export function sanitizeHtml(html: string | null | undefined): string {
   }
 }
 
+/**
+ * Strips all markup from an HTML string and returns collapsed plain text.
+ * Use for compact previews (e.g. cards) where rendering rich markup would
+ * break the layout — block boundaries become spaces so words don't mash.
+ */
+export function htmlToPlainText(html: string | null | undefined): string {
+  if (!html?.trim()) {
+    return ""
+  }
+
+  try {
+    const spaced = html
+      .replace(/<\/(p|div|li|h[1-6]|blockquote|pre|tr)>/gi, " ")
+      .replace(/<br\s*\/?>/gi, " ")
+    const stripped = DOMPurify.sanitize(spaced, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+    return stripped.replace(/\s+/g, " ").trim()
+  } catch (error) {
+    console.error("Failed to convert HTML content to text", error)
+    return ""
+  }
+}
+
 type SafeHtmlProps<T extends ElementType> = {
   as?: T
   html: string | null | undefined

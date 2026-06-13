@@ -37,7 +37,7 @@ export function TradingPsychologySection({
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_240px]">
         <div className="space-y-3">
-          <Label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <Label className="text-xs font-medium text-muted-foreground">
             How are you feeling about this trade?
           </Label>
 
@@ -93,9 +93,9 @@ export function TradingPsychologySection({
           />
         </div>
 
-        <div className="rounded-xl border border-border/60 bg-background/60 p-3">
+        <div className="rounded-lg bg-muted/30 p-3">
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            <Label className="text-xs font-medium text-muted-foreground">
               Confidence Level
             </Label>
             {errors.confidenceLevel ? (

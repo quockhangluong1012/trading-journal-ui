@@ -16,7 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import { useOrderForm } from "@/hooks/use-order-form";
+import { useOrderForm, type OrderFormInitialOrder } from "@/hooks/use-order-form";
 import { cn } from "@/lib/utils";
 import { calculateTicks, getAssetTickSize, getMarketPriceState } from "@/components/backtest/order-panel.utils";
 import {
@@ -37,6 +37,7 @@ interface OrderPanelProps {
   sessionId: number;
   currentPrice: number;
   previousPrice?: number | null;
+  initialOrder?: OrderFormInitialOrder | null;
   onCollapse?: () => void;
 }
 
@@ -91,7 +92,7 @@ function OrderMetric({
   );
 }
 
-export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCollapse }: OrderPanelProps) {
+export function OrderPanel({ sessionId, currentPrice, previousPrice = null, initialOrder = null, onCollapse }: OrderPanelProps) {
   const {
     form,
     side,
@@ -108,7 +109,7 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, onCo
     onSubmit,
     balance,
     session,
-  } = useOrderForm({ sessionId, currentPrice });
+  } = useOrderForm({ sessionId, currentPrice, initialOrder });
 
   const units = Number(form.watch("positionSize") || 0);
   const watchedEntryPrice = Number(form.watch("entryPrice") || currentPrice);
