@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { toast } from "sonner";
 import { HubConnection, HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 import { normalizeNotification, notificationApi, NotificationDto } from "../notification-api";
 
@@ -37,10 +38,24 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       .build();
 
     newConnection.on("NewNotification", (notification: NotificationDto) => {
+      const normalized = normalizeNotification(notification);
       set((state) => ({
-        notifications: [normalizeNotification(notification), ...state.notifications],
+        notifications: [normalized, ...state.notifications],
         unreadCount: state.unreadCount + 1,
       }));
+
+      // Surface the event in real-time so it doesn't sit unseen in the bell.
+      toast(normalized.title, {
+        description: normalized.message,
+        action: normalized.actionUrl
+          ? {
+              label: "View",
+              onClick: () => {
+                window.location.href = normalized.actionUrl!;
+              },
+            }
+          : undefined,
+      });
     });
 
     newConnection.on("NotificationRead", (data: { id: number }) => {

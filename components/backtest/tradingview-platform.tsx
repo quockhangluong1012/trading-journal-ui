@@ -2355,6 +2355,15 @@ export function isWheelOverPriceAxis({
     && cursorX <= surfaceWidth;
 }
 
+export function shouldZoomPriceAxisForWheel({
+  isPriceActionTarget,
+  ...axisBounds
+}: Parameters<typeof isWheelOverPriceAxis>[0] & {
+  isPriceActionTarget: boolean;
+}): boolean {
+  return isPriceActionTarget || isWheelOverPriceAxis(axisBounds);
+}
+
 export const CHART_PRICE_FORMAT = {
   type: "custom",
   minMove: CHART_PRICE_MIN_MOVE,
@@ -3418,6 +3427,7 @@ export function TradingViewPlatform({
   const verticalPanOffsetRef = useRef(0);
   const [orderMarkerPositions, setOrderMarkerPositions] = useState<PositionedOrderMarkerOverlay[]>([]);
   const [currentPriceOrderAction, setCurrentPriceOrderAction] = useState<CurrentPriceOrderAction | null>(null);
+  const isCurrentPriceOrderActionVisible = currentPriceOrderAction !== null;
   const [hoveredCandlePriceReadout, setHoveredCandlePriceReadout] = useState<HoveredCandlePriceReadout | null>(null);
   const [quickOrderDraft, setQuickOrderDraft] = useState<QuickOrderDraft | null>(null);
   const [draggedOrderLevel, setDraggedOrderLevel] = useState<OrderLevelDragState | null>(null);
@@ -4009,66 +4019,75 @@ export function TradingViewPlatform({
     });
   }, []);
 
-  // Wheel-to-zoom: non-passive listener so preventDefault() actually suppresses page scroll.
-  // Over the chart body it zooms the time scale toward the cursor; over the right
-  // price column it zooms the price scale vertically.
+  const handleChartWheel = useCallback((event: WheelEvent, isPriceActionTarget = false) => {
+    event.preventDefault();
+    const chart = chartRef.current;
+    const candleSeries = candleSeriesRef.current;
+    const surface = drawingSurfaceRef.current;
+    if (!chart || !candleSeries || !surface) return;
+
+    const rect = surface.getBoundingClientRect();
+    const cursorX = event.clientX - rect.left;
+
+    if (shouldZoomPriceAxisForWheel({
+      cursorX,
+      surfaceWidth: rect.width,
+      timeScaleWidth: chart.timeScale().width(),
+      priceScaleWidth: candleSeries.priceScale().width(),
+      isPriceActionTarget,
+    })) {
+      const factor = event.deltaY > 0 ? 0.9 : 1.1; // scroll up = zoom in
+      applyVerticalZoom(verticalZoomRef.current * factor);
+      scheduleOrderMarkerSync();
+      return;
+    }
+
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+
+    const factor = event.deltaY > 0 ? 1.12 : 0.88;
+    const currentWidth = range.to - range.from;
+    const newWidth = Math.max(8, currentWidth * factor);
+
+    const xFrom = chart.timeScale().logicalToCoordinate(range.from);
+    const xTo = chart.timeScale().logicalToCoordinate(range.to);
+
+    if (xFrom !== null && xTo !== null && Number(xFrom) !== Number(xTo)) {
+      const ratio = Math.max(0, Math.min(1, (cursorX - Number(xFrom)) / (Number(xTo) - Number(xFrom))));
+      const pivotLogical = range.from + ratio * currentWidth;
+      chart.timeScale().setVisibleLogicalRange({
+        from: pivotLogical - ratio * newWidth,
+        to: pivotLogical + (1 - ratio) * newWidth,
+      });
+    } else {
+      const center = (range.from + range.to) / 2;
+      chart.timeScale().setVisibleLogicalRange({
+        from: center - newWidth / 2,
+        to: center + newWidth / 2,
+      });
+    }
+
+    scheduleOrderMarkerSync();
+  }, [applyVerticalZoom, scheduleOrderMarkerSync]);
+
+  // Wheel-to-zoom: non-passive listeners let the chart keep handling wheel input
+  // when the hovered order action is rendered over the right price column.
   useEffect(() => {
     const surface = drawingSurfaceRef.current;
+    const priceAction = currentPriceOrderActionRef.current;
     if (!surface) return;
 
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const chart = chartRef.current;
-      const candleSeries = candleSeriesRef.current;
-      if (!chart || !candleSeries) return;
+    const handleSurfaceWheel = (event: WheelEvent) => handleChartWheel(event);
+    const handlePriceActionWheel = (event: WheelEvent) => handleChartWheel(event, true);
 
-      const rect = surface.getBoundingClientRect();
-      const cursorX = event.clientX - rect.left;
+    surface.addEventListener("wheel", handleSurfaceWheel, { passive: false });
+    priceAction?.addEventListener("wheel", handlePriceActionWheel, { passive: false });
 
-      // Scrolling over the price axis (right column) zooms vertically.
-      if (isWheelOverPriceAxis({
-        cursorX,
-        surfaceWidth: rect.width,
-        timeScaleWidth: chart.timeScale().width(),
-        priceScaleWidth: candleSeries.priceScale().width(),
-      })) {
-        const factor = event.deltaY > 0 ? 0.9 : 1.1; // scroll up = zoom in
-        applyVerticalZoom(verticalZoomRef.current * factor);
-        scheduleOrderMarkerSync();
-        return;
-      }
-
-      const range = chart.timeScale().getVisibleLogicalRange();
-      if (!range) return;
-
-      const factor = event.deltaY > 0 ? 1.12 : 0.88;
-      const currentWidth = range.to - range.from;
-      const newWidth = Math.max(8, currentWidth * factor);
-
-      const xFrom = chart.timeScale().logicalToCoordinate(range.from);
-      const xTo = chart.timeScale().logicalToCoordinate(range.to);
-
-      if (xFrom !== null && xTo !== null && Number(xFrom) !== Number(xTo)) {
-        const ratio = Math.max(0, Math.min(1, (cursorX - Number(xFrom)) / (Number(xTo) - Number(xFrom))));
-        const pivotLogical = range.from + ratio * currentWidth;
-        chart.timeScale().setVisibleLogicalRange({
-          from: pivotLogical - ratio * newWidth,
-          to: pivotLogical + (1 - ratio) * newWidth,
-        });
-      } else {
-        const center = (range.from + range.to) / 2;
-        chart.timeScale().setVisibleLogicalRange({
-          from: center - newWidth / 2,
-          to: center + newWidth / 2,
-        });
-      }
-
-      scheduleOrderMarkerSync();
+    return () => {
+      surface.removeEventListener("wheel", handleSurfaceWheel);
+      priceAction?.removeEventListener("wheel", handlePriceActionWheel);
     };
-
-    surface.addEventListener("wheel", handleWheel, { passive: false });
-    return () => surface.removeEventListener("wheel", handleWheel);
-  }, [applyVerticalZoom, scheduleOrderMarkerSync]);
+  }, [handleChartWheel, isCurrentPriceOrderActionVisible]);
 
   const getChartAnchorFromClientPoint = useCallback((clientX: number, clientY: number): PointerChartAnchor | null => {
     const chart = chartRef.current;
@@ -6207,7 +6226,7 @@ export function TradingViewPlatform({
                 <Plus className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="left">Place order</TooltipContent>
+            <TooltipContent className="pointer-events-none" side="left" sideOffset={6}>Place order</TooltipContent>
           </Tooltip>
           <span className="rounded-sm bg-slate-950 px-2 py-1 text-xs font-semibold tabular-nums text-white shadow-sm dark:bg-slate-100 dark:text-slate-950">
             {currentPriceOrderAction.label}

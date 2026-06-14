@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Plus, RefreshCcw, Target } from "lucide-react"
 import { AppPageIntro } from "@/components/app-page-intro"
@@ -15,6 +15,8 @@ import { CreateGoalDialog } from "@/components/goals/create-goal-dialog"
 import { useAuth } from "@/lib/auth-context"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
 import { useGoalsStore } from "@/lib/stores/use-goals-store"
+import { useNotificationStore } from "@/lib/stores/notification-store"
+import { NotificationType } from "@/lib/notification-api"
 import { clampPercent } from "@/lib/goals-overview"
 
 export default function GoalsPage() {
@@ -23,9 +25,16 @@ export default function GoalsPage() {
   const pathname = usePathname()
 
   const goals = useGoalsStore((s) => s.goals)
+  const stats = useGoalsStore((s) => s.stats)
   const isLoadingList = useGoalsStore((s) => s.isLoadingList)
   const includeCompleted = useGoalsStore((s) => s.includeCompleted)
   const loadGoals = useGoalsStore((s) => s.loadGoals)
+  const loadStats = useGoalsStore((s) => s.loadStats)
+
+  // Newest notification drives live-update: when a goal/milestone/task completes
+  // (pushed in real-time via SignalR), refetch so the open list reflects it.
+  const latestNotification = useNotificationStore((s) => s.notifications[0])
+  const lastSeenNotificationId = useRef<number | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
   // Stable "now" so card statuses don't recompute on every render.
@@ -36,17 +45,41 @@ export default function GoalsPage() {
   }, [user, isAuthLoading, pathname, router])
 
   useEffect(() => {
-    if (!isAuthLoading && user) void loadGoals()
-  }, [isAuthLoading, user, loadGoals])
+    if (!isAuthLoading && user) {
+      void loadGoals()
+      void loadStats()
+    }
+  }, [isAuthLoading, user, loadGoals, loadStats])
+
+  useEffect(() => {
+    if (!latestNotification) return
+    // Initialise the cursor on first run so an existing notification from before
+    // the page mounted doesn't trigger a spurious refetch.
+    if (lastSeenNotificationId.current === null) {
+      lastSeenNotificationId.current = latestNotification.id
+      return
+    }
+    if (latestNotification.id === lastSeenNotificationId.current) return
+    lastSeenNotificationId.current = latestNotification.id
+    if (latestNotification.type === NotificationType.GoalCompleted) {
+      void loadGoals()
+      void loadStats()
+    }
+  }, [latestNotification, loadGoals, loadStats])
 
   if (isAuthLoading) return <AppShellLoader title="Loading goals" description="Fetching your targets." />
   if (!user) return <AppShellLoader title="Redirecting to sign in" description="Taking you to login." />
 
-  const activeCount = goals.filter((g) => !g.tracking.isCompleted).length
-  const completedCount = goals.filter((g) => g.tracking.isCompleted).length
-  const avgProgress = goals.length
-    ? clampPercent(goals.reduce((sum, g) => sum + g.tracking.progressPercent, 0) / goals.length)
-    : 0
+  // Headline counts come from the dedicated stats endpoint so "Completed" stays
+  // accurate even though completed goals are filtered out of the visible list by
+  // default. Fall back to list-derived numbers until stats arrive.
+  const activeCount = stats?.activeCount ?? goals.filter((g) => !g.tracking.isCompleted).length
+  const completedCount = stats?.completedCount ?? goals.filter((g) => g.tracking.isCompleted).length
+  const avgProgress = stats
+    ? clampPercent(stats.averageProgressPercent)
+    : goals.length
+      ? clampPercent(goals.reduce((sum, g) => sum + g.rollupProgressPercent, 0) / goals.length)
+      : 0
 
   return (
     <AppPageShell contentClassName="space-y-6">

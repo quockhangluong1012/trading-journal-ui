@@ -13,11 +13,17 @@ interface Props {
   className?: string
   /** Show the textual "current / target" line under the bar. */
   showValues?: boolean
+  /**
+   * Override the displayed percentage (e.g. a parent's rolled-up child
+   * completion). The metric current/target line still uses the raw tracking.
+   */
+  progressOverride?: number
 }
 
-export function TrackingProgress({ tracking, className, showValues = true }: Props) {
-  const pct = clampPercent(tracking.progressPercent)
+export function TrackingProgress({ tracking, className, showValues = true, progressOverride }: Props) {
+  const pct = clampPercent(progressOverride ?? tracking.progressPercent)
   const isMetric = tracking.mode === TrackingMode.Metric
+  const looksComplete = tracking.isCompleted || pct >= 100
 
   return (
     <div className={cn("space-y-1.5", className)}>
@@ -30,13 +36,13 @@ export function TrackingProgress({ tracking, className, showValues = true }: Pro
             </Badge>
           )}
         </span>
-        <span className={cn("text-xs font-semibold", tracking.isCompleted ? "text-emerald-400" : "text-foreground")}>
+        <span className={cn("text-xs font-semibold", looksComplete ? "text-emerald-400" : "text-foreground")}>
           {pct}%
         </span>
       </div>
       <Progress
         value={pct}
-        className={cn("h-2", tracking.isCompleted && "[&_[data-slot=progress-indicator]]:bg-emerald-500")}
+        className={cn("h-2", looksComplete && "[&_[data-slot=progress-indicator]]:bg-emerald-500")}
       />
       {showValues && isMetric && (
         <p className="text-[11px] text-muted-foreground">

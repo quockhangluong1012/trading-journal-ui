@@ -33,6 +33,7 @@ import {
   estimateDrawingTimeFromLogical,
   formatChartAxisPrice,
   isWheelOverPriceAxis,
+  shouldZoomPriceAxisForWheel,
   isPointerWithinClientBounds,
   isTwoPointDrawingTool,
   mapBacktestCandlesToChartData,
@@ -170,6 +171,16 @@ describe("TradingView platform helpers", () => {
       timeScaleWidth: 920,
       priceScaleWidth: 0,
     })).toBe(false);
+  });
+
+  it("routes wheel input from the hovered price action to vertical zoom", () => {
+    expect(shouldZoomPriceAxisForWheel({
+      cursorX: 880,
+      surfaceWidth: 1000,
+      timeScaleWidth: 920,
+      priceScaleWidth: 80,
+      isPriceActionTarget: true,
+    })).toBe(true);
   });
 
   it("converts vertical pointer movement into the opposite price-range offset", () => {

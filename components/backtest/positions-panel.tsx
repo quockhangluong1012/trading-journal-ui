@@ -29,12 +29,20 @@ import {
   X,
 } from "lucide-react";
 import { format } from "date-fns";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { BacktestOrder } from "@/lib/backtest-store";
 import { EditPositionModal } from "./edit-position-modal";
 import {
   calculatePositionUnrealizedPnl,
   calculateUnrealizedPnl,
+  computeRowWindow,
+  type RowWindow,
 } from "./positions-panel.utils";
 import { toast } from "sonner";
 import {
@@ -45,6 +53,65 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+/** Fixed pixel height enforced on each history row so windowing math stays exact. */
+const HISTORY_ROW_HEIGHT = 64;
+const HISTORY_OVERSCAN = 8;
+
+/**
+ * Tracks the scroll position / viewport size of a scroll container and returns the
+ * visible slice of a fixed-height row list. Coalesces scroll/resize bursts onto a single
+ * animation frame so a long order history only paints the rows actually on screen.
+ */
+function useRowWindow(
+  scrollRef: React.RefObject<HTMLElement | null>,
+  rowCount: number,
+  rowHeight: number,
+): RowWindow {
+  const [metrics, setMetrics] = useState({ scrollTop: 0, viewportHeight: 0 });
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      setMetrics((current) =>
+        current.scrollTop === el.scrollTop && current.viewportHeight === el.clientHeight
+          ? current
+          : { scrollTop: el.scrollTop, viewportHeight: el.clientHeight },
+      );
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(measure);
+    };
+
+    measure();
+    el.addEventListener("scroll", schedule, { passive: true });
+    const observer = new ResizeObserver(schedule);
+    observer.observe(el);
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      el.removeEventListener("scroll", schedule);
+      observer.disconnect();
+    };
+  }, [scrollRef, rowCount]);
+
+  return useMemo(
+    () =>
+      computeRowWindow({
+        scrollTop: metrics.scrollTop,
+        viewportHeight: metrics.viewportHeight,
+        rowHeight,
+        rowCount,
+        overscan: HISTORY_OVERSCAN,
+      }),
+    [metrics, rowHeight, rowCount],
+  );
+}
 
 interface PositionsPanelProps {
   sessionId: number;
@@ -131,6 +198,12 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
   const [editModal, setEditModal] = useState<{ isOpen: boolean; order: BacktestOrder | null }>({ isOpen: false, order: null });
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const historyScrollRef = useRef<HTMLDivElement>(null);
+  const rowWindow = useRowWindow(historyScrollRef, closedPositions.length, HISTORY_ROW_HEIGHT);
+  const visibleClosedPositions = useMemo(
+    () => closedPositions.slice(rowWindow.start, rowWindow.end),
+    [closedPositions, rowWindow.start, rowWindow.end],
+  );
   const historySummary = useMemo(() => {
     const totalPnl = closedPositions.reduce((sum, order) => sum + (order.pnl ?? 0), 0);
     const wins = closedPositions.filter((order) => (order.pnl ?? 0) > 0).length;
@@ -558,7 +631,7 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto custom-scrollbar">
+            <div ref={historyScrollRef} className="min-h-0 flex-1 overflow-auto custom-scrollbar">
               {closedPositions.length === 0 ? (
                 <div className="flex h-full min-h-48 items-center justify-center p-6">
                   <div className="flex max-w-sm flex-col items-center text-center">
@@ -588,7 +661,14 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {closedPositions.map((ord) => {
+                      {rowWindow.topPad > 0 && (
+                        <tr aria-hidden>
+                          <td colSpan={9} className="p-0 border-0">
+                            <div style={{ height: rowWindow.topPad }} />
+                          </td>
+                        </tr>
+                      )}
+                      {visibleClosedPositions.map((ord) => {
                         const pnlVal = ord.pnl || 0;
                         const pnlColor = pnlVal > 0 ? "text-emerald-500" : pnlVal < 0 ? "text-rose-500" : "";
                         const isLong = ord.side === "Long";
@@ -598,7 +678,10 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
                         const pnlPercent = margin > 0 ? (pnlVal / margin) * 100 : 0;
 
                         return (
-                          <TableRow key={ord.id} className="group border-b border-border/50 hover:bg-muted/30">
+                          <TableRow
+                            key={ord.id}
+                            style={{ height: HISTORY_ROW_HEIGHT }}
+                            className="group border-b border-border/50 hover:bg-muted/30">
                             <TableCell className="px-3 py-3">
                               <div className="flex items-center gap-2">
                                 <div
@@ -654,6 +737,13 @@ export function PositionsPanel({ currentPrice, isCollapsed, onCollapse, onExpand
                           </TableRow>
                         );
                       })}
+                      {rowWindow.bottomPad > 0 && (
+                        <tr aria-hidden>
+                          <td colSpan={9} className="p-0 border-0">
+                            <div style={{ height: rowWindow.bottomPad }} />
+                          </td>
+                        </tr>
+                      )}
                     </TableBody>
                   </Table>
                 </div>

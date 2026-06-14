@@ -1,4 +1,4 @@
-import { api, type ApiResponse } from "./api"
+import { api, type ApiPaginatedResponse, type ApiResponse } from "./api"
 import type {
   GoalActivitySourceType,
   GoalItemType,
@@ -55,6 +55,8 @@ export interface GoalMilestoneView {
   dueDate: string | null
   sortOrder: number
   tracking: TrackingSnapshot
+  /** Progress rolled up from this milestone's tasks (own progress if it has none). */
+  rollupProgressPercent: number
   tasks: GoalTaskView[]
 }
 
@@ -90,6 +92,8 @@ export interface GoalSummary {
   startDate: string | null
   dueDate: string | null
   tracking: TrackingSnapshot
+  /** Progress rolled up from milestones + tasks (own progress if it has none). */
+  rollupProgressPercent: number
   milestoneCount: number
   taskCount: number
   completedTaskCount: number
@@ -104,12 +108,20 @@ export interface GoalDetail {
   startDate: string | null
   dueDate: string | null
   tracking: TrackingSnapshot
+  /** Progress rolled up from milestones + tasks (own progress if it has none). */
+  rollupProgressPercent: number
   milestones: GoalMilestoneView[]
   tasks: GoalTaskView[]
   progressHistory: ProgressEntryView[]
   activityHistory: GoalActivityView[]
   createdDate: string
   updatedDate: string | null
+}
+
+export interface GoalStats {
+  activeCount: number
+  completedCount: number
+  averageProgressPercent: number
 }
 
 export interface ProgressResult {
@@ -152,6 +164,40 @@ export interface UpdateProgressRequest {
   /** Required for (non-auto) metric tracking; must be omitted for manual tracking. */
   value?: number | null
   note?: string | null
+}
+
+/** Edit a goal's metadata. `tracking` is optional — omit to leave tracking as-is. */
+export interface UpdateGoalRequest {
+  title: string
+  description?: string | null
+  startDate?: string | null
+  dueDate?: string | null
+  tracking?: TrackingInput | null
+}
+
+export interface UpdateMilestoneRequest {
+  title: string
+  description?: string | null
+  dueDate?: string | null
+  tracking?: TrackingInput | null
+}
+
+export interface UpdateTaskRequest {
+  title: string
+  description?: string | null
+  dueDate?: string | null
+  milestoneId?: number | null
+  tracking?: TrackingInput | null
+}
+
+export interface ReorderEntry {
+  itemType: GoalItemType
+  id: number
+  sortOrder: number
+}
+
+export interface ReorderRequest {
+  items: ReorderEntry[]
 }
 
 // ─── API functions ────────────────────────────────────────────────────
@@ -222,4 +268,73 @@ export async function updateTaskProgress(
     request,
   )
   return res.data.value
+}
+
+// ─── Stats ────────────────────────────────────────────────────────────
+
+export async function fetchGoalStats(): Promise<GoalStats> {
+  const res = await api.get<ApiResponse<GoalStats>>("/v1/goals/stats")
+  return res.data.value
+}
+
+// ─── Paginated history ────────────────────────────────────────────────
+
+export async function fetchGoalProgressHistory(
+  goalId: number,
+  page = 1,
+  pageSize = 50,
+): Promise<ApiPaginatedResponse<ProgressEntryView>["value"]> {
+  const res = await api.get<ApiPaginatedResponse<ProgressEntryView>>(
+    `/v1/goals/${goalId}/history/progress?page=${page}&pageSize=${pageSize}`,
+  )
+  return res.data.value
+}
+
+export async function fetchGoalActivityHistory(
+  goalId: number,
+  page = 1,
+  pageSize = 50,
+): Promise<ApiPaginatedResponse<GoalActivityView>["value"]> {
+  const res = await api.get<ApiPaginatedResponse<GoalActivityView>>(
+    `/v1/goals/${goalId}/history/activity?page=${page}&pageSize=${pageSize}`,
+  )
+  return res.data.value
+}
+
+// ─── Edit / delete / reorder ──────────────────────────────────────────
+
+export async function updateGoal(goalId: number, request: UpdateGoalRequest): Promise<void> {
+  await api.patch<ApiResponse<unknown>>(`/v1/goals/${goalId}`, request)
+}
+
+export async function updateMilestone(
+  goalId: number,
+  milestoneId: number,
+  request: UpdateMilestoneRequest,
+): Promise<void> {
+  await api.patch<ApiResponse<unknown>>(`/v1/goals/${goalId}/milestones/${milestoneId}`, request)
+}
+
+export async function updateTask(
+  goalId: number,
+  taskId: number,
+  request: UpdateTaskRequest,
+): Promise<void> {
+  await api.patch<ApiResponse<unknown>>(`/v1/goals/${goalId}/tasks/${taskId}`, request)
+}
+
+export async function deleteGoal(goalId: number): Promise<void> {
+  await api.delete<ApiResponse<unknown>>(`/v1/goals/${goalId}`)
+}
+
+export async function deleteMilestone(goalId: number, milestoneId: number): Promise<void> {
+  await api.delete<ApiResponse<unknown>>(`/v1/goals/${goalId}/milestones/${milestoneId}`)
+}
+
+export async function deleteTask(goalId: number, taskId: number): Promise<void> {
+  await api.delete<ApiResponse<unknown>>(`/v1/goals/${goalId}/tasks/${taskId}`)
+}
+
+export async function reorderItems(goalId: number, request: ReorderRequest): Promise<void> {
+  await api.patch<ApiResponse<unknown>>(`/v1/goals/${goalId}/reorder`, request)
 }

@@ -4,6 +4,7 @@ import {
   calculatePositionUnrealizedPnl,
   calculateRealizedPnl,
   calculateUnrealizedPnl,
+  computeRowWindow,
   getPositionEntryPrice,
 } from "@/components/backtest/positions-panel.utils";
 import type { BacktestOrder } from "@/lib/backtest-store";
@@ -78,5 +79,50 @@ describe("calculateRealizedPnl", () => {
 
     expect(calculateRealizedPnl(closed)).toBeCloseTo(8.5, 6);
     expect(calculateRealizedPnl([])).toBe(0);
+  });
+});
+
+describe("computeRowWindow", () => {
+  const base = { rowHeight: 64, overscan: 8 };
+
+  it("renders the whole list when it has not been measured yet", () => {
+    const window = computeRowWindow({ ...base, scrollTop: 0, viewportHeight: 0, rowCount: 500 });
+    expect(window).toEqual({ start: 0, end: 500, topPad: 0, bottomPad: 0 });
+  });
+
+  it("returns an empty window for an empty list", () => {
+    const window = computeRowWindow({ ...base, scrollTop: 0, viewportHeight: 600, rowCount: 0 });
+    expect(window).toEqual({ start: 0, end: 0, topPad: 0, bottomPad: 0 });
+  });
+
+  it("includes only the visible slice plus overscan when scrolled", () => {
+    // Scrolled 100 rows down (64px each), 600px tall viewport (~10 rows visible).
+    const window = computeRowWindow({
+      ...base,
+      scrollTop: 100 * 64,
+      viewportHeight: 600,
+      rowCount: 1000,
+    });
+
+    // firstVisible = 100, overscan 8 → start 92; visible ceil(600/64)=10 → end 100+10+8=118.
+    expect(window.start).toBe(92);
+    expect(window.end).toBe(118);
+    expect(window.topPad).toBe(92 * 64);
+    expect(window.bottomPad).toBe((1000 - 118) * 64);
+    // Padding + rendered rows reconstruct the full scroll height exactly.
+    expect(window.topPad + (window.end - window.start) * 64 + window.bottomPad).toBe(1000 * 64);
+  });
+
+  it("clamps the window at the list bounds", () => {
+    const window = computeRowWindow({
+      ...base,
+      scrollTop: 1_000_000,
+      viewportHeight: 600,
+      rowCount: 50,
+    });
+
+    expect(window.start).toBeGreaterThanOrEqual(0);
+    expect(window.end).toBe(50);
+    expect(window.bottomPad).toBe(0);
   });
 });
