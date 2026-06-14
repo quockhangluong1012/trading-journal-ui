@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { AuthProvider } from '@/lib/auth-context'
 import { TradeProvider } from '@/lib/trade-context'
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { LayoutWrapper } from "@/components/layout-wrapper"
 
 import './globals.css'
@@ -65,6 +66,7 @@ export default function RootLayout({
             </TradeProvider>
           </AuthProvider>
           <Toaster />
+          <SonnerToaster />
         </ThemeProvider>
         <Analytics />
         <SpeedInsights />

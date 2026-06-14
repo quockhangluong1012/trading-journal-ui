@@ -7,6 +7,7 @@ import {
   createChartDrawing,
   createChartDrawingDraft,
   calculateDrawingAnchorDelta,
+  calculateVerticalPanOffsetDelta,
   applyChartDrawingStyle,
   applyChartDrawingTemplate,
   buildIncrementalChartData,
@@ -31,10 +32,12 @@ import {
   completeChartDrawingDraft,
   estimateDrawingTimeFromLogical,
   formatChartAxisPrice,
+  isWheelOverPriceAxis,
   isPointerWithinClientBounds,
   isTwoPointDrawingTool,
   mapBacktestCandlesToChartData,
   moveChartDrawing,
+  offsetAutoscaleInfoPriceRange,
   positionChartDrawing,
   positionOrderLevelOverlays,
   positionTradingSessionOverlays,
@@ -151,6 +154,53 @@ describe("TradingView platform helpers", () => {
     expect(formatChartAxisPrice(23825.4)).toBe("23,825.4");
     expect(formatChartAxisPrice(1.2)).toBe("1.2");
     expect(formatChartAxisPrice(undefined)).toBe("--");
+  });
+
+  it("detects wheel input over the price axis when the scale width is temporarily unavailable", () => {
+    expect(isWheelOverPriceAxis({
+      cursorX: 930,
+      surfaceWidth: 1000,
+      timeScaleWidth: 920,
+      priceScaleWidth: 0,
+    })).toBe(true);
+
+    expect(isWheelOverPriceAxis({
+      cursorX: 900,
+      surfaceWidth: 1000,
+      timeScaleWidth: 920,
+      priceScaleWidth: 0,
+    })).toBe(false);
+  });
+
+  it("converts vertical pointer movement into the opposite price-range offset", () => {
+    expect(calculateVerticalPanOffsetDelta({
+      pixelDeltaY: 40,
+      topCoordinate: 20,
+      bottomCoordinate: 420,
+      topPrice: 1.2,
+      bottomPrice: 1,
+    })).toBeCloseTo(0.02);
+
+    expect(calculateVerticalPanOffsetDelta({
+      pixelDeltaY: -40,
+      topCoordinate: 20,
+      bottomCoordinate: 420,
+      topPrice: 1.2,
+      bottomPrice: 1,
+    })).toBeCloseTo(-0.02);
+  });
+
+  it("shifts the autoscale price range without changing its height", () => {
+    const autoscaleInfo = {
+      priceRange: { minValue: 1, maxValue: 1.2 },
+      margins: { above: 10, below: 20 },
+    };
+
+    expect(offsetAutoscaleInfoPriceRange(autoscaleInfo, 0.05)).toEqual({
+      priceRange: { minValue: 1.05, maxValue: 1.25 },
+      margins: { above: 10, below: 20 },
+    });
+    expect(autoscaleInfo.priceRange).toEqual({ minValue: 1, maxValue: 1.2 });
   });
 
   it("maps backtest candles to chronological chart data and keeps the newest duplicate", () => {

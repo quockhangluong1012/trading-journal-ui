@@ -97,12 +97,12 @@ export function useOrderForm({
         toast.error("Entry price is required for limit orders.");
         return;
       }
-      if (side === "Long" && entryValue >= currentPrice) {
-        toast.error("Limit Buy price must be below current market price.");
+      if (side === "Long" && entryValue > currentPrice) {
+        toast.error("Limit Buy price cannot be above current market price.");
         return;
       }
-      if (side === "Short" && entryValue <= currentPrice) {
-        toast.error("Limit Sell price must be above current market price.");
+      if (side === "Short" && entryValue < currentPrice) {
+        toast.error("Limit Sell price cannot be below current market price.");
         return;
       }
     }
