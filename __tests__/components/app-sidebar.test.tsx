@@ -74,4 +74,18 @@ describe("AppSidebar", () => {
       expect(getDesktopSidebar(view.container)).toHaveAttribute("data-state", "collapsed")
     })
   })
+
+  it("uses a short transform-based desktop transition", () => {
+    const view = renderSidebar()
+    const gap = view.container.querySelector('[data-slot="sidebar-gap"]')
+    const container = view.container.querySelector('[data-slot="sidebar-container"]')
+
+    expect(gap).toHaveClass("duration-100", "ease-out", "motion-reduce:transition-none")
+    expect(container).toHaveClass(
+      "transition-[transform,width]",
+      "duration-100",
+      "ease-out",
+      "motion-reduce:transition-none",
+    )
+  })
 })

@@ -1,11 +1,12 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   ColorType,
   CrosshairMode,
   LineStyle,
   createChart,
+  type AutoscaleInfo,
   type CandlestickData,
   type CreatePriceLineOptions,
   type HistogramData,
@@ -632,6 +633,51 @@ interface DrawingDragState {
   surfaceRect: { left: number; top: number; width: number; height: number };
 }
 
+export function calculateVerticalPanOffsetDelta({
+  pixelDeltaY,
+  topCoordinate,
+  bottomCoordinate,
+  topPrice,
+  bottomPrice,
+}: {
+  pixelDeltaY: number;
+  topCoordinate: number;
+  bottomCoordinate: number;
+  topPrice: number;
+  bottomPrice: number;
+}): number {
+  const coordinateRange = bottomCoordinate - topCoordinate;
+  if (
+    !Number.isFinite(pixelDeltaY)
+    || !Number.isFinite(coordinateRange)
+    || coordinateRange === 0
+    || !Number.isFinite(topPrice)
+    || !Number.isFinite(bottomPrice)
+  ) {
+    return 0;
+  }
+
+  const pricePerPixel = (bottomPrice - topPrice) / coordinateRange;
+  return -pixelDeltaY * pricePerPixel;
+}
+
+export function offsetAutoscaleInfoPriceRange(
+  autoscaleInfo: AutoscaleInfo | null,
+  offset: number,
+): AutoscaleInfo | null {
+  if (!autoscaleInfo || !Number.isFinite(offset) || offset === 0) {
+    return autoscaleInfo;
+  }
+
+  return {
+    ...autoscaleInfo,
+    priceRange: {
+      minValue: autoscaleInfo.priceRange.minValue + offset,
+      maxValue: autoscaleInfo.priceRange.maxValue + offset,
+    },
+  };
+}
+
 interface ReplayControlsDragState {
   pointerStart: { x: number; y: number };
   startPosition: ReplayControlsPosition;
@@ -745,7 +791,13 @@ function pixelDeltaToChartDelta(
     const p1 = candleSeries.coordinateToPrice(probeY1);
     const p2 = candleSeries.coordinateToPrice(probeY2);
     if (p1 !== null && p2 !== null) {
-      dp = pixelDY * (p2 - p1) / (probeY2 - probeY1);
+      dp = -calculateVerticalPanOffsetDelta({
+        pixelDeltaY: pixelDY,
+        topCoordinate: probeY1,
+        bottomCoordinate: probeY2,
+        topPrice: Number(p1),
+        bottomPrice: Number(p2),
+      });
     }
   }
 
@@ -2271,6 +2323,38 @@ export function formatChartAxisPrice(value: number | undefined): string {
   }).format(value);
 }
 
+export function isWheelOverPriceAxis({
+  cursorX,
+  surfaceWidth,
+  timeScaleWidth,
+  priceScaleWidth,
+}: {
+  cursorX: number;
+  surfaceWidth: number;
+  timeScaleWidth: number;
+  priceScaleWidth: number;
+}): boolean {
+  if (
+    !Number.isFinite(cursorX) ||
+    !Number.isFinite(surfaceWidth) ||
+    surfaceWidth <= 0
+  ) {
+    return false;
+  }
+
+  const measuredPriceScaleWidth = Number.isFinite(priceScaleWidth)
+    ? clamp(priceScaleWidth, 0, surfaceWidth)
+    : 0;
+  const derivedPriceScaleWidth = Number.isFinite(timeScaleWidth) && timeScaleWidth > 0
+    ? clamp(surfaceWidth - timeScaleWidth, 0, surfaceWidth)
+    : 0;
+  const resolvedPriceScaleWidth = Math.max(measuredPriceScaleWidth, derivedPriceScaleWidth);
+
+  return resolvedPriceScaleWidth > 0
+    && cursorX >= surfaceWidth - resolvedPriceScaleWidth
+    && cursorX <= surfaceWidth;
+}
+
 export const CHART_PRICE_FORMAT = {
   type: "custom",
   minMove: CHART_PRICE_MIN_MOVE,
@@ -3320,7 +3404,7 @@ export function TradingViewPlatform({
   const dragStateRef = useRef<DrawingDragState | null>(null);
   const replayControlsDragRef = useRef<ReplayControlsDragState | null>(null);
   const selectedDrawingToolbarDragRef = useRef<FloatingToolbarDragState | null>(null);
-  const chartPanRef = useRef<{ prevX: number; hasMoved: boolean } | null>(null);
+  const chartPanRef = useRef<{ prevX: number; prevY: number; hasMoved: boolean } | null>(null);
   const hoveredPriceAnchorRef = useRef<PointerChartAnchor | null>(null);
   const quickOrderDragRef = useRef<QuickOrderDragState | null>(null);
   const orderLevelDragRef = useRef<OrderLevelDragState | null>(null);
@@ -3330,6 +3414,8 @@ export function TradingViewPlatform({
   const isViewingHistoryRef = useRef(false);
   // Current vertical (price) zoom level. 1 = the chart's default scaleMargins.
   const verticalZoomRef = useRef(1);
+  // Offset the autoscaled price range while vertically panning the chart.
+  const verticalPanOffsetRef = useRef(0);
   const [orderMarkerPositions, setOrderMarkerPositions] = useState<PositionedOrderMarkerOverlay[]>([]);
   const [currentPriceOrderAction, setCurrentPriceOrderAction] = useState<CurrentPriceOrderAction | null>(null);
   const [hoveredCandlePriceReadout, setHoveredCandlePriceReadout] = useState<HoveredCandlePriceReadout | null>(null);
@@ -3677,7 +3763,14 @@ export function TradingViewPlatform({
         requestFrame: window.requestAnimationFrame.bind(window),
         cancelFrame: window.cancelAnimationFrame.bind(window),
         sync: () => syncViewportOverlaysRef.current(),
-        transition: startTransition,
+        // Commit the overlay projection synchronously (not via startTransition).
+        // The rAF above already coalesces a burst of viewport events into a
+        // single update per frame, so this is at most one urgent render per
+        // frame. Wrapping it in a transition made React treat each frame's
+        // update as interruptible/low-priority, so during a continuous pan the
+        // overlay commit was repeatedly restarted and only landed once the drag
+        // settled — the drawings lagged 1-2s behind the chart. An urgent update
+        // tracks the pan in lockstep.
       });
     }
 
@@ -3933,8 +4026,12 @@ export function TradingViewPlatform({
       const cursorX = event.clientX - rect.left;
 
       // Scrolling over the price axis (right column) zooms vertically.
-      const priceAxisWidth = candleSeries.priceScale().width();
-      if (priceAxisWidth > 0 && cursorX >= rect.width - priceAxisWidth) {
+      if (isWheelOverPriceAxis({
+        cursorX,
+        surfaceWidth: rect.width,
+        timeScaleWidth: chart.timeScale().width(),
+        priceScaleWidth: candleSeries.priceScale().width(),
+      })) {
         const factor = event.deltaY > 0 ? 0.9 : 1.1; // scroll up = zoom in
         applyVerticalZoom(verticalZoomRef.current * factor);
         scheduleOrderMarkerSync();
@@ -4051,6 +4148,19 @@ export function TradingViewPlatform({
     hoveredPriceAnchorRef.current = null;
     setHoveredCandlePriceReadout((current) => (current === null ? current : null));
     setCurrentPriceOrderAction((current) => (current === null ? current : null));
+  }, []);
+
+  const applyVerticalPanOffset = useCallback((offset: number) => {
+    const candleSeries = candleSeriesRef.current;
+    if (!candleSeries) return;
+
+    const nextOffset = Number.isFinite(offset) ? offset : 0;
+    verticalPanOffsetRef.current = nextOffset;
+    candleSeries.applyOptions({
+      autoscaleInfoProvider: (baseImplementation: () => AutoscaleInfo | null) => (
+        offsetAutoscaleInfoPriceRange(baseImplementation(), nextOffset)
+      ),
+    });
   }, []);
 
   const handleDrawingPointerLeave = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
@@ -4465,7 +4575,7 @@ export function TradingViewPlatform({
     // Clicked empty canvas area: start a chart pan gesture.
     // Deselection happens on pointer-up only if the pointer didn't move (i.e. it was a plain click).
     (event.target as Element).setPointerCapture?.(event.pointerId);
-    chartPanRef.current = { prevX: event.clientX, hasMoved: false };
+    chartPanRef.current = { prevX: event.clientX, prevY: event.clientY, hasMoved: false };
   }, [
     activeDrawingStyle,
     activeTool,
@@ -4517,10 +4627,13 @@ export function TradingViewPlatform({
       return;
     }
 
-    // Chart pan — horizontal scroll while dragging on empty canvas
+    // Chart pan — move the time and price ranges while dragging empty canvas.
     const panState = chartPanRef.current;
     if (panState && !drawingDraft) {
       const dx = event.clientX - panState.prevX;
+      const dy = event.clientY - panState.prevY;
+      let didPan = false;
+
       if (Math.abs(dx) > 0) {
         const chart = chartRef.current;
         if (chart) {
@@ -4544,12 +4657,42 @@ export function TradingViewPlatform({
             // back far enough that the latest candle is visible again.
             const lastBarIndex = previousCandleCountRef.current - 1;
             isViewingHistoryRef.current = nextTo < lastBarIndex;
-            panState.hasMoved = true;
-            scheduleOrderMarkerSync();
+            didPan = true;
           }
         }
       }
+
+      if (Math.abs(dy) > 0) {
+        const candleSeries = candleSeriesRef.current;
+        const surfaceHeight = drawingSurfaceRef.current?.clientHeight ?? 0;
+        const probeY1 = Math.max(1, surfaceHeight * 0.1);
+        const probeY2 = Math.max(1, surfaceHeight * 0.9);
+        const topPrice = candleSeries?.coordinateToPrice(probeY1);
+        const bottomPrice = candleSeries?.coordinateToPrice(probeY2);
+
+        if (topPrice !== null && topPrice !== undefined && bottomPrice !== null && bottomPrice !== undefined) {
+          const offsetDelta = calculateVerticalPanOffsetDelta({
+            pixelDeltaY: dy,
+            topCoordinate: probeY1,
+            bottomCoordinate: probeY2,
+            topPrice: Number(topPrice),
+            bottomPrice: Number(bottomPrice),
+          });
+
+          if (offsetDelta !== 0) {
+            applyVerticalPanOffset(verticalPanOffsetRef.current + offsetDelta);
+            didPan = true;
+          }
+        }
+      }
+
+      if (didPan) {
+        panState.hasMoved = true;
+        scheduleOrderMarkerSync();
+      }
+
       panState.prevX = event.clientX;
+      panState.prevY = event.clientY;
       event.preventDefault();
       return;
     }
@@ -4568,6 +4711,7 @@ export function TradingViewPlatform({
       return;
     }
   }, [
+    applyVerticalPanOffset,
     drawingDraft,
     getChartAnchorFromPointer,
     scheduleOrderMarkerSync,
@@ -5123,9 +5267,10 @@ export function TradingViewPlatform({
     // Read the candle count from the ref so this callback stays stable across
     // replay ticks (otherwise it would bust the memoized toolbar every tick).
     fitLatestCandles(chart, previousCandleCountRef.current);
+    applyVerticalPanOffset(0);
     isViewingHistoryRef.current = false;
     scheduleOrderMarkerSync();
-  }, [scheduleOrderMarkerSync]);
+  }, [applyVerticalPanOffset, scheduleOrderMarkerSync]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
