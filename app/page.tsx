@@ -26,6 +26,7 @@ import { MacroTimesWidget } from "@/components/dashboard/macro-times-widget"
 import { TiltGaugeWidget } from "@/components/psychology/tilt-gauge-widget"
 import { StreakWidget } from "@/components/psychology/streak-widget"
 import { KarmaWidget } from "@/components/psychology/karma-widget"
+import { GoalsOverviewWidget } from "@/components/goals/goals-overview-widget"
 import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
@@ -247,6 +248,7 @@ function DashboardContent() {
 
           <TabsContent value="planning" aria-labelledby="dashboard-tab-planning" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
+              <GoalsOverviewWidget />
               <KillzonesWidget />
               <MacroTimesWidget />
             </div>

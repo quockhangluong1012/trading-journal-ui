@@ -65,7 +65,7 @@ export function TrackingFields({ value, onChange }: Props) {
             <p className="text-[11px] text-muted-foreground">
               {value.source === ""
                 ? "You record progress yourself."
-                : "Progress updates automatically from your trading activity."}
+                : "Progress updates automatically from matching trading activity recorded after this goal is created — past activity isn't counted. Any other goal tracking the same source advances at the same time."}
             </p>
           </div>
 

@@ -1,12 +1,19 @@
 import {
   GOAL_METRIC_SOURCE_LABELS,
+  GoalActivitySourceType,
+  GoalItemType,
   GoalMetricSource,
   METRIC_DIRECTION_LABELS,
   MetricDirection,
   TrackingMode,
 } from "./enum/GoalEnums"
 import type {
+  GoalDetail,
+  GoalMilestoneView,
   GoalSummary,
+  GoalTaskView,
+  ProgressResult,
+  ReorderEntry,
   TrackingInput,
   TrackingSnapshot,
   UpdateProgressRequest,
@@ -64,6 +71,116 @@ export function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)))
 }
 
+/**
+ * For a parent (goal/milestone), the progress bar should reflect child
+ * completion. A Manual parent's own progress is just 0/100 and ignores its
+ * tasks, so we surface the server-computed rollup instead. Metric items track
+ * their own number, so they keep their own progress (returns `undefined`).
+ */
+export function rollupOverridePercent(
+  tracking: TrackingSnapshot,
+  rollupProgressPercent: number,
+): number | undefined {
+  return tracking.mode === TrackingMode.Manual ? rollupProgressPercent : undefined
+}
+
+// ─── Optimistic progress patching ─────────────────────────────────────────
+// A progress PATCH returns the updated item's own state (ProgressResult), which
+// is enough to patch the detail/list in place instead of refetching the whole
+// goal + history. These helpers mirror backend GoalRollup so the rolled-up
+// parent bars stay consistent after a child changes.
+
+const round2 = (value: number): number => Math.round(value * 100) / 100
+
+const average = (values: number[]): number =>
+  values.reduce((sum, value) => sum + value, 0) / values.length
+
+/** Overlays the fields a ProgressResult carries onto an existing snapshot. */
+export function patchTrackingSnapshot(
+  tracking: TrackingSnapshot,
+  result: ProgressResult,
+): TrackingSnapshot {
+  return {
+    ...tracking,
+    currentValue: result.currentValue,
+    progressPercent: result.progressPercent,
+    isCompleted: result.isCompleted,
+    completedDate: result.completedDate,
+  }
+}
+
+/** Mirror of GoalRollup.ForMilestone: average of tasks, own progress if childless. */
+export function recomputeMilestoneRollup(milestone: GoalMilestoneView): number {
+  return milestone.tasks.length === 0
+    ? milestone.tracking.progressPercent
+    : round2(average(milestone.tasks.map((task) => task.tracking.progressPercent)))
+}
+
+/** Mirror of GoalRollup.ForGoal: each milestone's rollup + loose tasks, own if neither. */
+export function recomputeGoalRollup(
+  detail: Pick<GoalDetail, "tracking" | "milestones" | "tasks">,
+): number {
+  const parts = [
+    ...detail.milestones.map(recomputeMilestoneRollup),
+    ...detail.tasks.map((task) => task.tracking.progressPercent),
+  ]
+  return parts.length === 0 ? detail.tracking.progressPercent : round2(average(parts))
+}
+
+/** Number of completed tasks across loose tasks and every milestone's tasks. */
+export function countCompletedTasks(detail: Pick<GoalDetail, "milestones" | "tasks">): number {
+  const tasks: GoalTaskView[] = [
+    ...detail.tasks,
+    ...detail.milestones.flatMap((milestone) => milestone.tasks),
+  ]
+  return tasks.filter((task) => task.tracking.isCompleted).length
+}
+
+/**
+ * Returns a new GoalDetail with the targeted item's tracking patched from a
+ * ProgressResult and all milestone rollups recomputed. The goal-level rollup is
+ * read off the result via {@link recomputeGoalRollup}.
+ */
+export function applyProgressToDetail(
+  detail: GoalDetail,
+  target: { itemType: GoalItemType; itemId: number },
+  result: ProgressResult,
+): GoalDetail {
+  const patchTask = (task: GoalTaskView): GoalTaskView =>
+    target.itemType === GoalItemType.Task && task.id === target.itemId
+      ? { ...task, tracking: patchTrackingSnapshot(task.tracking, result) }
+      : task
+
+  const milestones = detail.milestones.map((milestone) => {
+    const tasks = milestone.tasks.map(patchTask)
+    const tracking =
+      target.itemType === GoalItemType.Milestone && milestone.id === target.itemId
+        ? patchTrackingSnapshot(milestone.tracking, result)
+        : milestone.tracking
+    const patched = { ...milestone, tasks, tracking }
+    return { ...patched, rollupProgressPercent: recomputeMilestoneRollup(patched) }
+  })
+
+  const tasks = detail.tasks.map(patchTask)
+  const tracking =
+    target.itemType === GoalItemType.Goal && detail.id === target.itemId
+      ? patchTrackingSnapshot(detail.tracking, result)
+      : detail.tracking
+
+  const next = { ...detail, milestones, tasks, tracking }
+  return { ...next, rollupProgressPercent: recomputeGoalRollup(next) }
+}
+
+/** Copies the volatile, progress-derived fields from a detail onto its list summary. */
+export function applyDetailToSummary(summary: GoalSummary, detail: GoalDetail): GoalSummary {
+  return {
+    ...summary,
+    tracking: detail.tracking,
+    rollupProgressPercent: detail.rollupProgressPercent,
+    completedTaskCount: countCompletedTasks(detail),
+  }
+}
+
 // ─── Formatting ─────────────────────────────────────────────────────────
 
 export function formatMetricValue(value: number | null, unit: string | null): string {
@@ -88,6 +205,25 @@ export function describeTracking(tracking: TrackingSnapshot): string {
     )}`
   }
   return tracking.metricName ?? "Metric"
+}
+
+/**
+ * The in-app route for an auto-tracked activity's originating record, so the
+ * activity log can link back to the trade/backtest that advanced the goal.
+ * Returns null for source types that have no detail page.
+ */
+export function goalActivitySourceHref(
+  sourceType: GoalActivitySourceType,
+  sourceId: number,
+): string | null {
+  switch (sourceType) {
+    case GoalActivitySourceType.TradeHistory:
+      return `/trade/${sourceId}`
+    case GoalActivitySourceType.BacktestSession:
+      return `/backtest/${sourceId}`
+    default:
+      return null
+  }
 }
 
 export function formatDate(value: string | null | undefined): string {
@@ -122,6 +258,45 @@ export function emptyTrackingForm(): TrackingFormState {
     targetValue: "",
     source: "",
   }
+}
+
+/** Rebuilds editable form state from an existing item's tracking snapshot. */
+export function trackingFormFromSnapshot(tracking: TrackingSnapshot): TrackingFormState {
+  if (tracking.mode === TrackingMode.Manual) return emptyTrackingForm()
+  return {
+    mode: TrackingMode.Metric,
+    metricName: tracking.metricName ?? "",
+    metricUnit: tracking.metricUnit ?? "",
+    direction: tracking.direction ?? MetricDirection.AtLeast,
+    startValue: tracking.startValue != null ? String(tracking.startValue) : "0",
+    targetValue: tracking.targetValue != null ? String(tracking.targetValue) : "",
+    source: tracking.source != null ? String(tracking.source) : "",
+  }
+}
+
+/**
+ * Moves the item at `fromIndex` to `toIndex` and returns reorder entries with
+ * sequential sort orders for the whole sibling list. Returns `[]` when the move
+ * is a no-op or out of bounds, so callers can skip the request.
+ */
+export function reorderEntries<T extends { id: number }>(
+  items: T[],
+  fromIndex: number,
+  toIndex: number,
+  itemType: GoalItemType,
+): ReorderEntry[] {
+  if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return []
+  const next = [...items]
+  const [moved] = next.splice(fromIndex, 1)
+  next.splice(toIndex, 0, moved)
+  return next.map((item, index) => ({ itemType, id: item.id, sortOrder: index }))
+}
+
+/** ISO timestamp → `yyyy-MM-dd` for a native date input (empty string if null). */
+export function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return ""
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10)
 }
 
 /** Validates a tracking form, returning an error string or null. */

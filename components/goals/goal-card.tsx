@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { TrackingProgress } from "@/components/goals/tracking-progress"
 import { htmlToPlainText } from "@/components/ui/safe-html"
 import type { GoalSummary } from "@/lib/goals-api"
-import { GOAL_STATUS_META, formatDate, getGoalStatus } from "@/lib/goals-overview"
+import { GOAL_STATUS_META, formatDate, getGoalStatus, rollupOverridePercent } from "@/lib/goals-overview"
 import { cn } from "@/lib/utils"
 
 const SC = "rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm shadow-sm transition-colors hover:border-primary/40"
@@ -75,7 +75,10 @@ export function GoalCard({ goal, referenceDate }: { goal: GoalSummary; reference
             </Badge>
           </div>
 
-          <TrackingProgress tracking={goal.tracking} />
+          <TrackingProgress
+            tracking={goal.tracking}
+            progressOverride={rollupOverridePercent(goal.tracking, goal.rollupProgressPercent)}
+          />
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
             {goal.dueDate && (

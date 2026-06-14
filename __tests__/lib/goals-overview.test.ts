@@ -1,20 +1,39 @@
 import { describe, expect, it } from "vitest"
 import {
+  GoalActivitySourceType,
+  GoalItemType,
   GoalMetricSource,
   MetricDirection,
   TrackingMode,
 } from "@/lib/enum/GoalEnums"
-import type { TrackingSnapshot } from "@/lib/goals-api"
+import type {
+  GoalDetail,
+  GoalMilestoneView,
+  GoalSummary,
+  GoalTaskView,
+  ProgressResult,
+  TrackingSnapshot,
+} from "@/lib/goals-api"
 import {
+  applyDetailToSummary,
+  applyProgressToDetail,
   buildProgressRequest,
   buildTrackingInput,
   canUpdateManually,
   clampPercent,
+  countCompletedTasks,
   describeTracking,
   emptyTrackingForm,
   formatMetricValue,
   getGoalStatus,
+  goalActivitySourceHref,
   isAutoTracked,
+  recomputeGoalRollup,
+  recomputeMilestoneRollup,
+  reorderEntries,
+  rollupOverridePercent,
+  toDateInputValue,
+  trackingFormFromSnapshot,
   validateTrackingForm,
 } from "@/lib/goals-overview"
 
@@ -34,6 +53,63 @@ function snapshot(overrides: Partial<TrackingSnapshot> = {}): TrackingSnapshot {
     ...overrides,
   }
 }
+
+describe("rollupOverridePercent", () => {
+  it("surfaces rollup for manual parents and leaves metric items to their own progress", () => {
+    const manual = snapshot({ mode: TrackingMode.Manual })
+    expect(rollupOverridePercent(manual, 80)).toBe(80)
+
+    const metric = snapshot({ mode: TrackingMode.Metric, progressPercent: 40 })
+    expect(rollupOverridePercent(metric, 80)).toBeUndefined()
+  })
+})
+
+describe("reorderEntries", () => {
+  const items = [{ id: 1 }, { id: 2 }, { id: 3 }]
+
+  it("renumbers the whole sibling list after a move", () => {
+    const entries = reorderEntries(items, 2, 0, GoalItemType.Task)
+    expect(entries).toEqual([
+      { itemType: GoalItemType.Task, id: 3, sortOrder: 0 },
+      { itemType: GoalItemType.Task, id: 1, sortOrder: 1 },
+      { itemType: GoalItemType.Task, id: 2, sortOrder: 2 },
+    ])
+  })
+
+  it("returns nothing for no-op or out-of-bounds moves", () => {
+    expect(reorderEntries(items, 0, 0, GoalItemType.Milestone)).toEqual([])
+    expect(reorderEntries(items, 0, -1, GoalItemType.Milestone)).toEqual([])
+    expect(reorderEntries(items, 2, 3, GoalItemType.Milestone)).toEqual([])
+  })
+})
+
+describe("trackingFormFromSnapshot / toDateInputValue", () => {
+  it("rebuilds metric form state from a snapshot", () => {
+    const form = trackingFormFromSnapshot(snapshot({
+      mode: TrackingMode.Metric,
+      metricName: "Trades",
+      metricUnit: "trades",
+      direction: MetricDirection.AtLeast,
+      startValue: 0,
+      targetValue: 100,
+      source: GoalMetricSource.TradeClosedCount,
+    }))
+    expect(form.mode).toBe(TrackingMode.Metric)
+    expect(form.metricName).toBe("Trades")
+    expect(form.targetValue).toBe("100")
+    expect(form.source).toBe(String(GoalMetricSource.TradeClosedCount))
+  })
+
+  it("falls back to an empty form for manual tracking", () => {
+    expect(trackingFormFromSnapshot(snapshot({ mode: TrackingMode.Manual })).mode).toBe(TrackingMode.Manual)
+  })
+
+  it("formats an ISO timestamp as a date-input value", () => {
+    expect(toDateInputValue("2026-06-14T10:30:00.000Z")).toBe("2026-06-14")
+    expect(toDateInputValue(null)).toBe("")
+    expect(toDateInputValue("not-a-date")).toBe("")
+  })
+})
 
 describe("auto-tracking predicates", () => {
   it("flags metric goals with a source as auto-tracked", () => {
@@ -106,6 +182,20 @@ describe("formatting", () => {
   })
 })
 
+describe("goalActivitySourceHref", () => {
+  it("links trade history to the trade detail page", () => {
+    expect(goalActivitySourceHref(GoalActivitySourceType.TradeHistory, 42)).toBe("/trade/42")
+  })
+
+  it("links backtest sessions to the backtest detail page", () => {
+    expect(goalActivitySourceHref(GoalActivitySourceType.BacktestSession, 7)).toBe("/backtest/7")
+  })
+
+  it("returns null for unknown source types", () => {
+    expect(goalActivitySourceHref(999 as GoalActivitySourceType, 1)).toBeNull()
+  })
+})
+
 describe("validateTrackingForm", () => {
   it("accepts manual mode unconditionally", () => {
     expect(validateTrackingForm(emptyTrackingForm())).toBeNull()
@@ -165,5 +255,157 @@ describe("buildProgressRequest", () => {
   it("sends only value for metric items", () => {
     const t = snapshot({ mode: TrackingMode.Metric })
     expect(buildProgressRequest(t, { value: 42, note: "" })).toEqual({ value: 42, note: null })
+  })
+})
+
+// ─── Optimistic progress patching ─────────────────────────────────────────
+
+function task(id: number, overrides: Partial<TrackingSnapshot> = {}): GoalTaskView {
+  return {
+    id,
+    milestoneId: null,
+    title: `Task ${id}`,
+    description: null,
+    dueDate: null,
+    sortOrder: id,
+    tracking: snapshot({ mode: TrackingMode.Metric, ...overrides }),
+  }
+}
+
+function milestone(id: number, tasks: GoalTaskView[], own: Partial<TrackingSnapshot> = {}): GoalMilestoneView {
+  return {
+    id,
+    title: `Milestone ${id}`,
+    description: null,
+    dueDate: null,
+    sortOrder: id,
+    tracking: snapshot({ mode: TrackingMode.Metric, ...own }),
+    rollupProgressPercent: 0,
+    tasks,
+  }
+}
+
+function detail(overrides: Partial<GoalDetail> = {}): GoalDetail {
+  return {
+    id: 1,
+    title: "Goal",
+    description: null,
+    startDate: null,
+    dueDate: null,
+    tracking: snapshot({ mode: TrackingMode.Manual }),
+    rollupProgressPercent: 0,
+    milestones: [],
+    tasks: [],
+    progressHistory: [],
+    activityHistory: [],
+    createdDate: "2026-01-01T00:00:00Z",
+    updatedDate: null,
+    ...overrides,
+  }
+}
+
+const result = (overrides: Partial<ProgressResult> = {}): ProgressResult => ({
+  currentValue: 5,
+  progressPercent: 50,
+  isCompleted: false,
+  completedDate: null,
+  ...overrides,
+})
+
+describe("recomputeMilestoneRollup", () => {
+  it("averages task progress, rounding to 2 decimals", () => {
+    const m = milestone(1, [task(1, { progressPercent: 50 }), task(2, { progressPercent: 25 })])
+    expect(recomputeMilestoneRollup(m)).toBe(37.5)
+  })
+
+  it("falls back to its own progress when it has no tasks", () => {
+    expect(recomputeMilestoneRollup(milestone(1, [], { progressPercent: 60 }))).toBe(60)
+  })
+})
+
+describe("recomputeGoalRollup", () => {
+  it("combines milestone rollups with loose tasks", () => {
+    const d = detail({
+      milestones: [milestone(1, [task(1, { progressPercent: 100 })])], // rollup 100
+      tasks: [task(2, { progressPercent: 0 })], // loose 0
+    })
+    expect(recomputeGoalRollup(d)).toBe(50)
+  })
+
+  it("falls back to the goal's own progress when childless", () => {
+    expect(recomputeGoalRollup(detail({ tracking: snapshot({ progressPercent: 73 }) }))).toBe(73)
+  })
+})
+
+describe("applyProgressToDetail", () => {
+  it("patches a task and recomputes the milestone + goal rollups", () => {
+    const d = detail({
+      milestones: [milestone(1, [task(10, { progressPercent: 0, currentValue: 0 })])],
+    })
+    const next = applyProgressToDetail(
+      d,
+      { itemType: GoalItemType.Task, itemId: 10 },
+      result({ currentValue: 5, progressPercent: 100, isCompleted: true }),
+    )
+
+    const patchedTask = next.milestones[0].tasks[0]
+    expect(patchedTask.tracking.progressPercent).toBe(100)
+    expect(patchedTask.tracking.isCompleted).toBe(true)
+    expect(next.milestones[0].rollupProgressPercent).toBe(100)
+    expect(next.rollupProgressPercent).toBe(100)
+  })
+
+  it("does not mutate the input detail", () => {
+    const d = detail({ tasks: [task(10, { progressPercent: 0 })] })
+    applyProgressToDetail(d, { itemType: GoalItemType.Task, itemId: 10 }, result({ progressPercent: 80 }))
+    expect(d.tasks[0].tracking.progressPercent).toBe(0)
+  })
+
+  it("patches the goal's own tracking when targeting the goal", () => {
+    const next = applyProgressToDetail(
+      detail(),
+      { itemType: GoalItemType.Goal, itemId: 1 },
+      result({ progressPercent: 100, isCompleted: true }),
+    )
+    expect(next.tracking.isCompleted).toBe(true)
+    expect(next.rollupProgressPercent).toBe(100)
+  })
+})
+
+describe("countCompletedTasks", () => {
+  it("counts completed loose and milestone tasks", () => {
+    const d = detail({
+      tasks: [task(1, { isCompleted: true }), task(2, { isCompleted: false })],
+      milestones: [milestone(1, [task(3, { isCompleted: true })])],
+    })
+    expect(countCompletedTasks(d)).toBe(2)
+  })
+})
+
+describe("applyDetailToSummary", () => {
+  it("copies the progress-derived fields onto the summary", () => {
+    const summary: GoalSummary = {
+      id: 1,
+      title: "Goal",
+      description: null,
+      startDate: null,
+      dueDate: null,
+      tracking: snapshot(),
+      rollupProgressPercent: 0,
+      milestoneCount: 1,
+      taskCount: 2,
+      completedTaskCount: 0,
+      createdDate: "2026-01-01T00:00:00Z",
+      updatedDate: null,
+    }
+    const d = detail({
+      rollupProgressPercent: 75,
+      tasks: [task(1, { isCompleted: true }), task(2, { isCompleted: false })],
+    })
+
+    const patched = applyDetailToSummary(summary, d)
+    expect(patched.rollupProgressPercent).toBe(75)
+    expect(patched.completedTaskCount).toBe(1)
+    expect(patched.milestoneCount).toBe(1) // structural fields untouched
   })
 })

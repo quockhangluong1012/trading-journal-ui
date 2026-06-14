@@ -7,6 +7,7 @@ export enum NotificationType {
   AiInsight = 3,
   TiltWarning = 4,
   StreakAlert = 5,
+  GoalCompleted = 6,
 }
 
 export enum NotificationPriority {
@@ -103,6 +104,8 @@ function parseNotificationType(value: NotificationType | string): NotificationTy
       return NotificationType.TiltWarning
     case "streakalert":
       return NotificationType.StreakAlert
+    case "goalcompleted":
+      return NotificationType.GoalCompleted
     default:
       return NotificationType.System
   }

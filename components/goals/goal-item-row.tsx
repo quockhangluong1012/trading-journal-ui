@@ -1,12 +1,19 @@
 "use client"
 
 import type { ReactNode } from "react"
-import { CalendarDays, CheckCircle2, Circle, Pencil } from "lucide-react"
+import { ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Circle, MoreVertical, Pencil, SquarePen, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { TrackingProgress } from "@/components/goals/tracking-progress"
 import { htmlToPlainText } from "@/components/ui/safe-html"
 import type { TrackingSnapshot } from "@/lib/goals-api"
-import { canUpdateManually, formatDate } from "@/lib/goals-overview"
+import { canUpdateManually, formatDate, rollupOverridePercent } from "@/lib/goals-overview"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -14,9 +21,18 @@ interface Props {
   description?: string | null
   dueDate?: string | null
   tracking: TrackingSnapshot
+  /** Parent rollup (milestones) — surfaced on the bar when manual-tracked. */
+  rollupProgressPercent?: number
   /** Nested task rows render slightly smaller / indented. */
   variant?: "milestone" | "task"
   onUpdate: () => void
+  /** Edit the item's metadata / tracking config. */
+  onEdit?: () => void
+  /** Soft-delete the item. */
+  onDelete?: () => void
+  /** Reorder among siblings. Buttons are hidden when the handler is omitted. */
+  onMoveUp?: () => void
+  onMoveDown?: () => void
   /** Extra action buttons (e.g. "Add task" on a milestone). */
   actions?: ReactNode
   children?: ReactNode
@@ -27,14 +43,23 @@ export function GoalItemRow({
   description,
   dueDate,
   tracking,
+  rollupProgressPercent,
   variant = "milestone",
   onUpdate,
+  onEdit,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
   actions,
   children,
 }: Props) {
+  const hasMenu = Boolean(onEdit || onDelete || onMoveUp || onMoveDown)
   const completed = tracking.isCompleted
   const isTask = variant === "task"
   const descriptionText = htmlToPlainText(description)
+  const progressOverride = rollupProgressPercent != null
+    ? rollupOverridePercent(tracking, rollupProgressPercent)
+    : undefined
 
   return (
     <div
@@ -67,10 +92,45 @@ export function GoalItemRow({
               <Pencil className="h-3.5 w-3.5" /> Update
             </Button>
           )}
+          {hasMenu && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                  <MoreVertical className="h-4 w-4" />
+                  <span className="sr-only">More actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {onEdit && (
+                  <DropdownMenuItem onClick={onEdit}>
+                    <SquarePen className="mr-2 h-4 w-4" /> Edit
+                  </DropdownMenuItem>
+                )}
+                {onMoveUp && (
+                  <DropdownMenuItem onClick={onMoveUp}>
+                    <ArrowUp className="mr-2 h-4 w-4" /> Move up
+                  </DropdownMenuItem>
+                )}
+                {onMoveDown && (
+                  <DropdownMenuItem onClick={onMoveDown}>
+                    <ArrowDown className="mr-2 h-4 w-4" /> Move down
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={onDelete} variant="destructive">
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
-      <TrackingProgress tracking={tracking} className="mt-3" />
+      <TrackingProgress tracking={tracking} className="mt-3" progressOverride={progressOverride} />
 
       {children && <div className="mt-3 space-y-2 border-l border-border/50 pl-3">{children}</div>}
     </div>
