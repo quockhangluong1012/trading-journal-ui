@@ -59,17 +59,16 @@ export function AssetBreakdownChart({
     : "No data"
 
   return (
-    <Card className="min-w-0 border border-white/10 bg-card/60 backdrop-blur-xl rounded-4xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:shadow-[0_15px_40px_-10px_rgba(79,70,229,0.2)] hover:border-white/20 relative overflow-hidden flex flex-col h-full group">
-      <div className="absolute inset-0 bg-linear-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-      <CardHeader className="pb-4 pt-6 px-6 relative z-10">
+    <Card className="dashboard-card flex h-full min-w-0 flex-col overflow-hidden">
+      <CardHeader className="px-6 pb-4 pt-6">
         <div className="space-y-1">
-          <CardTitle className="text-[1.1rem] font-bold text-foreground">{title}</CardTitle>
-          <CardDescription className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-base font-semibold text-foreground">{title}</CardTitle>
+          <CardDescription className="text-sm text-muted-foreground">
             {description}
           </CardDescription>
         </div>
       </CardHeader>
-      <CardContent className="px-6 pb-6 pt-0 flex-1 flex flex-col relative z-10">
+      <CardContent className="flex flex-1 flex-col px-6 pb-6 pt-0">
         {isLoading ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
@@ -79,18 +78,18 @@ export function AssetBreakdownChart({
             <Skeleton className="h-65 w-full rounded-lg" />
           </div>
         ) : chartData.length === 0 ? (
-          <div className="flex min-h-80 items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-muted-foreground">
+          <div className="flex min-h-80 items-center justify-center rounded-2xl border border-dashed border-border/60 bg-muted/30 text-sm text-muted-foreground">
             No closed trades in this period.
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-4 pb-4">
-              <div className="rounded-2xl bg-white/5 border border-white/5 p-4 backdrop-blur-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="grid grid-cols-2 gap-3 pb-4">
+              <div className="dashboard-tile">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {summaryLabel}
                 </p>
                 <p
-                  className={`mt-1 text-2xl font-extrabold drop-shadow-sm ${
+                  className={`mt-1 text-2xl font-bold ${
                     isPnlMetric
                       ? totalPnl >= 0
                         ? "text-success"
@@ -101,8 +100,8 @@ export function AssetBreakdownChart({
                   {summaryValue}
                 </p>
               </div>
-              <div className="rounded-2xl bg-white/5 border border-white/5 p-4 backdrop-blur-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="dashboard-tile">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {leadingLabel}
                 </p>
                 <p className="mt-1 text-lg font-bold text-foreground">{leadingValue}</p>

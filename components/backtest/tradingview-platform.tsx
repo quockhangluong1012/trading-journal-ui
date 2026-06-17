@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   ColorType,
   CrosshairMode,
@@ -22,21 +22,20 @@ import {
   ArrowUpRight,
   Clock,
   Crosshair,
-  Eye,
-  EyeOff,
   FilePenLine,
+  Flag,
   GripVertical,
   Keyboard,
   Loader2,
   Lock,
-  Magnet,
-  Maximize2,
   Minus,
   Equal,
   MousePointer2,
   MoveHorizontal,
   MoveVertical,
   PaintBucket,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
   Palette,
   Play,
@@ -54,8 +53,6 @@ import {
   TrendingUp,
   Type,
   X,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -93,7 +90,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { BacktestOrder, CandleData, PlaybackSpeed, Timeframe } from "@/lib/backtest-store";
+import {
+  createDrawingTemplateApi,
+  deleteDrawingTemplateApi,
+  fetchDrawingTemplatesApi,
+  type BacktestDrawingTemplateDto,
+  type BacktestOrder,
+  type CandleData,
+  type PlaybackSpeed,
+  type Timeframe,
+} from "@/lib/backtest-store";
 import type { OrderFormInitialOrder } from "@/hooks/use-order-form";
 import { BACKTEST_KEYBOARD_SHORTCUTS } from "@/components/backtest/keyboard-shortcuts";
 import { cn } from "@/lib/utils";
@@ -181,6 +187,7 @@ const QUICK_ORDER_MIN_DISTANCE_MULTIPLIER = 20;
 const QUICK_ORDER_FALLBACK_DISTANCE_RATIO = 0.002;
 const DRAWING_COLORS = ["#2563eb", "#059669", "#f97316", "#e11d48", "#7c3aed", "#0f172a"];
 const MIN_DRAWING_DISTANCE = 4;
+const FIBONACCI_LEVEL_MIN_WIDTH = 96;
 const DRAWING_STROKE_WIDTHS = [1, 2, 3, 4, 5];
 const DRAWING_TEXT_SIZES = [11, 12, 14, 16, 18];
 const DRAWING_LINE_STYLE_OPTIONS = [
@@ -246,14 +253,17 @@ const DRAWING_STYLE_TEMPLATES: DrawingStyleTemplate[] = [
   },
 ];
 
+// Levels seed with an empty color so they inherit the drawing's stroke color by
+// default — applying a saved style/template then recolors every level. Users can
+// still set an explicit per-level color override in the Fibonacci settings dialog.
 const DEFAULT_FIBONACCI_LEVELS: FibonacciLevel[] = [
-  { value: 0, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0" },
-  { value: 0.236, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.236" },
-  { value: 0.382, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.382" },
-  { value: 0.5, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.5" },
-  { value: 0.618, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.618" },
-  { value: 0.786, visible: true, color: DEFAULT_DRAWING_COLOR, label: "0.786" },
-  { value: 1, visible: true, color: DEFAULT_DRAWING_COLOR, label: "1" },
+  { value: 0, visible: true, color: "", label: "0" },
+  { value: 0.236, visible: true, color: "", label: "0.236" },
+  { value: 0.382, visible: true, color: "", label: "0.382" },
+  { value: 0.5, visible: true, color: "", label: "0.5" },
+  { value: 0.618, visible: true, color: "", label: "0.618" },
+  { value: 0.786, visible: true, color: "", label: "0.786" },
+  { value: 1, visible: true, color: "", label: "1" },
 ];
 
 export type TradingSessionId = "tokyo" | "london" | "new-york";
@@ -556,8 +566,13 @@ export type DrawingStyleTemplateId = "standard" | "focus-zone" | "execution" | "
 export interface FibonacciLevel {
   value: number;
   visible: boolean;
+  /** Per-level line/label color. Empty string means "inherit the drawing's stroke color",
+   *  which lets a saved style/template recolor the whole Fib. */
   color: string;
   label: string;
+  /** Optional per-level overrides. Undefined means "inherit the drawing's style". */
+  width?: number;
+  lineStyle?: ChartDrawingLineStyle;
 }
 
 export interface ChartDrawingStyle {
@@ -572,6 +587,7 @@ export interface ChartDrawingStyle {
 
 interface DrawingStyleTemplate {
   id: string;
+  serverId?: number;
   label: string;
   style: Partial<ChartDrawingStyle>;
   tool?: DrawableChartTool;
@@ -809,6 +825,8 @@ interface DrawingToolDefinition {
   label: string;
   icon: typeof MousePointer2;
   requiresSecondPoint: boolean;
+  /** Single letter combined with Alt to activate the tool from the keyboard. */
+  hotkey?: string;
 }
 
 const DRAWING_TOOL_GROUPS: DrawingToolDefinition[][] = [
@@ -817,19 +835,32 @@ const DRAWING_TOOL_GROUPS: DrawingToolDefinition[][] = [
     { id: "crosshair", label: "Crosshair", icon: Crosshair, requiresSecondPoint: false },
   ],
   [
-    { id: "trend-line", label: "Trend line", icon: Slash, requiresSecondPoint: true },
-    { id: "ray", label: "Ray", icon: TrendingUp, requiresSecondPoint: true },
-    { id: "horizontal-line", label: "Horizontal line", icon: Minus, requiresSecondPoint: false },
-    { id: "vertical-line", label: "Vertical line", icon: MoveVertical, requiresSecondPoint: false },
+    { id: "trend-line", label: "Trend line", icon: Slash, requiresSecondPoint: true, hotkey: "t" },
+    { id: "ray", label: "Ray", icon: TrendingUp, requiresSecondPoint: true, hotkey: "y" },
+    { id: "horizontal-line", label: "Horizontal line", icon: Minus, requiresSecondPoint: false, hotkey: "h" },
+    { id: "vertical-line", label: "Vertical line", icon: MoveVertical, requiresSecondPoint: false, hotkey: "v" },
   ],
   [
-    { id: "rectangle", label: "Rectangle", icon: Square, requiresSecondPoint: true },
+    { id: "rectangle", label: "Rectangle", icon: Square, requiresSecondPoint: true, hotkey: "r" },
     { id: "long-position", label: "Long position", icon: MoveHorizontal, requiresSecondPoint: true },
     { id: "short-position", label: "Short position", icon: MoveHorizontal, requiresSecondPoint: true },
-    { id: "text", label: "Text note", icon: Type, requiresSecondPoint: false },
-    { id: "fibonacci", label: "Fib retracement", icon: Equal, requiresSecondPoint: true },
+    { id: "text", label: "Text note", icon: Type, requiresSecondPoint: false, hotkey: "x" },
+    { id: "measure", label: "Measure", icon: Ruler, requiresSecondPoint: true, hotkey: "m" },
+    { id: "fibonacci", label: "Fib retracement", icon: Equal, requiresSecondPoint: true, hotkey: "f" },
   ],
 ];
+
+/** Flat Alt+letter → tool lookup, derived from the toolbar groups so the
+ *  keyboard handler and tooltips never drift from the buttons. */
+const DRAWING_TOOL_HOTKEYS: Array<{ hotkey: string; tool: ChartDrawingTool }> = DRAWING_TOOL_GROUPS
+  .flat()
+  .filter((definition): definition is DrawingToolDefinition & { hotkey: string } => Boolean(definition.hotkey))
+  .map((definition) => ({ hotkey: definition.hotkey, tool: definition.id }));
+
+/** Tooltip/aria label for a tool, appending its Alt+letter hint when present. */
+function getDrawingToolHint(definition: DrawingToolDefinition): string {
+  return definition.hotkey ? `${definition.label} · Alt ${definition.hotkey.toUpperCase()}` : definition.label;
+}
 
 export function toTradingViewInterval(timeframe: Timeframe): TradingViewInterval {
   const intervals: Record<Timeframe, TradingViewInterval> = {
@@ -2385,6 +2416,44 @@ function getDrawingToolDefinition(tool: ChartDrawingTool): DrawingToolDefinition
   return null;
 }
 
+function parseCustomTemplateStyle(styleJson: string): Partial<ChartDrawingStyle> | null {
+  try {
+    const parsed = JSON.parse(styleJson);
+    return parsed && typeof parsed === "object"
+      ? parsed as Partial<ChartDrawingStyle>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseCustomTemplateTool(tool: string | null): DrawableChartTool | undefined {
+  if (!tool) {
+    return undefined;
+  }
+
+  const candidate = tool as ChartDrawingTool;
+  return isDrawableChartTool(candidate) && getDrawingToolDefinition(candidate) !== null
+    ? candidate
+    : undefined;
+}
+
+function mapBacktestDrawingTemplate(template: BacktestDrawingTemplateDto): DrawingStyleTemplate | null {
+  const style = parseCustomTemplateStyle(template.styleJson);
+  if (!style) {
+    return null;
+  }
+
+  return {
+    id: template.clientId,
+    serverId: template.id,
+    label: template.label,
+    style,
+    tool: parseCustomTemplateTool(template.tool),
+    text: template.text?.trim() || undefined,
+  };
+}
+
 export function isTwoPointDrawingTool(tool: DrawableChartTool): boolean {
   return getDrawingToolDefinition(tool)?.requiresSecondPoint ?? true;
 }
@@ -2468,16 +2537,23 @@ export function applyChartDrawingTemplate(
   return template ? applyChartDrawingStyle(drawing, template.style) : drawing;
 }
 
-function getDrawingStrokeDasharray(style: ChartDrawingStyle): string | undefined {
-  if (style.lineStyle === "dashed") {
-    return `${Math.max(4, style.strokeWidth * 3)} ${Math.max(3, style.strokeWidth * 2)}`;
+function getStrokeDasharrayForLine(
+  lineStyle: ChartDrawingLineStyle,
+  strokeWidth: number,
+): string | undefined {
+  if (lineStyle === "dashed") {
+    return `${Math.max(4, strokeWidth * 3)} ${Math.max(3, strokeWidth * 2)}`;
   }
 
-  if (style.lineStyle === "dotted") {
-    return `1 ${Math.max(3, style.strokeWidth * 2)}`;
+  if (lineStyle === "dotted") {
+    return `1 ${Math.max(3, strokeWidth * 2)}`;
   }
 
   return undefined;
+}
+
+function getDrawingStrokeDasharray(style: ChartDrawingStyle): string | undefined {
+  return getStrokeDasharrayForLine(style.lineStyle, style.strokeWidth);
 }
 
 export function createChartDrawing({
@@ -3014,6 +3090,26 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+export function getFibonacciLevelBounds(
+  startX: number,
+  endX: number,
+  chartWidth: number,
+): { x: number; width: number; labelX: number } {
+  if (chartWidth <= 0) {
+    return { x: 0, width: 0, labelX: 8 };
+  }
+
+  const boundedChartWidth = Math.max(0, chartWidth);
+  const rawWidth = Math.abs(endX - startX);
+  const minWidth = Math.min(FIBONACCI_LEVEL_MIN_WIDTH, boundedChartWidth);
+  const levelWidth = Math.min(Math.max(rawWidth, minWidth), boundedChartWidth);
+  const midpoint = (startX + endX) / 2;
+  const x = clamp(midpoint - levelWidth / 2, 0, Math.max(0, boundedChartWidth - levelWidth));
+  const labelX = clamp(x + levelWidth - 8, 8, Math.max(8, boundedChartWidth - 8));
+
+  return { x, width: levelWidth, labelX };
+}
+
 function renderDrawingLabel({
   x,
   y,
@@ -3308,11 +3404,12 @@ function renderPositionedChartDrawing(
       const pixelRange = end.y - start.y;
       const bgY = Math.min(start.y, end.y);
       const bgH = Math.abs(end.y - start.y);
+      const levelBounds = getFibonacciLevelBounds(start.x, end.x, width);
 
       return (
         <g key={drawing.id} {...interactiveProps}>
           <rect
-            x={0} y={bgY} width={width} height={bgH}
+            x={levelBounds.x} y={bgY} width={levelBounds.width} height={bgH}
             fill={drawingStyle.fillColor}
             fillOpacity={drawingStyle.fillOpacity}
             vectorEffect="non-scaling-stroke"
@@ -3320,22 +3417,26 @@ function renderPositionedChartDrawing(
           <line x1={start.x} y1={start.y} x2={end.x} y2={end.y}
             stroke={drawingStyle.strokeColor} strokeWidth={1} strokeDasharray="4 4"
             vectorEffect="non-scaling-stroke" />
-          {levels.filter((l) => l.visible).map((level) => {
+          {levels.map((level, levelIndex) => {
+            if (!level.visible) return null;
             const levelY = start.y + pixelRange * level.value;
             const levelPrice = start.price + priceRange * level.value;
+            const levelWidth = level.width ?? drawingStyle.strokeWidth;
+            const levelLineStyle = level.lineStyle ?? drawingStyle.lineStyle;
             return (
-              <g key={`${drawing.id}-fib-${level.value}`}>
-                <line x1={0} y1={levelY} x2={width} y2={levelY}
+              <g key={`${drawing.id}-fib-${levelIndex}`}>
+                <line x1={levelBounds.x} y1={levelY} x2={levelBounds.x + levelBounds.width} y2={levelY}
                   stroke={level.color || drawingStyle.strokeColor}
-                  strokeWidth={drawingStyle.strokeWidth}
-                  strokeDasharray={getDrawingStrokeDasharray(drawingStyle)}
+                  strokeWidth={levelWidth}
+                  strokeDasharray={getStrokeDasharrayForLine(levelLineStyle, levelWidth)}
                   vectorEffect="non-scaling-stroke" />
                 {renderDrawingLabel({
-                  x: Math.max(8, width - 108),
+                  x: levelBounds.labelX,
                   y: clamp(levelY - 6, 12, Math.max(12, height - 8)),
                   text: `${level.label} (${formatPrice(levelPrice)})`,
                   color: level.color || drawingStyle.textColor,
                   fontSize: drawingStyle.textSize,
+                  textAnchor: "end",
                 })}
               </g>
             );
@@ -3442,8 +3543,13 @@ export function TradingViewPlatform({
   const [activeDrawingStyle, setActiveDrawingStyle] = useState<ChartDrawingStyle>(DEFAULT_DRAWING_STYLE);
   const [drawingText, setDrawingText] = useState("Note");
   const [isMagnetEnabled, setIsMagnetEnabled] = useState(false);
+  // When on, the active drawing tool stays selected after completing a drawing
+  // so several objects can be drawn in a row without re-picking the tool.
+  const [keepToolActive, setKeepToolActive] = useState(false);
   const [areDrawingsLocked, setAreDrawingsLocked] = useState(false);
   const [areDrawingsVisible, setAreDrawingsVisible] = useState(true);
+  const [areClosedOrdersVisible, setAreClosedOrdersVisible] = useState(true);
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [areSessionsEnabled, setAreSessionsEnabled] = useState(true);
   const [sessionVisibility, setSessionVisibility] = useState<Record<TradingSessionId, boolean>>(() =>
     ICT_TRADING_SESSIONS.reduce(
@@ -3468,19 +3574,28 @@ export function TradingViewPlatform({
   const [fibonacciEditDrawingId, setFibonacciEditDrawingId] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("tradingview-custom-templates");
-      if (stored) {
-        setCustomTemplates(JSON.parse(stored));
-      }
-    } catch {
-      // ignore corrupt localStorage data
-    }
-  }, []);
+    let isCancelled = false;
 
-  useEffect(() => {
-    localStorage.setItem("tradingview-custom-templates", JSON.stringify(customTemplates));
-  }, [customTemplates]);
+    fetchDrawingTemplatesApi()
+      .then((templates) => {
+        if (isCancelled) {
+          return;
+        }
+
+        setCustomTemplates(templates
+          .map(mapBacktestDrawingTemplate)
+          .filter((template): template is DrawingStyleTemplate => template !== null));
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          toast.error("Failed to load drawing templates.");
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   // Notify the parent whenever drawings change so it can persist them. The
   // first run is the initial hydration, which we skip to avoid re-saving data
@@ -3519,11 +3634,11 @@ export function TradingViewPlatform({
     () => buildOrderMarkerOverlays({
       pendingOrders,
       activePositions,
-      closedPositions,
+      closedPositions: areClosedOrdersVisible ? closedPositions : [],
       chartCandles: chartData.candles,
       placementFallbackTimestamp: currentTimestamp,
     }),
-    [activePositions, chartData.candles, closedPositions, currentTimestamp, pendingOrders],
+    [activePositions, areClosedOrdersVisible, chartData.candles, closedPositions, currentTimestamp, pendingOrders],
   );
   const tradingSessionOverlays = useMemo(
     () => buildTradingSessionOverlays(chartData.candles),
@@ -3853,21 +3968,52 @@ export function TradingViewPlatform({
     }
   }, [customTemplates, selectedDrawingId]);
 
-  const saveCurrentStyleAsTemplate = useCallback((name: string) => {
+  const saveCurrentStyleAsTemplate = useCallback(async (name: string) => {
     const style = selectedDrawingStyle ?? activeDrawingStyle;
-    const newTemplate: DrawingStyleTemplate = {
-      id: `custom-${Date.now()}`,
-      label: name,
-      style: { ...style },
-      tool: selectedDrawing?.tool,
-      text: selectedDrawing?.text?.trim() || undefined,
-    };
-    setCustomTemplates((prev) => [...prev, newTemplate]);
+
+    try {
+      const saved = await createDrawingTemplateApi({
+        label: name,
+        styleJson: JSON.stringify(style),
+        tool: selectedDrawing?.tool ?? null,
+        text: selectedDrawing?.text?.trim() || null,
+      });
+      const template = mapBacktestDrawingTemplate(saved);
+      if (!template) {
+        toast.error("Saved template could not be loaded.");
+        return;
+      }
+
+      setCustomTemplates((prev) => [
+        ...prev.filter((item) => item.serverId !== template.serverId),
+        template,
+      ]);
+      toast.success("Drawing template saved.");
+    } catch {
+      toast.error("Failed to save drawing template.");
+    }
   }, [activeDrawingStyle, selectedDrawing, selectedDrawingStyle]);
 
-  const deleteCustomTemplate = useCallback((templateId: string) => {
-    setCustomTemplates((prev) => prev.filter((t) => t.id !== templateId));
-  }, []);
+  const deleteCustomTemplate = useCallback(async (templateId: string) => {
+    const template = customTemplates.find((item) => item.id === templateId);
+    if (!template?.serverId) {
+      return;
+    }
+
+    setCustomTemplates((prev) => prev.filter((item) => item.id !== templateId));
+
+    try {
+      await deleteDrawingTemplateApi(template.serverId);
+      toast.success("Drawing template deleted.");
+    } catch {
+      setCustomTemplates((prev) => (
+        prev.some((item) => item.id === template.id)
+          ? prev
+          : [...prev, template]
+      ));
+      toast.error("Failed to delete drawing template.");
+    }
+  }, [customTemplates]);
 
   const updateSelectedDrawingText = useCallback((text: string) => {
     if (!selectedDrawingId) {
@@ -4548,11 +4694,17 @@ export function TradingViewPlatform({
             drawing.fibonacciLevels = DEFAULT_FIBONACCI_LEVELS.map((l) => ({ ...l }));
           }
           setChartDrawings((drawings) => [...drawings, drawing]);
-          setSelectedDrawingId(drawingId);
+          // Skip auto-selecting (and the floating editor it spawns) while the
+          // tool is pinned, so the user can keep drawing uninterrupted.
+          if (!keepToolActive) {
+            setSelectedDrawingId(drawingId);
+          }
         }
 
         setDrawingDraft(null);
-        setActiveTool("cursor");
+        if (!keepToolActive) {
+          setActiveTool("cursor");
+        }
         return;
       }
 
@@ -4584,8 +4736,10 @@ export function TradingViewPlatform({
         }
         setDrawingDraft(null);
         setChartDrawings((drawings) => [...drawings, drawing]);
-        setSelectedDrawingId(drawingId);
-        setActiveTool("cursor");
+        if (!keepToolActive) {
+          setSelectedDrawingId(drawingId);
+          setActiveTool("cursor");
+        }
       }
 
       return;
@@ -4603,6 +4757,7 @@ export function TradingViewPlatform({
     drawingDraft,
     drawingText,
     getChartAnchorFromPointer,
+    keepToolActive,
     positionedChartDrawings,
     selectedDrawingId,
   ]);
@@ -5037,6 +5192,41 @@ export function TradingViewPlatform({
     setFibonacciDialogOpen(false);
   }, [fibonacciEditDrawingId, fibonacciEditLevels]);
 
+  const updateFibonacciLevel = useCallback(
+    (index: number, patch: Partial<FibonacciLevel>) => {
+      setFibonacciEditLevels((prev) =>
+        prev.map((l, i) => (i === index ? { ...l, ...patch } : l)),
+      );
+    },
+    [],
+  );
+
+  const addFibonacciLevel = useCallback(() => {
+    setFibonacciEditLevels((prev) => {
+      const last = prev[prev.length - 1];
+      const nextValue = last ? Math.round((last.value + 0.272) * 1000) / 1000 : 0;
+      return [
+        ...prev,
+        { value: nextValue, visible: true, color: "", label: String(nextValue) },
+      ];
+    });
+  }, []);
+
+  const removeFibonacciLevel = useCallback((index: number) => {
+    setFibonacciEditLevels((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const resetFibonacciLevels = useCallback(() => {
+    setFibonacciEditLevels(DEFAULT_FIBONACCI_LEVELS.map((l) => ({ ...l })));
+  }, []);
+
+  // Resolved stroke color of the drawing being edited, used as the fallback shown
+  // in a level's color picker when that level inherits (empty color).
+  const fibonacciEditBaseColor = useMemo(() => {
+    const drawing = chartDrawings.find((d) => d.id === fibonacciEditDrawingId);
+    return drawing ? getChartDrawingStyle(drawing).strokeColor : DEFAULT_DRAWING_COLOR;
+  }, [chartDrawings, fibonacciEditDrawingId]);
+
   const handleDrawingDoubleClick = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const surface = drawingSurfaceRef.current;
     if (!surface) return;
@@ -5257,40 +5447,6 @@ export function TradingViewPlatform({
     setChartDrawings([]);
   }, []);
 
-  const zoomChart = useCallback((factor: number) => {
-    const chart = chartRef.current;
-    if (!chart) {
-      return;
-    }
-
-    const range = chart.timeScale().getVisibleLogicalRange();
-    if (!range) {
-      return;
-    }
-
-    const center = (range.from + range.to) / 2;
-    const width = Math.max(8, (range.to - range.from) * factor);
-    chart.timeScale().setVisibleLogicalRange({
-      from: center - width / 2,
-      to: center + width / 2,
-    });
-    scheduleOrderMarkerSync();
-  }, [scheduleOrderMarkerSync]);
-
-  const resetChartView = useCallback(() => {
-    const chart = chartRef.current;
-    if (!chart) {
-      return;
-    }
-
-    // Read the candle count from the ref so this callback stays stable across
-    // replay ticks (otherwise it would bust the memoized toolbar every tick).
-    fitLatestCandles(chart, previousCandleCountRef.current);
-    applyVerticalPanOffset(0);
-    isViewingHistoryRef.current = false;
-    scheduleOrderMarkerSync();
-  }, [applyVerticalPanOffset, scheduleOrderMarkerSync]);
-
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -5304,6 +5460,19 @@ export function TradingViewPlatform({
         (target instanceof HTMLElement && target.isContentEditable)
       ) {
         return;
+      }
+
+      // Alt+letter selects a drawing tool (e.g. Alt+T = trend line). Kept on
+      // Alt to stay clear of the workspace's single-key replay shortcuts.
+      if (event.altKey && !event.ctrlKey && !event.metaKey) {
+        const match = DRAWING_TOOL_HOTKEYS.find((entry) => entry.hotkey === event.key.toLowerCase());
+        if (match) {
+          event.preventDefault();
+          setDrawingDraft(null);
+          setSelectedDrawingId(null);
+          setActiveTool(match.tool);
+          return;
+        }
       }
 
       if (event.key === "Escape") {
@@ -5632,86 +5801,78 @@ export function TradingViewPlatform({
   // every overlay/marker/draft update (pan, zoom, drag, replay tick). It only
   // rebuilds when its real inputs change (active tool, toggles, selection).
   const drawingToolbar = useMemo(() => (
-    <div className="pointer-events-auto absolute left-3 top-3 z-40 flex max-h-[calc(100%-1.5rem)] w-10 flex-col items-center gap-1 overflow-y-auto rounded-md border border-border/70 bg-background/95 p-1 shadow-sm backdrop-blur">
-      {DRAWING_TOOL_GROUPS.map((group, groupIndex) => (
-        <div key={`tool-group-${groupIndex}`} className="flex w-full flex-col items-center gap-1">
-          {groupIndex > 0 ? <div className="my-0.5 h-px w-6 bg-border/80" /> : null}
-          {group.map((tool) => renderToolbarButton({
-            label: tool.label,
-            icon: tool.icon,
-            pressed: activeTool === tool.id,
-            onClick: () => {
-              setDrawingDraft(null);
-              setSelectedDrawingId(null);
-              setActiveTool(tool.id);
-            },
-          }))}
-        </div>
-      ))}
-
-      <div className="my-0.5 h-px w-6 bg-border/80" />
+    <div
+      className={cn(
+        "pointer-events-auto absolute z-40 flex w-10 flex-col items-center gap-1 bg-background/95 p-1 shadow-sm backdrop-blur",
+        isToolbarCollapsed
+          ? "left-2 top-2 rounded-md border border-border/70"
+          : "inset-y-0 left-0 overflow-y-auto border-r border-border/70",
+      )}
+    >
       {renderToolbarButton({
-        label: isMagnetEnabled ? "Magnet snap: on" : "Magnet snap: off",
-        icon: Magnet,
-        pressed: isMagnetEnabled,
-        onClick: () => setIsMagnetEnabled((enabled) => !enabled),
-      })}
-      {renderToolbarButton({
-        label: areDrawingsLocked ? "Unlock drawings" : "Lock drawings",
-        icon: Lock,
-        pressed: areDrawingsLocked,
-        onClick: () => setAreDrawingsLocked((locked) => !locked),
-      })}
-      {renderToolbarButton({
-        label: areDrawingsVisible ? "Hide drawings" : "Show drawings",
-        icon: areDrawingsVisible ? Eye : EyeOff,
-        pressed: !areDrawingsVisible,
-        onClick: () => setAreDrawingsVisible((visible) => !visible),
+        label: isToolbarCollapsed ? "Expand toolbar" : "Collapse toolbar",
+        icon: isToolbarCollapsed ? PanelLeftOpen : PanelLeftClose,
+        onClick: () => setIsToolbarCollapsed((collapsed) => !collapsed),
       })}
 
-      <div className="my-0.5 h-px w-6 bg-border/80" />
-      {renderToolbarButton({
-        label: "Undo drawing",
-        icon: RotateCcw,
-        disabled: chartDrawings.length === 0,
-        onClick: undoLastDrawing,
-      })}
-      {renderToolbarButton({
-        label: "Clear drawings",
-        icon: Trash2,
-        disabled: chartDrawings.length === 0,
-        onClick: clearDrawings,
-      })}
+      {isToolbarCollapsed ? null : (
+        <>
+          <div className="my-0.5 h-px w-6 bg-border/80" />
+          {DRAWING_TOOL_GROUPS.map((group, groupIndex) => (
+            <div key={`tool-group-${groupIndex}`} className="flex w-full flex-col items-center gap-1">
+              {groupIndex > 0 ? <div className="my-0.5 h-px w-6 bg-border/80" /> : null}
+              {group.map((tool) => renderToolbarButton({
+                label: getDrawingToolHint(tool),
+                icon: tool.icon,
+                pressed: activeTool === tool.id,
+                onClick: () => {
+                  setDrawingDraft(null);
+                  setSelectedDrawingId(null);
+                  setActiveTool(tool.id);
+                },
+              }))}
+            </div>
+          ))}
 
-      <div className="my-0.5 h-px w-6 bg-border/80" />
-      {renderToolbarButton({
-        label: "Zoom in",
-        icon: ZoomIn,
-        onClick: () => zoomChart(0.8),
-      })}
-      {renderToolbarButton({
-        label: "Zoom out",
-        icon: ZoomOut,
-        onClick: () => zoomChart(1.25),
-      })}
-      {renderToolbarButton({
-        label: "Reset view",
-        icon: Maximize2,
-        onClick: resetChartView,
-      })}
+          <div className="my-0.5 h-px w-6 bg-border/80" />
+          {renderToolbarButton({
+            label: areDrawingsLocked ? "Unlock drawings" : "Lock drawings",
+            icon: Lock,
+            pressed: areDrawingsLocked,
+            onClick: () => setAreDrawingsLocked((locked) => !locked),
+          })}
+          {renderToolbarButton({
+            label: areClosedOrdersVisible ? "Hide closed orders" : "Show closed orders",
+            icon: Flag,
+            pressed: !areClosedOrdersVisible,
+            onClick: () => setAreClosedOrdersVisible((visible) => !visible),
+          })}
+
+          <div className="my-0.5 h-px w-6 bg-border/80" />
+          {renderToolbarButton({
+            label: "Undo drawing",
+            icon: RotateCcw,
+            disabled: chartDrawings.length === 0,
+            onClick: undoLastDrawing,
+          })}
+          {renderToolbarButton({
+            label: "Clear drawings",
+            icon: Trash2,
+            disabled: chartDrawings.length === 0,
+            onClick: clearDrawings,
+          })}
+        </>
+      )}
     </div>
   ), [
     activeTool,
-    isMagnetEnabled,
     areDrawingsLocked,
-    areDrawingsVisible,
+    areClosedOrdersVisible,
+    isToolbarCollapsed,
     chartDrawings.length,
     selectedDrawingId,
     undoLastDrawing,
-    deleteSelectedDrawing,
     clearDrawings,
-    zoomChart,
-    resetChartView,
     renderToolbarButton,
   ]);
 
@@ -6461,7 +6622,7 @@ export function TradingViewPlatform({
           </PopoverTrigger>
           <PopoverContent align="center" className="w-64 p-3">
             <div className="text-sm font-semibold">Keyboard shortcuts</div>
-            <div className="mt-2 space-y-1.5">
+            <div className="mt-2 max-h-72 space-y-1.5 overflow-y-auto custom-scrollbar">
               {BACKTEST_KEYBOARD_SHORTCUTS.map((shortcut) => (
                 <div key={shortcut.keys} className="flex items-center justify-between gap-3 text-xs">
                   <span className="text-muted-foreground">{shortcut.description}</span>
@@ -6815,7 +6976,9 @@ export function TradingViewPlatform({
 
                     {customTemplates.length > 0 ? (
                       <div className="grid gap-3 rounded-md border border-border/70 p-3 sm:grid-cols-[1fr_auto]">
-                        <Select onValueChange={(value) => deleteCustomTemplate(value)}>
+                        <Select onValueChange={(value) => {
+                          void deleteCustomTemplate(value);
+                        }}>
                           <SelectTrigger className="h-9 rounded-md" aria-label="Delete custom drawing template">
                             <SelectValue placeholder="Custom template" />
                           </SelectTrigger>
@@ -6873,7 +7036,7 @@ export function TradingViewPlatform({
             className="h-8 text-xs"
             onKeyDown={(e) => {
               if (e.key === "Enter" && templateNameDraft.trim()) {
-                saveCurrentStyleAsTemplate(templateNameDraft.trim());
+                void saveCurrentStyleAsTemplate(templateNameDraft.trim());
                 setTemplateNameDialogOpen(false);
               }
             }}
@@ -6889,7 +7052,7 @@ export function TradingViewPlatform({
               size="sm"
               disabled={!templateNameDraft.trim()}
               onClick={() => {
-                saveCurrentStyleAsTemplate(templateNameDraft.trim());
+                void saveCurrentStyleAsTemplate(templateNameDraft.trim());
                 setTemplateNameDialogOpen(false);
               }}
             >
@@ -6900,80 +7063,164 @@ export function TradingViewPlatform({
       </Dialog>
 
       <Dialog open={fibonacciDialogOpen} onOpenChange={setFibonacciDialogOpen}>
-        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+        <DialogContent className="sm:max-w-2xl" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Fibonacci Settings</DialogTitle>
             <DialogDescription>
-              Toggle visibility, change values/colors for each level.
+              Show/hide each level and customise its value, color, width, line style and label.
+              Leave the color on <span className="font-medium">Auto</span> to inherit the drawing&apos;s style.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-72 space-y-2 overflow-y-auto py-1">
-            {fibonacciEditLevels.map((level, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className={cn(
-                    "h-7 w-7 rounded-md border text-xs font-bold",
-                    level.visible
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-background text-muted-foreground border-border",
-                  )}
-                  onClick={() => {
-                    setFibonacciEditLevels((prev) =>
-                      prev.map((l, i) => (i === index ? { ...l, visible: !l.visible } : l)),
-                    );
-                  }}
-                  title={level.visible ? "Hide level" : "Show level"}
-                >
-                  {level.visible ? "✓" : "—"}
-                </button>
-                <Input
-                  type="number"
-                  step="0.001"
-                  value={level.value}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    if (!Number.isNaN(v)) {
-                      setFibonacciEditLevels((prev) =>
-                        prev.map((l, i) => (i === index ? { ...l, value: v } : l)),
-                      );
-                    }
-                  }}
-                  className="h-7 w-20 rounded-md text-xs"
-                />
-                <Input
-                  type="color"
-                  aria-label="Change level color"
-                  title="Change level color"
-                  className="h-7 w-9 shrink-0 cursor-pointer rounded-md p-1"
-                  value={level.color}
-                  onChange={(e) => {
-                    const c = e.target.value;
-                    setFibonacciEditLevels((prev) =>
-                      prev.map((l, i) => (i === index ? { ...l, color: c } : l)),
-                    );
-                  }}
-                />
-                <Input
-                  value={level.label}
-                  onChange={(e) => {
-                    setFibonacciEditLevels((prev) =>
-                      prev.map((l, i) => (i === index ? { ...l, label: e.target.value } : l)),
-                    );
-                  }}
-                  className="h-7 w-20 rounded-md text-xs"
-                  placeholder="Label"
-                />
-              </div>
-            ))}
+          <div className="grid grid-cols-[auto_5rem_auto_auto_4rem_6.5rem_1fr_auto] items-center gap-x-2 gap-y-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <span title="Show / hide">Show</span>
+            <span>Value</span>
+            <span className="col-span-2 text-center">Color</span>
+            <span>Width</span>
+            <span>Line</span>
+            <span>Label</span>
+            <span className="sr-only">Remove</span>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" size="sm" onClick={() => setFibonacciDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" size="sm" onClick={applyFibonacciLevels}>
-              Apply
-            </Button>
+          <div className="max-h-80 overflow-y-auto py-1">
+            <div className="grid grid-cols-[auto_5rem_auto_auto_4rem_6.5rem_1fr_auto] items-center gap-x-2 gap-y-2">
+              {fibonacciEditLevels.map((level, index) => {
+                const usesAutoColor = level.color === "";
+                return (
+                  <Fragment key={index}>
+                    <button
+                      type="button"
+                      className={cn(
+                        "h-7 w-7 rounded-md border text-xs font-bold",
+                        level.visible
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background text-muted-foreground border-border",
+                      )}
+                      onClick={() => updateFibonacciLevel(index, { visible: !level.visible })}
+                      title={level.visible ? "Hide level" : "Show level"}
+                    >
+                      {level.visible ? "✓" : "—"}
+                    </button>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={level.value}
+                      onChange={(e) => {
+                        const v = parseFloat(e.target.value);
+                        if (!Number.isNaN(v)) {
+                          updateFibonacciLevel(index, { value: v });
+                        }
+                      }}
+                      className="h-7 w-full rounded-md text-xs"
+                    />
+                    <button
+                      type="button"
+                      className={cn(
+                        "h-7 rounded-md border px-1.5 text-[10px] font-semibold",
+                        usesAutoColor
+                          ? "bg-primary/10 text-primary border-primary/40"
+                          : "bg-background text-muted-foreground border-border",
+                      )}
+                      onClick={() =>
+                        updateFibonacciLevel(index, {
+                          color: usesAutoColor ? fibonacciEditBaseColor : "",
+                        })
+                      }
+                      title={usesAutoColor ? "Using drawing color — click to override" : "Custom color — click to inherit"}
+                    >
+                      Auto
+                    </button>
+                    <Input
+                      type="color"
+                      aria-label="Change level color"
+                      title="Change level color"
+                      disabled={usesAutoColor}
+                      className="h-7 w-9 shrink-0 cursor-pointer rounded-md p-1 disabled:cursor-not-allowed disabled:opacity-40"
+                      value={usesAutoColor ? fibonacciEditBaseColor : level.color}
+                      onChange={(e) => updateFibonacciLevel(index, { color: e.target.value })}
+                    />
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10}
+                      step="1"
+                      aria-label="Line width"
+                      placeholder="auto"
+                      value={level.width ?? ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          updateFibonacciLevel(index, { width: undefined });
+                          return;
+                        }
+                        const w = parseInt(raw, 10);
+                        if (!Number.isNaN(w)) {
+                          updateFibonacciLevel(index, { width: clamp(w, 1, 10) });
+                        }
+                      }}
+                      className="h-7 w-full rounded-md text-xs"
+                    />
+                    <Select
+                      value={level.lineStyle ?? "auto"}
+                      onValueChange={(val) =>
+                        updateFibonacciLevel(index, {
+                          lineStyle: val === "auto" ? undefined : (val as ChartDrawingLineStyle),
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-7 w-full rounded-md text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto</SelectItem>
+                        <SelectItem value="solid">Solid</SelectItem>
+                        <SelectItem value="dashed">Dashed</SelectItem>
+                        <SelectItem value="dotted">Dotted</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      value={level.label}
+                      onChange={(e) => updateFibonacciLevel(index, { label: e.target.value })}
+                      className="h-7 w-full rounded-md text-xs"
+                      placeholder="Label"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeFibonacciLevel(index)}
+                      title="Remove level"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </Fragment>
+                );
+              })}
+            </div>
+            {fibonacciEditLevels.length === 0 ? (
+              <p className="px-1 py-3 text-center text-xs text-muted-foreground">
+                No levels. Add one or reset to defaults.
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="flex-row justify-between sm:justify-between">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={addFibonacciLevel}>
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Add level
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={resetFibonacciLevels}>
+                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                Reset
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setFibonacciDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" size="sm" onClick={applyFibonacciLevels}>
+                Apply
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

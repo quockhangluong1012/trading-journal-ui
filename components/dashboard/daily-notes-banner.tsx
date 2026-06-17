@@ -49,11 +49,10 @@ export function DailyNotesBanner({ note, isLoading, onClick }: DailyNotesBannerP
         type="button"
         onClick={onClick}
         className="
-          group relative w-full overflow-hidden rounded-2xl border-2 border-dashed
-          border-primary/30 bg-gradient-to-r from-primary/5 via-primary/8 to-accent/5
-          px-5 py-4 text-left transition-all duration-300
-          hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5
-          dark:from-primary/10 dark:via-primary/12 dark:to-accent/8
+          group relative w-full overflow-hidden rounded-2xl border border-dashed
+          border-primary/30 bg-primary/5 px-5 py-4 text-left transition-colors duration-300
+          hover:border-primary/50 hover:bg-primary/[0.08]
+          dark:bg-primary/[0.08]
         "
         id="daily-notes-banner-empty"
       >

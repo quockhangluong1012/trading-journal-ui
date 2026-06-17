@@ -1,18 +1,14 @@
 "use client";
 
-import type { ReactNode } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  CircleDollarSign,
-  Crosshair,
   Loader2,
   ShieldCheck,
   Target,
-  Wallet,
   Zap,
 } from "lucide-react";
 
@@ -72,26 +68,6 @@ function formatTicks(value: number) {
   return `${value.toFixed(0)} ticks`;
 }
 
-function OrderMetric({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-md border border-border/60 bg-background/70 px-2.5 py-2">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon}
-        <span className="truncate">{label}</span>
-      </div>
-      <div className="mt-1 truncate text-sm font-semibold tabular-nums">{value}</div>
-    </div>
-  );
-}
-
 export function OrderPanel({ sessionId, currentPrice, previousPrice = null, initialOrder = null, onCollapse }: OrderPanelProps) {
   const {
     form,
@@ -114,10 +90,7 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, init
   const units = Number(form.watch("positionSize") || 0);
   const watchedEntryPrice = Number(form.watch("entryPrice") || currentPrice);
   const price = Number(orderType === "Market" ? currentPrice : watchedEntryPrice);
-  const tradeValue = units * price;
   const leverage = session?.leverage || 50;
-  const margin = tradeValue / leverage;
-  const buyingPowerAfter = balance - margin;
   const sessionAsset = session?.asset || "XAUUSD";
   const marketPriceText = formatPrice(currentPrice);
   const marketPriceState = getMarketPriceState(currentPrice, previousPrice);
@@ -126,11 +99,23 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, init
   const tickSize = getAssetTickSize(sessionAsset, price);
   const tpTicks = tpValue ? calculateTicks(tpValue, price, tickSize) : 0;
   const slTicks = slValue ? calculateTicks(slValue, price, tickSize) : 0;
+  // Money at stake on each side of the trade, so the trader can size with intent
+  // rather than guessing from notional exposure.
+  const riskAmount = slValue > 0 && units > 0 ? units * Math.abs(price - slValue) : null;
+  const rewardAmount = tpValue > 0 && units > 0 ? units * Math.abs(tpValue - price) : null;
   const riskReward =
     enableTp && enableSl && tpValue > 0 && slValue > 0
       ? Math.abs(tpValue - price) / Math.max(Math.abs(price - slValue), 0.00001)
       : null;
   const isLong = side === "Long";
+  // Largest position the available balance can margin at the current price, used
+  // to derive the quick size presets (¼ / ½ / ¾ / Max of buying power).
+  const maxAffordableUnits = price > 0 ? (balance * leverage) / price : 0;
+  const SIZE_PRESETS = [0.25, 0.5, 0.75, 1] as const;
+  const applySizePreset = (fraction: number) => {
+    const next = Math.max(0, Math.floor(maxAffordableUnits * fraction));
+    form.setValue("positionSize", next, { shouldValidate: true, shouldDirty: true });
+  };
   const submitLabel =
     orderType === "Limit"
       ? `Place ${isLong ? "limit buy" : "limit sell"}`
@@ -190,37 +175,26 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, init
               </div>
             </div>
 
-            {onCollapse && (
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 rounded-md bg-background"
-                onClick={onCollapse}
-                title="Collapse order ticket"
-                aria-label="Collapse order ticket"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="text-right leading-tight">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Available</div>
+                <div className="text-xs font-semibold tabular-nums">${formatMoney(balance)}</div>
+              </div>
 
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <OrderMetric
-              icon={<Wallet className="h-3.5 w-3.5 shrink-0" />}
-              label="Balance"
-              value={`$${formatMoney(balance)}`}
-            />
-            <OrderMetric
-              icon={<CircleDollarSign className="h-3.5 w-3.5 shrink-0" />}
-              label="Margin"
-              value={`$${formatMoney(margin)}`}
-            />
-            <OrderMetric
-              icon={<Crosshair className="h-3.5 w-3.5 shrink-0" />}
-              label="Exposure"
-              value={`$${formatMoney(tradeValue)}`}
-            />
+              {onCollapse && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-md bg-background"
+                  onClick={onCollapse}
+                  title="Collapse order ticket"
+                  aria-label="Collapse order ticket"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -341,9 +315,19 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, init
                         </div>
                       </div>
                     </FormControl>
-                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      <span className="truncate">Value</span>
-                      <span className="shrink-0 tabular-nums">${formatMoney(tradeValue)}</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {SIZE_PRESETS.map((fraction) => (
+                        <button
+                          key={fraction}
+                          type="button"
+                          onClick={() => applySizePreset(fraction)}
+                          disabled={maxAffordableUnits <= 0}
+                          className="h-7 rounded-md border border-border/70 bg-background text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                          title={`Size to ${fraction === 1 ? "max" : `${fraction * 100}%`} of buying power`}
+                        >
+                          {fraction === 1 ? "Max" : `${fraction * 100}%`}
+                        </button>
+                      ))}
                     </div>
                     <FormMessage className="text-xs" />
                   </FormItem>
@@ -451,15 +435,21 @@ export function OrderPanel({ sessionId, currentPrice, previousPrice = null, init
         </div>
 
         <div className="border-t border-border/60 bg-card px-4 py-3">
-          <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="mb-3 grid grid-cols-3 gap-2">
             <div className="rounded-md bg-muted/60 px-2.5 py-2">
-              <div className="text-xs text-muted-foreground">Available after</div>
-              <div className={cn("mt-1 text-sm font-semibold tabular-nums", buyingPowerAfter < 0 && "text-rose-500")}>
-                ${formatMoney(buyingPowerAfter)}
+              <div className="text-xs text-muted-foreground">Risk</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-rose-500">
+                {riskAmount != null ? `$${formatMoney(riskAmount)}` : "-"}
               </div>
             </div>
             <div className="rounded-md bg-muted/60 px-2.5 py-2">
-              <div className="text-xs text-muted-foreground">Risk reward</div>
+              <div className="text-xs text-muted-foreground">Reward</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-emerald-500">
+                {rewardAmount != null ? `$${formatMoney(rewardAmount)}` : "-"}
+              </div>
+            </div>
+            <div className="rounded-md bg-muted/60 px-2.5 py-2">
+              <div className="text-xs text-muted-foreground">R:R</div>
               <div className="mt-1 text-sm font-semibold tabular-nums">
                 {riskReward ? `${riskReward.toFixed(2)}R` : "-"}
               </div>
