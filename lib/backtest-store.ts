@@ -74,6 +74,9 @@ export interface BacktestOrder {
   orderedAt: string;
   filledAt: string | null;
   closedAt: string | null;
+  // Engine close reason ("SL Hit", "TP Hit (Gapped)", "Liquidated", …) when supplied
+  // by the advance response; absent for orders loaded from list/state endpoints.
+  exitReason?: string | null;
 }
 
 export interface TradeResult {
@@ -685,8 +688,16 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
           const pnl = closedOrder.pnl ?? 0;
           const pnlText = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
           
+          // Prefer the engine's authoritative close reason; it distinguishes gapped exits
+          // and liquidation, which price-vs-level inference can't. Fall back to inference
+          // only when the reason isn't supplied (e.g. older payloads).
           let reason = "closed";
-          if (closedOrder.exitPrice) {
+          const engineReason = closedOrder.exitReason ?? null;
+          if (engineReason) {
+            if (engineReason.startsWith("SL")) reason = "hit Stop Loss";
+            else if (engineReason.startsWith("TP")) reason = "hit Take Profit";
+            else if (engineReason === "Liquidated") reason = "was liquidated";
+          } else if (closedOrder.exitPrice) {
             if (closedOrder.side === "Long") {
               if (closedOrder.stopLoss && closedOrder.exitPrice <= closedOrder.stopLoss) reason = "hit Stop Loss";
               else if (closedOrder.takeProfit && closedOrder.exitPrice >= closedOrder.takeProfit) reason = "hit Take Profit";
@@ -696,7 +707,7 @@ export const useBacktestStore = create<BacktestStore>((set, get) => ({
             }
           }
 
-          if (reason === "hit Stop Loss") {
+          if (reason === "hit Stop Loss" || reason === "was liquidated") {
             toast.error(`${closedOrder.side} Position ${reason}. PnL: ${pnlText}`);
           } else if (reason === "hit Take Profit") {
             toast.success(`${closedOrder.side} Position ${reason}. PnL: ${pnlText}`);

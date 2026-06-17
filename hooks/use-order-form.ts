@@ -107,6 +107,31 @@ export function useOrderForm({
       }
     }
 
+    // SL/TP must sit on the correct side of the entry — mirrors the backend guard so the
+    // user gets immediate feedback instead of a rejected request.
+    const stopLossValue = enableSl && values.stopLoss ? Number(values.stopLoss) : null;
+    const takeProfitValue = enableTp && values.takeProfit ? Number(values.takeProfit) : null;
+
+    if (stopLossValue != null) {
+      const valid = side === "Long" ? stopLossValue < priceToUse : stopLossValue > priceToUse;
+      if (!valid) {
+        toast.error(side === "Long"
+          ? "Stop loss must be below the entry price for a long."
+          : "Stop loss must be above the entry price for a short.");
+        return;
+      }
+    }
+
+    if (takeProfitValue != null) {
+      const valid = side === "Long" ? takeProfitValue > priceToUse : takeProfitValue < priceToUse;
+      if (!valid) {
+        toast.error(side === "Long"
+          ? "Take profit must be above the entry price for a long."
+          : "Take profit must be below the entry price for a short.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     try {
       // Anchor the order to the candle the user is actually looking at (the last
@@ -125,8 +150,8 @@ export function useOrderForm({
         side: side === "Long" ? 0 : 1,
         entryPrice: priceToUse,
         positionSize: values.positionSize,
-        stopLoss: enableSl && values.stopLoss ? Number(values.stopLoss) : null,
-        takeProfit: enableTp && values.takeProfit ? Number(values.takeProfit) : null,
+        stopLoss: stopLossValue,
+        takeProfit: takeProfitValue,
         orderedAt: placementTimestamp,
       });
 

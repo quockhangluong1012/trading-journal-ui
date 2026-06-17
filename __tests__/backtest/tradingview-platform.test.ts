@@ -32,6 +32,7 @@ import {
   getDefaultReplayControlsPosition,
   completeChartDrawingDraft,
   estimateDrawingTimeFromLogical,
+  estimateLogicalFromTime,
   formatChartAxisPrice,
   isWheelOverPriceAxis,
   shouldZoomPriceAxisForWheel,
@@ -838,6 +839,38 @@ describe("TradingView platform helpers", () => {
     ]);
   });
 
+  it("projects replay session boxes through logical coordinates when candle data advances", () => {
+    const chartCandles = mapBacktestCandlesToChartData([
+      { timestamp: "2024-01-01T12:00:00Z", open: 107, high: 120, low: 92, close: 113, volume: 1500 },
+      { timestamp: "2024-01-01T12:15:00Z", open: 113, high: 121, low: 104, close: 118, volume: 1600 },
+      { timestamp: "2024-01-01T12:30:00Z", open: 118, high: 125, low: 109, close: 119, volume: 1700 },
+    ]).candles;
+    const sessions = buildTradingSessionOverlays(chartCandles);
+
+    expect(estimateLogicalFromTime(toChartTimestamp("2024-01-01T21:00:00Z"), chartCandles)).toBe(36);
+
+    const positioned = positionTradingSessionOverlays({
+      sessions,
+      width: 800,
+      height: 400,
+      logicalToCoordinate: (logical) => logical * 10,
+      timeToCoordinate: () => 999,
+      priceToCoordinate: (price) => {
+        if (price === 125) return 20;
+        if (price === 92) return 180;
+        return null;
+      },
+    });
+
+    expect(positioned).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "New York",
+        x: 0,
+        width: 360,
+      }),
+    ]));
+  });
+
   it("calculates short P&L and positions only visible order levels", () => {
     const activePosition = createOrder({
       id: 13,
@@ -1461,6 +1494,31 @@ describe("TradingView platform helpers", () => {
         expect.objectContaining({ x: 77.5, logical: 7.75 }),
       ],
     });
+  });
+
+  it("keeps replay drawings anchored to their stored logical coordinates when time mapping changes", () => {
+    const drawing = createChartDrawing({
+      id: "replay-anchored",
+      tool: "trend-line",
+      color: "#2563eb",
+      start: { time: 100 as UTCTimestamp, logical: 5, price: 1.1 },
+      end: { time: 160 as UTCTimestamp, logical: 8, price: 1.105 },
+    });
+
+    expect(drawing).not.toBeNull();
+    const positioned = positionChartDrawing({
+      drawing: drawing!,
+      width: 900,
+      height: 500,
+      logicalToCoordinate: (logical) => logical * 10,
+      timeToCoordinate: () => 999,
+      priceToCoordinate: (price) => (1.2 - price) * 1000,
+    });
+
+    expect(positioned?.points).toEqual([
+      expect.objectContaining({ x: 50, logical: 5 }),
+      expect.objectContaining({ x: 80, logical: 8 }),
+    ]);
   });
 
   it("moves drawings by free logical and price deltas without snapping to candle anchors", () => {
