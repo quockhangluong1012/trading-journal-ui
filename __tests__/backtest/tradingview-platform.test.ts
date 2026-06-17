@@ -28,6 +28,7 @@ import {
   formatDrawingMetricLabel,
   getChartDrawingStyle,
   getDefaultFloatingDrawingToolbarPosition,
+  getFibonacciLevelBounds,
   getDefaultReplayControlsPosition,
   completeChartDrawingDraft,
   estimateDrawingTimeFromLogical,
@@ -1248,6 +1249,26 @@ describe("TradingView platform helpers", () => {
         { time: end.time, price: end.price },
       ],
       text: "Zone",
+    });
+  });
+
+  it("sizes fibonacci level lines to the drawn horizontal span", () => {
+    expect(getFibonacciLevelBounds(120, 360, 800)).toEqual({
+      x: 120,
+      width: 240,
+      labelX: 352,
+    });
+
+    expect(getFibonacciLevelBounds(360, 120, 800)).toEqual({
+      x: 120,
+      width: 240,
+      labelX: 352,
+    });
+
+    expect(getFibonacciLevelBounds(18, 26, 80)).toEqual({
+      x: 0,
+      width: 80,
+      labelX: 72,
     });
   });
 

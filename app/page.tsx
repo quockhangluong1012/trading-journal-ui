@@ -27,6 +27,7 @@ import { TiltGaugeWidget } from "@/components/psychology/tilt-gauge-widget"
 import { StreakWidget } from "@/components/psychology/streak-widget"
 import { KarmaWidget } from "@/components/psychology/karma-widget"
 import { GoalsOverviewWidget } from "@/components/goals/goals-overview-widget"
+import { QuickTradeModal } from "@/components/trade/quick-trade-modal"
 import { buildDashboardOverview } from "@/lib/dashboard-insights"
 import { DashboardFilter } from "@/lib/enum/TradeEnum"
 import { buildRedirectWithNext } from "@/lib/auth-redirect"
@@ -57,6 +58,7 @@ function DashboardContent() {
   const [filter, setFilter] = useState<DashboardFilter>(DashboardFilter.All)
   const [isTodaySetupDialogOpen, setIsTodaySetupDialogOpen] = useState(false)
   const [isDailyNotesDialogOpen, setIsDailyNotesDialogOpen] = useState(false)
+  const [isQuickTradeOpen, setIsQuickTradeOpen] = useState(false)
   const { user, isLoading } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
@@ -159,7 +161,6 @@ function DashboardContent() {
           filterOptions={timeFilterOptions}
           onFilterChange={setFilter}
           overview={overview}
-          stats={stats}
           userName={userName}
           pathname={pathname}
           lastUpdatedAt={lastUpdatedAt}
@@ -183,21 +184,22 @@ function DashboardContent() {
           onRefresh={() => {
             void refresh()
           }}
+          onNewTrade={() => setIsQuickTradeOpen(true)}
           sessionControl={<ActiveSessionWidget />}
         />
 
-        <Tabs defaultValue="overview" className="space-y-5">
-          <TabsList className="grid h-auto w-full grid-cols-2 gap-2 rounded-3xl border border-border/60 bg-background/70 p-2 shadow-sm sm:grid-cols-4">
-            <TabsTrigger id="dashboard-tab-overview" value="overview" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1.5 rounded-2xl border border-border/60 bg-background/60 p-1.5 shadow-sm backdrop-blur-md sm:grid-cols-4">
+            <TabsTrigger id="dashboard-tab-overview" value="overview" className="rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm">
               Overview
             </TabsTrigger>
-            <TabsTrigger id="dashboard-tab-performance" value="performance" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger id="dashboard-tab-performance" value="performance" className="rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm">
               Performance
             </TabsTrigger>
-            <TabsTrigger id="dashboard-tab-psychology" value="psychology" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger id="dashboard-tab-psychology" value="psychology" className="rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm">
               Psychology
             </TabsTrigger>
-            <TabsTrigger id="dashboard-tab-planning" value="planning" className="rounded-xl px-3 py-2.5 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm">
+            <TabsTrigger id="dashboard-tab-planning" value="planning" className="rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors data-[state=active]:bg-background data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-sm">
               Planning
             </TabsTrigger>
           </TabsList>
@@ -209,6 +211,8 @@ function DashboardContent() {
               <OpenPositionsTable filter={filter} openPositions={openPositions} isLoading={isDashboardLoading} />
               <MissingTradeNotesCard trades={tradesMissingNotes} isLoading={isDashboardLoading} />
             </div>
+
+            <CalendarWidget filter={filter} />
           </TabsContent>
 
           <TabsContent value="performance" aria-labelledby="dashboard-tab-performance" className="space-y-6">
@@ -233,8 +237,6 @@ function DashboardContent() {
                 isLoading={isDashboardLoading}
               />
             </div>
-
-            <CalendarWidget filter={filter} />
           </TabsContent>
 
           <TabsContent value="psychology" aria-labelledby="dashboard-tab-psychology" className="space-y-6">
@@ -249,14 +251,12 @@ function DashboardContent() {
           <TabsContent value="planning" aria-labelledby="dashboard-tab-planning" className="space-y-6">
             <div className="grid gap-6 lg:grid-cols-2">
               <GoalsOverviewWidget />
-              <KillzonesWidget />
-              <MacroTimesWidget />
+              <PreTradeCheckWidget compact />
             </div>
 
-            <div className="w-full space-y-4">
-              <PreTradeCheckWidget compact />
-              <EconomicCalendarWidget />
-            </div>
+            <KillzonesWidget />
+            <MacroTimesWidget />
+            <EconomicCalendarWidget />
           </TabsContent>
         </Tabs>
       </div>
@@ -275,6 +275,8 @@ function DashboardContent() {
         onSave={dailyNotes.save}
         onDismiss={dailyNotes.dismissPopup}
       />
+
+      <QuickTradeModal open={isQuickTradeOpen} onOpenChange={setIsQuickTradeOpen} />
     </AppPageShell>
   )
 }

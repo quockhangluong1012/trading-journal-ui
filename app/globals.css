@@ -167,6 +167,16 @@
   .app-panel {
     @apply rounded-2xl border border-border/60 bg-background/75 shadow-sm backdrop-blur-md;
   }
+
+  /* Calm, consistent dashboard surfaces — one radius, subtle border, no glow. */
+  .dashboard-card {
+    @apply rounded-2xl border border-border/60 bg-card/80 shadow-sm backdrop-blur-md transition-colors hover:border-border;
+  }
+
+  /* Quiet inner panel used inside dashboard cards (summary tiles, mini stats). */
+  .dashboard-tile {
+    @apply rounded-xl border border-border/50 bg-muted/30 p-4;
+  }
 }
 
 [data-editor='ckeditor'] .ck.ck-editor {

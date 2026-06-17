@@ -72,6 +72,10 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
   const [isFinishing, setIsFinishing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const positionsPanelRef = useRef<ImperativePanelHandle>(null);
+  // Baseline order/position count once the session has loaded, so resuming a
+  // session with existing positions doesn't force the panel open — only orders
+  // placed during this session do.
+  const orderActivityBaselineRef = useRef<number | null>(null);
   const [isPositionsPanelCollapsed, setIsPositionsPanelCollapsed] = useState(true);
   const [orderTicketOpenRequest, setOrderTicketOpenRequest] = useState<BacktestOrderTicketOpenRequest>({
     id: 0,
@@ -221,6 +225,26 @@ export default function BacktestWorkspace({ params }: { params: Promise<{ id: st
       setIsFinishing(false);
     }
   };
+
+  // Expand the positions/orders panel automatically when the session gains a new
+  // pending order or open position, so freshly placed orders are visible to
+  // review without manually opening the panel.
+  const liveOrderCount = pendingOrders.length + activePositions.length;
+  useEffect(() => {
+    if (orderActivityBaselineRef.current === null) {
+      // Wait until candles have loaded so the baseline reflects the resumed
+      // session's existing orders rather than the empty pre-hydration state.
+      if (candles.length > 0) {
+        orderActivityBaselineRef.current = liveOrderCount;
+      }
+      return;
+    }
+
+    if (liveOrderCount > orderActivityBaselineRef.current) {
+      positionsPanelRef.current?.expand();
+    }
+    orderActivityBaselineRef.current = liveOrderCount;
+  }, [liveOrderCount, candles.length]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

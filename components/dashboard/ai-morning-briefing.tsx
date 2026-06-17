@@ -71,7 +71,7 @@ export function AiMorningBriefing() {
     <div className="space-y-4">
       {!result && (
         <Button type="button" variant="outline" size="sm" disabled={isBusy} onClick={handleGenerate}
-          className={cn("gap-2 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]")}>
+          className={cn("gap-2 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-600 transition-colors hover:bg-amber-500/20 dark:text-amber-400")}>
           {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sun className="h-3.5 w-3.5" />}
           {isInitializing ? "Loading briefing..." : isGenerating ? "Generating briefing..." : "Morning Briefing"}
         </Button>
@@ -82,7 +82,7 @@ export function AiMorningBriefing() {
         )}
         {result && mood && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-            className={cn("rounded-2xl border bg-linear-to-br from-background/90 to-amber-500/5 p-5 backdrop-blur-md shadow-lg", mood.border, mood.glow)}>
+            className={cn("rounded-2xl border bg-card/80 p-5 shadow-sm backdrop-blur-md", mood.border)}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Sun className="h-4 w-4 text-amber-400" />

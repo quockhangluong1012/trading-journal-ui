@@ -151,6 +151,23 @@ export interface PlaybackState {
   drawingsJson: string;
 }
 
+export interface BacktestDrawingTemplateDto {
+  id: number;
+  clientId: string;
+  label: string;
+  styleJson: string;
+  tool: string | null;
+  text: string | null;
+  createdDate: string;
+}
+
+export interface CreateBacktestDrawingTemplateRequest {
+  label: string;
+  styleJson: string;
+  tool?: string | null;
+  text?: string | null;
+}
+
 export interface CreateSessionRequest {
   asset: string;
   startDate: string;
@@ -443,6 +460,25 @@ async function fetchDrawings(sessionId: number): Promise<string> {
   attachToken();
   const res = await api.get<ApiResponse<string>>(`${BASE}/backtest-drawings/${sessionId}`);
   return res.data.value;
+}
+
+export async function fetchDrawingTemplatesApi(): Promise<BacktestDrawingTemplateDto[]> {
+  attachToken();
+  const res = await api.get<ApiResponse<BacktestDrawingTemplateDto[]>>(`${BASE}/backtest-drawing-templates`);
+  return res.data.value || [];
+}
+
+export async function createDrawingTemplateApi(
+  req: CreateBacktestDrawingTemplateRequest,
+): Promise<BacktestDrawingTemplateDto> {
+  attachToken();
+  const res = await api.post<ApiResponse<BacktestDrawingTemplateDto>>(`${BASE}/backtest-drawing-templates`, req);
+  return res.data.value;
+}
+
+export async function deleteDrawingTemplateApi(templateId: number): Promise<void> {
+  attachToken();
+  await api.delete(`${BASE}/backtest-drawing-templates/${templateId}`);
 }
 
 async function fetchAnalytics(sessionId: number): Promise<SessionAnalytics> {

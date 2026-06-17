@@ -141,11 +141,11 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
       <CardHeader className="flex flex-col xl:flex-row items-start xl:items-center justify-between space-y-4 xl:space-y-0 pb-6 px-0">
         <div className="flex flex-col sm:flex-row items-start sm:items-center sm:space-x-6 space-y-3 sm:space-y-0 w-full xl:w-auto">
           <div className="flex items-center gap-4">
-             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/20 shadow-inner backdrop-blur-md">
-               <CalendarIcon className="h-6 w-6 text-primary" />
+             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/60 bg-primary/10 text-primary">
+               <CalendarIcon className="h-5 w-5" />
              </div>
              <div>
-                <CardTitle className="text-3xl font-black tracking-tight bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                <CardTitle className="text-2xl font-bold tracking-tight text-foreground">
                   {format(currentDate, dateFormat)}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground font-medium flex items-center gap-1.5 mt-0.5">
@@ -158,15 +158,15 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <div className="flex items-center space-x-4 border border-border/40 px-5 py-3 rounded-3xl text-sm font-bold bg-background/40 backdrop-blur-xl cursor-pointer hover:bg-background/80 hover:border-border transition-all shadow-sm group">
+              <div className="group flex cursor-pointer items-center space-x-4 rounded-xl border border-border/60 bg-background/60 px-5 py-3 text-sm font-bold shadow-sm backdrop-blur-md transition-colors hover:border-border hover:bg-background/90">
                  <div className="flex flex-col">
-                   <span className="text-muted-foreground uppercase tracking-widest text-[10px] leading-none mb-1.5 group-hover:text-foreground/70 transition-colors flex items-center gap-1">
+                   <span className="mb-1.5 flex items-center gap-1 text-[10px] uppercase leading-none tracking-widest text-muted-foreground transition-colors group-hover:text-foreground/70">
                      {pnlView}
                    </span>
                    <span className={cn(
-                     "text-xl leading-none tracking-tighter transition-colors flex items-center gap-1", 
-                     displayedPnl > 0 ? "text-emerald-500 drop-shadow-[0_0_12px_rgba(16,185,129,0.3)]" : 
-                     displayedPnl < 0 ? "text-rose-500 drop-shadow-[0_0_12px_rgba(244,63,94,0.3)]" : "text-foreground"
+                     "flex items-center gap-1 text-xl leading-none tracking-tight transition-colors",
+                     displayedPnl > 0 ? "text-emerald-500" :
+                     displayedPnl < 0 ? "text-rose-500" : "text-foreground"
                    )}>
                       {displayedPnl > 0 && <TrendingUp className="h-4 w-4 text-emerald-500 mr-0.5" />}
                       {displayedPnl < 0 && <TrendingDown className="h-4 w-4 text-rose-500 mr-0.5" />}
@@ -198,7 +198,7 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
              Import CSV
           </Button>
           
-          <div className="flex items-center space-x-1.5 p-1.5 rounded-[1.25rem] border border-border/40 bg-background/40 backdrop-blur-xl shadow-sm">
+          <div className="flex items-center space-x-1.5 p-1.5 rounded-xl border border-border/60 bg-background/60 backdrop-blur-md shadow-sm">
             <Button variant="ghost" size="sm" className="h-9 px-5 rounded-xl text-xs font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-background shadow-sm transition-all" onClick={() => { setDirection(currentDate < new Date() ? 1 : -1); setCurrentDate(new Date()) }}>
               Today
             </Button>
@@ -213,12 +213,9 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
         </div>
       </CardHeader>
       
-      <CardContent className="px-0 pb-0 relative z-10">
-        <div className="rounded-[2.5rem] border border-border/40 bg-card/40 backdrop-blur-2xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)] transition-all duration-500 hover:border-border/60 group/calendar relative">
-          
-          {/* Subtle gradient mesh background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-50 pointer-events-none" />
-          
+      <CardContent className="px-0 pb-0">
+        <div className="dashboard-card overflow-hidden">
+
           <div className="grid grid-cols-7 border-b border-border/40 bg-muted/30 backdrop-blur-md relative z-10">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, i) => (
                <div key={day} className={cn("text-center py-4 text-[11px] uppercase tracking-widest font-extrabold text-muted-foreground", i > 0 && "border-l border-border/40")}>
@@ -258,7 +255,7 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                       className={cn(
                         "min-h-[80px] sm:min-h-[140px] p-1.5 sm:p-4 flex flex-col items-center border-t border-border/40 transition-all duration-300 relative group/day overflow-hidden",
                         i % 7 !== 0 && "border-l border-border/40",
-                        !isCurrentMonth ? "bg-muted/10 opacity-40 grayscale" : "bg-transparent hover:bg-background/80 hover:shadow-xl hover:shadow-black/5 hover:border-border/60 hover:rounded-2xl",
+                        !isCurrentMonth ? "bg-muted/10 opacity-40 grayscale" : "bg-transparent hover:bg-background/80 hover:border-border/60",
                         isCurrentMonth && pnl > 0 && "bg-emerald-500/10 hover:bg-emerald-500/15",
                         isCurrentMonth && pnl < 0 && "bg-rose-500/10 hover:bg-rose-500/15",
                       )}
@@ -276,7 +273,7 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                           className={cn(
                             "text-xs sm:text-sm font-bold h-7 w-7 sm:h-9 sm:w-9 rounded-full flex items-center justify-center transition-all duration-300",
                             isDayToday 
-                              ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110" 
+                              ? "bg-primary text-primary-foreground shadow-sm"
                               : isCurrentMonth && pnl > 0 
                                 ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 group-hover/day:bg-emerald-500/20 group-hover/day:scale-110"
                                 : isCurrentMonth && pnl < 0
@@ -302,7 +299,7 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             className={cn(
-                              "text-[10px] sm:text-lg font-black tracking-tighter drop-shadow-sm flex items-center gap-1",
+                              "text-[10px] sm:text-lg font-bold tracking-tight flex items-center gap-1",
                               pnl > 0 && "text-emerald-500 dark:text-emerald-400",
                               pnl < 0 && "text-rose-500 dark:text-rose-400",
                               pnl === 0 && "text-muted-foreground",
@@ -313,9 +310,9 @@ export function CalendarWidget({ filter }: { filter: DashboardFilter }) {
                           
                           {/* Mini sparkline or indicator */}
                           <div className={cn(
-                            "h-1.5 w-8 rounded-full mt-3 opacity-60 transition-all duration-300 group-hover/day:w-12 group-hover/day:opacity-100",
-                            pnl > 0 && "bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.6)]",
-                            pnl < 0 && "bg-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.6)]",
+                            "h-1.5 w-8 rounded-full mt-3 opacity-70 transition-all duration-300 group-hover/day:w-12 group-hover/day:opacity-100",
+                            pnl > 0 && "bg-emerald-500",
+                            pnl < 0 && "bg-rose-500",
                             pnl === 0 && "bg-muted-foreground"
                           )} />
                         </div>

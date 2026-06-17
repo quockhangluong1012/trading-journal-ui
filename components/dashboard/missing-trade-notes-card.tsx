@@ -36,15 +36,15 @@ function formatTradeDate(dateValue: Date): string {
 
 export function MissingTradeNotesCard({ trades, isLoading }: MissingTradeNotesCardProps) {
   return (
-    <Card className="min-w-0 rounded-4xl border border-white/10 bg-card/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-all duration-500 hover:border-white/20 hover:shadow-[0_15px_40px_-10px_rgba(79,70,229,0.18)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
-      <CardHeader className="pb-4 pt-6 px-6">
+    <Card className="dashboard-card min-w-0 overflow-hidden">
+      <CardHeader className="px-6 pb-4 pt-6">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-[1.1rem] font-bold text-foreground">
-              <FilePenLine className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <FilePenLine className="h-4.5 w-4.5 text-primary" />
               Trades needing notes
             </CardTitle>
-            <CardDescription className="text-sm font-medium text-muted-foreground">
+            <CardDescription className="text-sm text-muted-foreground">
               Finish the journal entries you skipped so review data stays trustworthy.
             </CardDescription>
           </div>
@@ -82,7 +82,7 @@ export function MissingTradeNotesCard({ trades, isLoading }: MissingTradeNotesCa
                   const formattedDate = formatTradeDate(trade.date)
 
                   return (
-                    <TableRow key={trade.id} className="border-border/30 hover:bg-white/5 dark:hover:bg-white/10">
+                    <TableRow key={trade.id} className="border-border/30 transition-colors hover:bg-muted/50">
                       <TableCell className="font-semibold text-foreground">{trade.asset}</TableCell>
                       <TableCell>
                         <Badge
