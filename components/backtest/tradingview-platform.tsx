@@ -531,6 +531,8 @@ export interface TradingSessionOverlay {
   fillColor: string;
   startTime: UTCTimestamp;
   endTime: UTCTimestamp;
+  startLogical?: number;
+  endLogical?: number;
   high: number;
   low: number;
 }
@@ -779,14 +781,21 @@ function pixelDeltaToChartDelta(
   pixelDX: number,
   pixelDY: number,
   containerHeight: number,
-): { dt: number; dp: number } {
+): { dt: number; dLogical: number | null; dp: number } {
   let dt = 0;
+  let dLogical: number | null = null;
   let dp = 0;
 
   // Horizontal: use visible range times + timeToCoordinate for reliable time/pixel ratio.
   // coordinateToTime() can return null when queried outside the chart data — this
   // alternative never hits that path because we start from known Time values.
   const timeScale = chart.timeScale();
+  const visibleLogicalRange = timeScale.getVisibleLogicalRange();
+  const timeScaleWidth = timeScale.width();
+  if (visibleLogicalRange && timeScaleWidth > 0) {
+    dLogical = pixelDX * (visibleLogicalRange.to - visibleLogicalRange.from) / timeScaleWidth;
+  }
+
   const visibleRange = timeScale.getVisibleRange();
   if (visibleRange) {
     const tFrom = Number(visibleRange.from);
@@ -817,7 +826,7 @@ function pixelDeltaToChartDelta(
     }
   }
 
-  return { dt, dp };
+  return { dt, dLogical, dp };
 }
 
 interface DrawingToolDefinition {
@@ -1747,6 +1756,8 @@ export function buildTradingSessionOverlays(
             fillColor: session.fillColor,
             startTime: bounds.startTime,
             endTime: bounds.endTime,
+            startLogical: estimateLogicalFromTime(bounds.startTime, chartCandles) ?? undefined,
+            endLogical: estimateLogicalFromTime(bounds.endTime, chartCandles) ?? undefined,
             high: Number.NEGATIVE_INFINITY,
             low: Number.POSITIVE_INFINITY,
           };
@@ -1784,12 +1795,14 @@ export function positionTradingSessionOverlays({
   sessions,
   width,
   height,
+  logicalToCoordinate,
   timeToCoordinate,
   priceToCoordinate,
 }: {
   sessions: TradingSessionOverlay[];
   width: number;
   height: number;
+  logicalToCoordinate?: (logical: number) => number | null;
   timeToCoordinate: (time: UTCTimestamp) => number | null;
   priceToCoordinate: (price: number) => number | null;
 }): PositionedTradingSessionOverlay[] {
@@ -1798,8 +1811,18 @@ export function positionTradingSessionOverlays({
   }
 
   return sessions.reduce<PositionedTradingSessionOverlay[]>((result, session) => {
-    const startX = timeToCoordinate(session.startTime);
-    const endX = timeToCoordinate(session.endTime);
+    const startLogicalX = logicalToCoordinate && Number.isFinite(session.startLogical)
+      ? logicalToCoordinate(Number(session.startLogical))
+      : null;
+    const endLogicalX = logicalToCoordinate && Number.isFinite(session.endLogical)
+      ? logicalToCoordinate(Number(session.endLogical))
+      : null;
+    const startX = startLogicalX == null || !Number.isFinite(startLogicalX)
+      ? timeToCoordinate(session.startTime)
+      : startLogicalX;
+    const endX = endLogicalX == null || !Number.isFinite(endLogicalX)
+      ? timeToCoordinate(session.endTime)
+      : endLogicalX;
     const highY = priceToCoordinate(session.high);
     const lowY = priceToCoordinate(session.low);
 
@@ -2918,12 +2941,13 @@ export function positionChartDrawing({
   }
 
   const points = drawing.points.reduce<PositionedChartDrawing["points"]>((result, point) => {
-    let x = timeToCoordinate(point.time);
-    // When a point's time falls outside the chart's mapped range (panned far,
-    // or no bars on screen) the time mapping yields null — fall back to the
-    // point's logical index so the drawing stays anchored instead of vanishing.
-    if ((x == null || !Number.isFinite(x)) && logicalToCoordinate && Number.isFinite(point.logical)) {
-      x = logicalToCoordinate(Number(point.logical));
+    let x = logicalToCoordinate && Number.isFinite(point.logical)
+      ? logicalToCoordinate(Number(point.logical))
+      : null;
+    // Logical coordinates are the exact chart-space anchor captured while
+    // drawing; timestamps can be estimated before future replay candles exist.
+    if (x == null || !Number.isFinite(x)) {
+      x = timeToCoordinate(point.time);
     }
     const y = priceToCoordinate(point.price);
 
@@ -2989,6 +3013,54 @@ export function estimateDrawingTimeFromLogical(
   const ratio = logical - leftIndex;
 
   return Math.round(leftTime + (rightTime - leftTime) * ratio) as UTCTimestamp;
+}
+
+export function estimateLogicalFromTime(
+  time: UTCTimestamp,
+  chartCandles: Array<CandlestickData<UTCTimestamp>>,
+): number | null {
+  const targetTime = Number(time);
+  if (!Number.isFinite(targetTime) || chartCandles.length < 2) {
+    return null;
+  }
+
+  const lastIndex = chartCandles.length - 1;
+  const timeAt = (index: number) => Number(chartCandles[index].time);
+  const estimateWithin = (leftIndex: number, rightIndex: number): number | null => {
+    const leftTime = timeAt(leftIndex);
+    const rightTime = timeAt(rightIndex);
+    const interval = rightTime - leftTime;
+
+    if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime) || interval === 0) {
+      return null;
+    }
+
+    return leftIndex + (targetTime - leftTime) / interval;
+  };
+
+  const firstTime = timeAt(0);
+  const lastTime = timeAt(lastIndex);
+  if (!Number.isFinite(firstTime) || !Number.isFinite(lastTime)) {
+    return null;
+  }
+
+  if (targetTime <= firstTime) {
+    return estimateWithin(0, 1);
+  }
+
+  if (targetTime >= lastTime) {
+    return estimateWithin(lastIndex - 1, lastIndex);
+  }
+
+  for (let index = 0; index < lastIndex; index += 1) {
+    const leftTime = timeAt(index);
+    const rightTime = timeAt(index + 1);
+    if (targetTime >= leftTime && targetTime <= rightTime) {
+      return estimateWithin(index, index + 1);
+    }
+  }
+
+  return null;
 }
 
 export function resolveDrawingAnchorFromCoordinate({
@@ -4417,6 +4489,10 @@ export function TradingViewPlatform({
       sessions: tradingSessionOverlays,
       width: chartSize.width,
       height: chartSize.height,
+      logicalToCoordinate: (logical) => {
+        const x = chart.timeScale().logicalToCoordinate(logical as Logical);
+        return x == null ? null : Number(x);
+      },
       timeToCoordinate: (time) => {
         const x = chart.timeScale().timeToCoordinate(time);
         if (x !== null) return Number(x);
@@ -4779,7 +4855,7 @@ export function TradingViewPlatform({
 
       const pixelDX = event.clientX - dragState.startMousePosition.x;
       const pixelDY = event.clientY - dragState.startMousePosition.y;
-      const { dt, dp } = pixelDeltaToChartDelta(
+      const { dt, dLogical, dp } = pixelDeltaToChartDelta(
         chart, candleSeries, pixelDX, pixelDY, dragState.surfaceRect.height,
       );
 
@@ -4789,10 +4865,14 @@ export function TradingViewPlatform({
           ...drawing,
           points: dragState.startPoints.map((point, i) => {
             if (dragState.pointIndex === -1 || dragState.pointIndex === i) {
-              return {
+              const movedPoint: ChartDrawingAnchor = {
                 time: (point.time + dt) as UTCTimestamp,
                 price: point.price + dp,
               };
+              if (Number.isFinite(point.logical) && dLogical != null && Number.isFinite(dLogical)) {
+                movedPoint.logical = Number(point.logical) + dLogical;
+              }
+              return movedPoint;
             }
             return { ...point };
           }),
